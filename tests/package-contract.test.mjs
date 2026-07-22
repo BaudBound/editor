@@ -8,30 +8,14 @@ import { fileURLToPath } from "node:url";
 const appRoot = fileURLToPath(new URL("..", import.meta.url));
 const contractsRoot = join(appRoot, "contracts");
 const schemasRoot = join(contractsRoot, "schemas");
-const runnerCapabilityContractPath = join(
-	contractsRoot,
-	"runner",
-	"node-capabilities.json",
-);
-const runnerPermissionContractPath = join(
-	contractsRoot,
-	"runner",
-	"node-permissions.json",
-);
+const runnerCapabilityContractPath = join(contractsRoot, "runner", "node-capabilities.json");
+const runnerPermissionContractPath = join(contractsRoot, "runner", "node-permissions.json");
 const runnerPortContractPath = join(contractsRoot, "runner", "node-ports.json");
 const runnerNumericContractPath = join(contractsRoot, "runner", "node-numeric-fields.json");
 const editorKeyboardContractPath = join(appRoot, "data", "nodes", "windows-key-contract.json");
-const runnerKeyboardContractPath = join(
-	contractsRoot,
-	"runner",
-	"windows-keyboard-keys.json",
-);
+const runnerKeyboardContractPath = join(contractsRoot, "runner", "windows-keyboard-keys.json");
 const colorMatchCasesPath = join(contractsRoot, "runner", "color-match-cases.json");
-const conditionEqualityCasesPath = join(
-	contractsRoot,
-	"runner",
-	"condition-equality-cases.json",
-);
+const conditionEqualityCasesPath = join(contractsRoot, "runner", "condition-equality-cases.json");
 
 test("Windows keyboard contract excludes unsupported macOS names and matches the generated runner contract", () => {
 	const editorContract = JSON.parse(read(editorKeyboardContractPath));
@@ -952,12 +936,6 @@ test("IndexedDB is the editor's only normal durable browser storage", () => {
 	}
 });
 
-function extractRustConstStringArray(source, constName) {
-	const match = source.match(new RegExp(`(?:pub\\s+)?const ${constName}: &\\[&str\\] = &\\[([\\s\\S]*?)\\];`));
-	assert.ok(match, `${constName} must be declared as a Rust string array`);
-	return [...match[1].matchAll(/"([^"]+)"/g)].map((entry) => entry[1]);
-}
-
 function extractDefinitionCapabilities(definitionsSource, sharedSource) {
 	const sharedCapabilities = new Map(
 		[...sharedSource.matchAll(/export const (\w+) = \[([^\]]*)\]/g)].map((match) => [
@@ -980,28 +958,8 @@ function extractDefinitionCapabilities(definitionsSource, sharedSource) {
 	return capabilities;
 }
 
-function extractWindowsDesktopOnlyActionTypes(definitionsSource) {
-	return extractDefinitionActionTypes(definitionsSource).filter((actionType) =>
-		/supportedTargetRuntimes:\s*\[\s*"Windows Desktop"\s*\]/.test(getDefinitionBlock(definitionsSource, actionType)),
-	);
-}
-
-function extractDesktopOnlyActionTypes(definitionsSource) {
-	return extractDefinitionActionTypes(definitionsSource).filter((actionType) => {
-		const definitionBlock = getDefinitionBlock(definitionsSource, actionType);
-		return (
-			/desktopOnly:\s*true/.test(definitionBlock) &&
-			!/supportedTargetRuntimes:\s*\[\s*"Windows Desktop"\s*\]/.test(definitionBlock)
-		);
-	});
-}
-
 function extractDefinitionActionTypes(definitionsSource) {
 	return [...definitionsSource.matchAll(/actionType:\s*"([^"]+)"/g)].map((match) => match[1]);
-}
-
-function uniqueSorted(values) {
-	return [...new Set(values)].sort();
 }
 
 function escapeRegExp(value) {

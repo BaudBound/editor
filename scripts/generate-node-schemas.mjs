@@ -8,24 +8,12 @@ const appRoot = fileURLToPath(new URL("..", import.meta.url));
 const contractsRoot = join(appRoot, "contracts");
 const schemasRoot = join(contractsRoot, "schemas");
 const nodeSchemasRoot = join(schemasRoot, "nodes");
-const runnerCapabilityContractPath = join(
-	contractsRoot,
-	"runner",
-	"node-capabilities.json",
-);
-const runnerPermissionContractPath = join(
-	contractsRoot,
-	"runner",
-	"node-permissions.json",
-);
+const runnerCapabilityContractPath = join(contractsRoot, "runner", "node-capabilities.json");
+const runnerPermissionContractPath = join(contractsRoot, "runner", "node-permissions.json");
 const runnerPortContractPath = join(contractsRoot, "runner", "node-ports.json");
 const runnerNumericContractPath = join(contractsRoot, "runner", "node-numeric-fields.json");
 const editorKeyboardContractPath = join(appRoot, "data", "nodes", "windows-key-contract.json");
-const runnerKeyboardContractPath = join(
-	contractsRoot,
-	"runner",
-	"windows-keyboard-keys.json",
-);
+const runnerKeyboardContractPath = join(contractsRoot, "runner", "windows-keyboard-keys.json");
 const publicSchemaRoot = "https://schemas.baudbound.app";
 const programSchemaUrl = `${publicSchemaRoot}/program.schema.json`;
 const jsonValueRef = `${programSchemaUrl}#/$defs/jsonValue`;
