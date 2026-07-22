@@ -6,38 +6,30 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const appRoot = fileURLToPath(new URL("..", import.meta.url));
-const repoRoot = join(appRoot, "..", "..");
-const schemasRoot = join(repoRoot, "schemas");
+const contractsRoot = join(appRoot, "contracts");
+const schemasRoot = join(contractsRoot, "schemas");
 const runnerCapabilityContractPath = join(
-	repoRoot,
-	"crates",
-	"baudbound-security",
-	"contracts",
+	contractsRoot,
+	"runner",
 	"node-capabilities.json",
 );
 const runnerPermissionContractPath = join(
-	repoRoot,
-	"crates",
-	"baudbound-security",
-	"contracts",
+	contractsRoot,
+	"runner",
 	"node-permissions.json",
 );
-const runnerPortContractPath = join(repoRoot, "crates", "baudbound-script", "contracts", "node-ports.json");
-const runnerNumericContractPath = join(repoRoot, "crates", "baudbound-script", "contracts", "node-numeric-fields.json");
+const runnerPortContractPath = join(contractsRoot, "runner", "node-ports.json");
+const runnerNumericContractPath = join(contractsRoot, "runner", "node-numeric-fields.json");
 const editorKeyboardContractPath = join(appRoot, "data", "nodes", "windows-key-contract.json");
 const runnerKeyboardContractPath = join(
-	repoRoot,
-	"crates",
-	"baudbound-script",
-	"contracts",
+	contractsRoot,
+	"runner",
 	"windows-keyboard-keys.json",
 );
-const colorMatchCasesPath = join(repoRoot, "crates", "baudbound-script", "contracts", "color-match-cases.json");
+const colorMatchCasesPath = join(contractsRoot, "runner", "color-match-cases.json");
 const conditionEqualityCasesPath = join(
-	repoRoot,
-	"crates",
-	"baudbound-script",
-	"contracts",
+	contractsRoot,
+	"runner",
 	"condition-equality-cases.json",
 );
 
@@ -488,56 +480,6 @@ test("runner types used by node definitions are declared by the program schema",
 	}
 });
 
-test("editor node action types are covered by runner support owners", () => {
-	const definitionsSource = readDefinitions();
-	const actionCrateSource = read(join(repoRoot, "crates", "baudbound-actions", "src", "lib.rs"));
-	const coreSource = read(join(repoRoot, "crates", "baudbound-core", "src", "lib.rs"));
-	const runtimeSource = read(join(repoRoot, "crates", "baudbound-runtime", "src", "execution", "contracts.rs"));
-	const triggerSource = read(join(repoRoot, "crates", "baudbound-triggers", "src", "lib.rs"));
-	const editorActionTypes = extractDefinitionActionTypes(definitionsSource);
-	const editorExecutableActionTypes = editorActionTypes
-		.filter((actionType) => actionType.startsWith("action.") || actionType === "runtime.set_variable")
-		.sort();
-	const editorControlActionTypes = editorActionTypes.filter((actionType) => actionType.startsWith("control.")).sort();
-	const editorTriggerActionTypes = editorActionTypes.filter((actionType) => actionType.startsWith("trigger.")).sort();
-	const runnerExecutableActionTypes = uniqueSorted([
-		...extractRustConstStringArray(actionCrateSource, "SUPPORTED_ACTION_TYPES"),
-		...extractRustConstStringArray(coreSource, "SUPPORTED_CORE_ACTION_TYPES"),
-		...extractRustConstStringArray(runtimeSource, "SUPPORTED_INTERNAL_ACTION_TYPES"),
-	]);
-	const runnerControlActionTypes = uniqueSorted(
-		extractRustConstStringArray(runtimeSource, "SUPPORTED_CONTROL_ACTION_TYPES"),
-	);
-	const runnerTriggerActionTypes = uniqueSorted([
-		...extractRustConstStringArray(coreSource, "SUPPORTED_CORE_TRIGGER_ACTION_TYPES"),
-		...extractRustConstStringArray(triggerSource, "SUPPORTED_SERVICE_TRIGGER_ACTION_TYPES"),
-	]);
-	const desktopAdapterActionTypes = extractRustConstStringArray(actionCrateSource, "DESKTOP_ADAPTER_ACTION_TYPES");
-
-	assert.deepEqual(
-		editorExecutableActionTypes,
-		runnerExecutableActionTypes,
-		"every editor executable action must have exactly one runner support owner",
-	);
-	assert.deepEqual(
-		editorControlActionTypes,
-		runnerControlActionTypes,
-		"every editor control action must be explicitly supported by baudbound-runtime",
-	);
-	assert.deepEqual(
-		editorTriggerActionTypes,
-		runnerTriggerActionTypes,
-		"every editor trigger action must be explicitly supported by core or trigger services",
-	);
-
-	for (const actionType of desktopAdapterActionTypes) {
-		assert.ok(
-			runnerExecutableActionTypes.includes(actionType),
-			`${actionType} desktop adapter support must also be declared as an executable action`,
-		);
-	}
-});
-
 test("old capability and permission strings are not used by node definitions", () => {
 	const definitionsSource = readDefinitions();
 	const staleStrings = [
@@ -654,33 +596,14 @@ test("window-title process matching has config-sensitive Windows Desktop validat
 	}
 });
 
-test("editor and runner target runtime compatibility policies stay aligned", () => {
-	const runnerPolicySource = read(join(repoRoot, "crates", "baudbound-core", "src", "compatibility.rs"));
-	const definitionsSource = readDefinitions();
-	const editorWindowsOnly = extractWindowsDesktopOnlyActionTypes(definitionsSource).sort();
-	const editorDesktopOnly = extractDesktopOnlyActionTypes(definitionsSource).sort();
-	const runnerWindowsOnly = extractRustConstStringArray(runnerPolicySource, "WINDOWS_DESKTOP_ONLY_ACTIONS").sort();
-	const runnerDesktopOnly = extractRustConstStringArray(runnerPolicySource, "DESKTOP_ONLY_ACTIONS").sort();
-
-	assert.deepEqual(editorWindowsOnly, runnerWindowsOnly, "Windows-only target runtime policies must match");
-	assert.deepEqual(editorDesktopOnly, runnerDesktopOnly, "desktop-only target runtime policies must match");
-
-	for (const actionType of [...editorWindowsOnly, ...editorDesktopOnly]) {
-		const definitionBlock = getDefinitionBlock(definitionsSource, actionType);
-		assert.match(definitionBlock, /desktopOnly:\s*true/, `${actionType} must be marked desktopOnly in the editor`);
-	}
-});
-
 test("removed Apple target runtimes are not exposed or accepted", () => {
 	const targetRuntimeSource = read(join(appRoot, "data", "project", "runtimes.ts"));
 	const typeSource = read(join(appRoot, "lib", "types.ts"));
 	const capabilitiesSchema = JSON.parse(read(join(schemasRoot, "capabilities.schema.json")));
-	const runnerPolicySource = read(join(repoRoot, "crates", "baudbound-core", "src", "compatibility.rs"));
 	const removedTargetPrefix = ["mac", "OS"].join("");
 
 	assert.ok(!targetRuntimeSource.includes(removedTargetPrefix));
 	assert.ok(!typeSource.includes(removedTargetPrefix));
-	assert.ok(!runnerPolicySource.includes(removedTargetPrefix));
 	assert.ok(
 		!capabilitiesSchema.properties.target_runtime.enum.some((targetRuntime) =>
 			targetRuntime.includes(removedTargetPrefix),
@@ -802,11 +725,10 @@ test("file permissions are derived from node config paths", () => {
 	assert.match(copyFileSource, /\{ access: "write", configKey: "destinationPath" \}/);
 });
 
-test("editor and runner share bounded package ingestion limits", () => {
+test("editor enforces bounded package ingestion limits", () => {
 	const assetsSource = read(join(appRoot, "data", "project", "assets.ts"));
 	const limitsSource = read(join(appRoot, "data", "project", "package-limits.ts"));
 	const packageSource = read(join(appRoot, "utils", "bbs-package.ts"));
-	const runnerLimitsSource = read(join(repoRoot, "crates", "baudbound-script", "src", "package", "limits.rs"));
 	const limits = JSON.parse(read(join(schemasRoot, "package-limits.json")));
 
 	assert.equal(limits.version, 1);
@@ -816,7 +738,6 @@ test("editor and runner share bounded package ingestion limits", () => {
 	assert.match(limitsSource, /schemas\/package-limits\.json/);
 	assert.match(assetsSource, /packageLimits\.max_asset_bytes/);
 	assert.match(packageSource, /assertZipWithinPackageLimits/);
-	assert.match(runnerLimitsSource, /schemas\/package-limits\.json/);
 });
 
 test("package asset validation requires zip assets and manifest assets to match exactly", () => {
@@ -1004,9 +925,6 @@ test("default variables are typed package metadata and runner execution state", 
 	const editorPage = read(join(appRoot, "app", "editor-page.tsx"));
 	const packageSource = read(join(appRoot, "utils", "bbs-package.ts"));
 	const simulationSource = read(join(appRoot, "utils", "simulation.ts"));
-	const runtimeDefaultSource = read(
-		join(repoRoot, "crates", "baudbound-runtime", "src", "execution", "default_variables.rs"),
-	);
 	const stringDefaultSchema = manifestSchema.properties.variables.items.oneOf.find(
 		(option) => option.properties.type.const === "string",
 	);
@@ -1018,8 +936,6 @@ test("default variables are typed package metadata and runner execution state", 
 	assert.match(editorPage, /defaultVariables/);
 	assert.match(packageSource, /variables:\s*params\.defaultVariables\.map/);
 	assert.match(simulationSource, /defaultVariables\.map/);
-	assert.match(runtimeDefaultSource, /load_or_initialize_persistent_default/);
-	assert.match(runtimeDefaultSource, /compare_and_set_variable/);
 });
 
 test("IndexedDB is the editor's only normal durable browser storage", () => {

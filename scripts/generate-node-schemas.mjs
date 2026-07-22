@@ -5,31 +5,25 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 const appRoot = fileURLToPath(new URL("..", import.meta.url));
-const repoRoot = join(appRoot, "..", "..");
-const schemasRoot = join(repoRoot, "schemas");
+const contractsRoot = join(appRoot, "contracts");
+const schemasRoot = join(contractsRoot, "schemas");
 const nodeSchemasRoot = join(schemasRoot, "nodes");
 const runnerCapabilityContractPath = join(
-	repoRoot,
-	"crates",
-	"baudbound-security",
-	"contracts",
+	contractsRoot,
+	"runner",
 	"node-capabilities.json",
 );
 const runnerPermissionContractPath = join(
-	repoRoot,
-	"crates",
-	"baudbound-security",
-	"contracts",
+	contractsRoot,
+	"runner",
 	"node-permissions.json",
 );
-const runnerPortContractPath = join(repoRoot, "crates", "baudbound-script", "contracts", "node-ports.json");
-const runnerNumericContractPath = join(repoRoot, "crates", "baudbound-script", "contracts", "node-numeric-fields.json");
+const runnerPortContractPath = join(contractsRoot, "runner", "node-ports.json");
+const runnerNumericContractPath = join(contractsRoot, "runner", "node-numeric-fields.json");
 const editorKeyboardContractPath = join(appRoot, "data", "nodes", "windows-key-contract.json");
 const runnerKeyboardContractPath = join(
-	repoRoot,
-	"crates",
-	"baudbound-script",
-	"contracts",
+	contractsRoot,
+	"runner",
 	"windows-keyboard-keys.json",
 );
 const publicSchemaRoot = "https://schemas.baudbound.app";
