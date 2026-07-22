@@ -10,6 +10,7 @@
 		"includes": [
 			"**",
 			"!.pb_hooks",
+			"!contracts",
 			"!node_modules",
 			"!.next",
 			"!dist",
