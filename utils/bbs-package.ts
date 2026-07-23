@@ -29,7 +29,7 @@ import { DEFAULT_MINIMUM_RUNNER_VERSION, EDITOR_CREATED_WITH } from "../lib/vers
 import { calculateCapabilities, calculatePermissions, calculateRiskLevel, toProgramJson } from "./analysis";
 import { isSelfConnection, withEdgeExecutionOrder } from "./editor-graph";
 import { validatePackageJsonContracts } from "./package-contract";
-import { downloadBytes } from "./script-update";
+import { createScriptPackageFilename, downloadBytes } from "./script-repository";
 import {
 	createPackageVerificationChecks,
 	getRequiredPackageFiles,
@@ -90,7 +90,7 @@ export async function buildBbsPackage(params: {
 		id: params.identity.id,
 		name: params.projectSettings.name,
 		version: params.projectSettings.version,
-		update_url: params.projectSettings.updateUrl,
+		repository_url: params.projectSettings.repositoryUrl,
 		description: params.projectSettings.description,
 		author: params.projectSettings.author,
 		website: params.projectSettings.website,
@@ -170,7 +170,7 @@ export async function buildBbsPackage(params: {
 
 	return {
 		bytes: await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" }),
-		filename: `${slugFromName(params.projectSettings.name)}.bbs`,
+		filename: createScriptPackageFilename(params.projectSettings.name, params.projectSettings.version),
 		scriptId: params.identity.id,
 		version: params.projectSettings.version,
 	} satisfies GeneratedBbsPackage;
@@ -351,16 +351,6 @@ function compactObject(value: Record<string, unknown>) {
 	);
 }
 
-function slugFromName(name: string) {
-	return (
-		name
-			.trim()
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, "-")
-			.replace(/^-+|-+$/g, "") || "untitled-script"
-	);
-}
-
 function toEditorJson(nodes: Node<ScriptNodeData>[], comments: EditorComment[], edgeStyle: EditorEdgeStyle) {
 	return {
 		format_version: EDITOR_METADATA_FORMAT_VERSION,
@@ -423,7 +413,7 @@ function toProjectSettings(manifest: Record<string, unknown>, capabilities: Reco
 	return {
 		name: stringOrDefault(manifest.name, "untitled-script"),
 		version: stringOrDefault(manifest.version, "1.0.0"),
-		updateUrl: stringOrDefault(manifest.update_url, ""),
+		repositoryUrl: stringOrDefault(manifest.repository_url, ""),
 		description: stringOrDefault(manifest.description, ""),
 		author: stringOrDefault(manifest.author, ""),
 		website: stringOrDefault(manifest.website, ""),

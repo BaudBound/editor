@@ -1,13 +1,13 @@
 import { defaultEditorEdgeStyle } from "@/data/editor/flow-canvas";
 import type { ProjectSettings } from "@/lib/types";
 import { DEFAULT_MINIMUM_RUNNER_VERSION } from "@/lib/version";
-import { DEFAULT_SCRIPT_VERSION } from "@/utils/script-update";
+import { DEFAULT_SCRIPT_VERSION } from "@/utils/script-repository";
 import { type EditorProject, editorProjectSchemaVersion, type ProjectIdentity } from "./model";
 
 export const defaultProjectSettings: ProjectSettings = {
 	name: "untitled-script",
 	version: DEFAULT_SCRIPT_VERSION,
-	updateUrl: "",
+	repositoryUrl: "",
 	description: "",
 	author: "",
 	website: "",

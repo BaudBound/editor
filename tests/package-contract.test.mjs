@@ -115,17 +115,43 @@ test("manifest metadata is bounded and untrusted links are validated", () => {
 	assert.match(contractSource, /maximumDefaultValueBytes/);
 });
 
-test("script update descriptor schema is strict and bounded", () => {
-	const schema = JSON.parse(read(join(schemasRoot, "script-update.schema.json")));
+test("script repository schema is strict and bounded", () => {
+	const schema = JSON.parse(read(join(schemasRoot, "repository.schema.json")));
 
 	assert.equal(schema.additionalProperties, false);
-	assert.deepEqual(schema.required, ["format", "format_version", "script_id", "latest"]);
-	assert.equal(schema.properties.format.const, "baudbound.script-update");
+	assert.deepEqual(schema.required, ["format", "format_version", "name", "scripts"]);
+	assert.equal(schema.properties.format.const, "baudbound.repository");
 	assert.equal(schema.properties.format_version.const, 1);
-	assert.equal(schema.properties.latest.additionalProperties, false);
-	assert.equal(schema.properties.latest.properties.sha256.pattern, "^[0-9a-f]{64}$");
-	assert.equal(schema.properties.latest.properties.size.minimum, 1);
-	assert.equal(schema.properties.latest.properties.release_notes.maxLength, 65_536);
+	assert.equal(schema.properties.scripts.maxItems, 1000);
+	assert.equal(schema.$defs.script.additionalProperties, false);
+	assert.equal(schema.$defs.release.additionalProperties, false);
+	assert.equal(schema.$defs.release.properties.sha256.pattern, "^[0-9a-f]{64}$");
+	assert.equal(schema.$defs.release.properties.size.minimum, 1);
+	assert.equal(schema.$defs.release.properties.release_notes.maxLength, 8_000);
+});
+
+test("package filenames contain a safe script name and exact version", async () => {
+	const { createScriptPackageFilename } = await loadScriptRepositoryUtilities();
+
+	assert.equal(createScriptPackageFilename("Inventory Scanner", "1.2.0"), "inventory-scanner-1.2.0.bbs");
+	assert.equal(createScriptPackageFilename("  Files / Reports  ", "2.0.0-beta.1"), "files-reports-2.0.0-beta.1.bbs");
+	assert.equal(createScriptPackageFilename("CON", "1.0.0"), "script-con-1.0.0.bbs");
+	assert.equal(createScriptPackageFilename("测试", "1.0.0"), "untitled-script-1.0.0.bbs");
+	assert.ok(createScriptPackageFilename("a".repeat(500), "1.0.0").length <= 240);
+	assert.throws(() => createScriptPackageFilename("Example", ""), /Script version is required/);
+});
+
+test("source metadata uses only the current manifest source names", () => {
+	const manifestSchema = JSON.parse(read(join(schemasRoot, "manifest.schema.json")));
+	const builtInSource = read(join(appRoot, "data", "project", "built-in-variables.ts"));
+	const projectSettingsSource = read(join(appRoot, "components", "modals", "project-settings-modal.tsx"));
+
+	assert.ok(manifestSchema.properties.source);
+	assert.equal("repository" in manifestSchema.properties, false);
+	assert.equal(builtInSource.includes("manifest_repository"), false);
+	assert.match(builtInSource, /manifest_source/);
+	assert.match(projectSettingsSource, /Repository URL/);
+	assert.match(projectSettingsSource, /Source/);
 });
 
 test("generated node schemas are current", () => {
@@ -820,6 +846,19 @@ async function loadConditionComparison() {
 async function loadNumericValidator() {
 	const typescript = await import("typescript");
 	const source = read(join(appRoot, "data", "nodes", "numeric-validation.ts"));
+	const compiled = typescript.transpileModule(source, {
+		compilerOptions: {
+			module: typescript.ModuleKind.ESNext,
+			target: typescript.ScriptTarget.ES2022,
+		},
+	});
+	const moduleUrl = `data:text/javascript;base64,${Buffer.from(compiled.outputText).toString("base64")}`;
+	return import(moduleUrl);
+}
+
+async function loadScriptRepositoryUtilities() {
+	const typescript = await import("typescript");
+	const source = read(join(appRoot, "utils", "script-repository.ts"));
 	const compiled = typescript.transpileModule(source, {
 		compilerOptions: {
 			module: typescript.ModuleKind.ESNext,

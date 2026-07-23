@@ -1,23 +1,17 @@
 "use client";
 
 import { CheckCircle2, Download, FileJson, FileText, FolderClosed, ShieldAlert, X } from "lucide-react";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { riskTone } from "@/data/editor/risk";
 import type { CapabilitySummary, ExportSummary, PermissionSummary, ProjectSettings } from "@/lib/types";
 import type { GeneratedBbsPackage } from "@/utils/bbs-package";
-import {
-	createScriptUpdateDescriptor,
-	downloadBytes,
-	getDirectPackageUrlError,
-	MAX_RELEASE_NOTES_LENGTH,
-} from "@/utils/script-update";
+import { downloadBytes } from "@/utils/script-repository";
 import type { VerificationCheck, VerificationSummary } from "@/utils/verification";
 import { RiskBadge } from "../shell/risk-badge";
+import { RepositoryEntryDialog } from "./repository-entry-dialog";
 import { VerificationProgress } from "./verification-modal";
 
 type ExportWizardStep = "project" | "access" | "verification";
@@ -57,8 +51,7 @@ export function ExportWizardModal({
 	const [verificationSummary, setVerificationSummary] = useState<VerificationSummary | null>(null);
 	const [exporting, setExporting] = useState(false);
 	const [generatedPackage, setGeneratedPackage] = useState<GeneratedBbsPackage | null>(null);
-	const [packageUrl, setPackageUrl] = useState("");
-	const [releaseNotes, setReleaseNotes] = useState("");
+	const [repositoryDialogOpen, setRepositoryDialogOpen] = useState(false);
 	const [exportError, setExportError] = useState("");
 	const currentStep = exportSteps[stepIndex];
 	const canGoNext = currentStep.id !== "verification" || isPassingVerification(verificationSummary);
@@ -72,8 +65,7 @@ export function ExportWizardModal({
 		setVerificationSummary(null);
 		setExporting(false);
 		setGeneratedPackage(null);
-		setPackageUrl("");
-		setReleaseNotes("");
+		setRepositoryDialogOpen(false);
 		setExportError("");
 	}, [open]);
 
@@ -92,30 +84,6 @@ export function ExportWizardModal({
 			setGeneratedPackage(await onPrepareExport());
 		} catch (error) {
 			setExportError(error instanceof Error ? error.message : "The package could not be generated.");
-		} finally {
-			setExporting(false);
-		}
-	};
-
-	const handleCreateDescriptor = async () => {
-		if (!generatedPackage) return;
-		setExporting(true);
-		setExportError("");
-		try {
-			const descriptor = await createScriptUpdateDescriptor({
-				bytes: generatedPackage.bytes,
-				packageUrl,
-				releaseNotes,
-				scriptId: generatedPackage.scriptId,
-				version: generatedPackage.version,
-			});
-			downloadBytes(
-				new TextEncoder().encode(`${JSON.stringify(descriptor, null, 2)}\n`),
-				"update.json",
-				"application/json",
-			);
-		} catch (error) {
-			setExportError(error instanceof Error ? error.message : "The update descriptor could not be created.");
 		} finally {
 			setExporting(false);
 		}
@@ -144,103 +112,111 @@ export function ExportWizardModal({
 	};
 
 	return (
-		<Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-			<DialogContent
-				className="grid h-[86vh] max-h-[86vh] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden p-0 sm:max-w-5xl"
-				onInteractOutside={(event) => event.preventDefault()}
-				showCloseButton={false}
-			>
-				<DialogHeader className="border-b border-baud-border px-6 py-5">
-					<div className="flex items-start justify-between gap-4">
-						<div>
-							<DialogTitle className="text-lg text-baud-text">Export .bbs</DialogTitle>
-							<DialogDescription>Review the package, verify the script, then download the export.</DialogDescription>
+		<>
+			<Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+				<DialogContent
+					className="grid h-[86vh] max-h-[86vh] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden p-0 sm:max-w-5xl"
+					onInteractOutside={(event) => event.preventDefault()}
+					showCloseButton={false}
+				>
+					<DialogHeader className="border-b border-baud-border px-6 py-5">
+						<div className="flex items-start justify-between gap-4">
+							<div>
+								<DialogTitle className="text-lg text-baud-text">Export .bbs</DialogTitle>
+								<DialogDescription>Review the package, verify the script, then download the export.</DialogDescription>
+							</div>
+							<Button type="button" onClick={onClose} aria-label="Cancel export" size="icon" variant="icon">
+								<X size={15} />
+							</Button>
 						</div>
-						<Button type="button" onClick={onClose} aria-label="Cancel export" size="icon" variant="icon">
-							<X size={15} />
-						</Button>
-					</div>
-				</DialogHeader>
+					</DialogHeader>
 
-				<ExportStepIndicator activeIndex={stepIndex} onStepSelect={handleStepSelect} />
+					<ExportStepIndicator activeIndex={stepIndex} onStepSelect={handleStepSelect} />
 
-				<div className="min-h-0 overflow-y-auto px-6 py-5 [scrollbar-gutter:stable]">
-					{currentStep.id === "project" && (
-						<ProjectReviewStep exportSummary={exportSummary} projectSettings={projectSettings} />
-					)}
-					{currentStep.id === "access" && (
-						<AccessReviewStep capabilities={capabilities} permissions={permissions} riskLevel={riskLevel} />
-					)}
-					{currentStep.id === "verification" && (
-						<VerificationStep
-							checks={checks}
-							active={open && currentStep.id === "verification"}
-							summary={verificationSummary}
-							onComplete={handleVerificationComplete}
-							generatedPackage={generatedPackage}
-							packageUrl={packageUrl}
-							releaseNotes={releaseNotes}
-							exportError={exportError}
-							onPackageUrlChange={setPackageUrl}
-							onReleaseNotesChange={setReleaseNotes}
-						/>
-					)}
-				</div>
-
-				<div className="flex items-center justify-between border-t border-baud-border px-6 py-4">
-					<Button type="button" onClick={onClose} variant="toolbar">
-						Cancel
-					</Button>
-					<div className="flex items-center gap-2">
-						{stepIndex > 0 && (
-							<Button type="button" onClick={() => setStepIndex((index) => Math.max(0, index - 1))} variant="toolbar">
-								Back
-							</Button>
+					<div className="min-h-0 overflow-y-auto px-6 py-5 [scrollbar-gutter:stable]">
+						{currentStep.id === "project" && (
+							<ProjectReviewStep exportSummary={exportSummary} projectSettings={projectSettings} />
 						)}
-						{currentStep.id !== "verification" ? (
-							<Button type="button" disabled={!canGoNext} onClick={handleNext} variant="toolbarActive">
-								Next
-							</Button>
-						) : !generatedPackage ? (
-							<Button
-								type="button"
-								disabled={exporting || !isPassingVerification(verificationSummary)}
-								onClick={handlePrepare}
-								variant="primary"
-							>
-								<Download size={14} />
-								{exporting ? "Preparing..." : "Prepare export"}
-							</Button>
-						) : (
-							<>
-								<Button
-									type="button"
-									disabled={exporting}
-									onClick={() =>
-										downloadBytes(
-											generatedPackage.bytes,
-											generatedPackage.filename,
-											"application/vnd.baudbound.script+zip",
-										)
-									}
-									variant="toolbarActive"
-								>
-									<Download size={14} /> Download package
+						{currentStep.id === "access" && (
+							<AccessReviewStep capabilities={capabilities} permissions={permissions} riskLevel={riskLevel} />
+						)}
+						{currentStep.id === "verification" && (
+							<VerificationStep
+								checks={checks}
+								active={open && currentStep.id === "verification"}
+								summary={verificationSummary}
+								onComplete={handleVerificationComplete}
+								exportError={exportError}
+							/>
+						)}
+					</div>
+
+					<div className="flex items-center justify-between border-t border-baud-border px-6 py-4">
+						<Button type="button" onClick={onClose} variant="toolbar">
+							Cancel
+						</Button>
+						<div className="flex items-center gap-2">
+							{stepIndex > 0 && (
+								<Button type="button" onClick={() => setStepIndex((index) => Math.max(0, index - 1))} variant="toolbar">
+									Back
 								</Button>
+							)}
+							{currentStep.id !== "verification" ? (
+								<Button type="button" disabled={!canGoNext} onClick={handleNext} variant="toolbarActive">
+									Next
+								</Button>
+							) : !generatedPackage ? (
 								<Button
 									type="button"
-									disabled={exporting || Boolean(getDirectPackageUrlError(packageUrl))}
-									onClick={handleCreateDescriptor}
+									disabled={exporting || !isPassingVerification(verificationSummary)}
+									onClick={handlePrepare}
 									variant="primary"
 								>
-									<FileJson size={14} /> Create update.json
+									<Download size={14} />
+									{exporting ? "Preparing..." : "Prepare export"}
 								</Button>
-							</>
-						)}
+							) : (
+								<>
+									<Button
+										type="button"
+										disabled={exporting}
+										onClick={() =>
+											downloadBytes(
+												generatedPackage.bytes,
+												generatedPackage.filename,
+												"application/vnd.baudbound.script+zip",
+											)
+										}
+										variant="toolbarActive"
+									>
+										<Download size={14} /> Download package
+									</Button>
+									<Button
+										type="button"
+										disabled={exporting}
+										onClick={() => setRepositoryDialogOpen(true)}
+										variant="primary"
+									>
+										<FileJson size={14} /> Create repository entry
+									</Button>
+								</>
+							)}
+						</div>
 					</div>
-				</div>
-			</DialogContent>
-		</Dialog>
+				</DialogContent>
+			</Dialog>
+			{generatedPackage ? (
+				<RepositoryEntryDialog
+					capabilities={capabilities}
+					generatedPackage={generatedPackage}
+					onClose={() => setRepositoryDialogOpen(false)}
+					open={repositoryDialogOpen}
+					permissions={permissions}
+					projectSettings={projectSettings}
+					riskLevel={riskLevel}
+				/>
+			) : null}
+		</>
 	);
 }
 
@@ -518,27 +494,14 @@ function VerificationStep({
 	checks,
 	onComplete,
 	summary,
-	generatedPackage,
-	packageUrl,
-	releaseNotes,
 	exportError,
-	onPackageUrlChange,
-	onReleaseNotesChange,
 }: {
 	active: boolean;
 	checks: VerificationCheck[];
 	onComplete: (summary: VerificationSummary) => void;
 	summary: VerificationSummary | null;
-	generatedPackage: GeneratedBbsPackage | null;
-	packageUrl: string;
-	releaseNotes: string;
 	exportError: string;
-	onPackageUrlChange: (value: string) => void;
-	onReleaseNotesChange: (value: string) => void;
 }) {
-	const packageUrlId = useId();
-	const releaseNotesId = useId();
-
 	return (
 		<div className="space-y-4">
 			<SectionTitle title="Verification" />
@@ -551,45 +514,6 @@ function VerificationStep({
 			{isPassingVerification(summary) && (
 				<div className="rounded border border-baud-green/35 bg-baud-green/10 px-4 py-3 text-sm text-baud-green">
 					Verification passed. The download button is now available.
-				</div>
-			)}
-			{generatedPackage && (
-				<div className="space-y-4 rounded border border-baud-border bg-baud-elevated p-4">
-					<div>
-						<h3 className="text-sm font-semibold text-baud-text">Update descriptor</h3>
-						<p className="mt-1 text-xs leading-5 text-baud-muted">
-							Enter the final public URL of {generatedPackage.filename}. The descriptor uses the exact package bytes
-							prepared above.
-						</p>
-					</div>
-					<div>
-						<label htmlFor={packageUrlId} className="mb-1 block font-mono text-sm text-baud-muted">
-							Package URL
-						</label>
-						<Input
-							id={packageUrlId}
-							value={packageUrl}
-							onChange={(event) => onPackageUrlChange(event.target.value)}
-							maxLength={2048}
-							placeholder="https://example.com/releases/script-1.0.0.bbs"
-						/>
-						{packageUrl && getDirectPackageUrlError(packageUrl) && (
-							<p className="mt-1 text-xs text-baud-danger">{getDirectPackageUrlError(packageUrl)}</p>
-						)}
-					</div>
-					<div>
-						<label htmlFor={releaseNotesId} className="mb-1 block font-mono text-sm text-baud-muted">
-							Release notes
-						</label>
-						<Textarea
-							id={releaseNotesId}
-							value={releaseNotes}
-							onChange={(event) => onReleaseNotesChange(event.target.value)}
-							maxLength={MAX_RELEASE_NOTES_LENGTH}
-							className="min-h-28"
-							placeholder="Optional Markdown release notes"
-						/>
-					</div>
 				</div>
 			)}
 			{exportError && (

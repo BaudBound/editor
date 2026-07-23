@@ -17,7 +17,7 @@ import type {
 	SecretDeclaration,
 } from "@/lib/types";
 import { isSelfConnection, withEdgeExecutionOrder } from "@/utils/editor-graph";
-import { DEFAULT_SCRIPT_VERSION } from "@/utils/script-update";
+import { DEFAULT_SCRIPT_VERSION } from "@/utils/script-repository";
 import { type EditorProject, editorProjectSchemaVersion, type ProjectSummary } from "./model";
 
 export type StoredProjectRecord = {
@@ -319,7 +319,7 @@ function isProjectSettings(value: unknown): value is ProjectSettings {
 		isRecord(value) &&
 		typeof value.name === "string" &&
 		typeof value.version === "string" &&
-		typeof value.updateUrl === "string" &&
+		typeof value.repositoryUrl === "string" &&
 		typeof value.description === "string" &&
 		typeof value.author === "string" &&
 		typeof value.website === "string" &&
@@ -343,7 +343,7 @@ function migrateStoredProjectRecord(value: unknown): unknown {
 		settings: {
 			...value.settings,
 			version: typeof value.settings.version === "string" ? value.settings.version : DEFAULT_SCRIPT_VERSION,
-			updateUrl: typeof value.settings.updateUrl === "string" ? value.settings.updateUrl : "",
+			repositoryUrl: typeof value.settings.repositoryUrl === "string" ? value.settings.repositoryUrl : "",
 		},
 	};
 }

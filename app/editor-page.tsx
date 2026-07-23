@@ -240,11 +240,18 @@ export function EditorPage({
 		() =>
 			createExportSummary(
 				projectSettings.name,
+				projectSettings.version,
 				projectSettings.targetRuntime,
 				projectSettings.minimumRunnerVersion,
 				assets,
 			),
-		[assets, projectSettings.minimumRunnerVersion, projectSettings.name, projectSettings.targetRuntime],
+		[
+			assets,
+			projectSettings.minimumRunnerVersion,
+			projectSettings.name,
+			projectSettings.targetRuntime,
+			projectSettings.version,
+		],
 	);
 	const verificationChecks = useMemo(
 		() =>
@@ -296,7 +303,7 @@ export function EditorPage({
 		...projectSettings,
 		name: projectSettings.name.trim() || "untitled-script",
 		version: projectSettings.version.trim(),
-		updateUrl: projectSettings.updateUrl.trim(),
+		repositoryUrl: projectSettings.repositoryUrl.trim(),
 		minimumRunnerVersion: projectSettings.minimumRunnerVersion.trim() || DEFAULT_MINIMUM_RUNNER_VERSION,
 	};
 	const currentProject = useMemo<EditorProject>(

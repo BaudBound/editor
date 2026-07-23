@@ -255,7 +255,7 @@ const simulationRows = [
 	{
 		label: "Export package",
 		description:
-			"Export generates and verifies the package once. The final screen can download those exact .bbs bytes and create a matching update.json descriptor.",
+			"Export generates and verifies the package once. The final screen can download those exact .bbs bytes and create a matching repository entry.",
 	},
 	{
 		label: "Script version",
@@ -263,9 +263,9 @@ const simulationRows = [
 			"Project Settings stores the semantic script version used by update checks. Increase it before publishing a changed package.",
 	},
 	{
-		label: "Update URL",
+		label: "Repository URL",
 		description:
-			"Project Settings can declare a future public HTTPS update.json address. The editor validates its shape but does not contact it.",
+			"Project Settings can declare a public HTTPS repository.json address. The editor validates its shape but does not contact it.",
 	},
 ];
 
@@ -689,8 +689,9 @@ function SimulationAndExportSection() {
 				<SectionTitle icon={PackageCheck} title="Publishing Updates" />
 				<InfoCard>
 					Set a new semantic version before exporting a changed script. After verification, download the package and
-					create <Code>{"update.json"}</Code> from the same generated package. Upload both files to the public HTTPS
-					addresses entered during export. The runner discovers updates but still requires package review and approval.
+					create a <Code>{"repository.json"}</Code> entry from the same generated package. Publish the package and
+					repository file through the public HTTPS addresses entered during export. The runner discovers updates but
+					still requires package review and approval.
 				</InfoCard>
 			</div>
 		</section>

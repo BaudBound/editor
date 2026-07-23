@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { targetRuntimes } from "@/data/project/runtimes";
 import type { ProjectSettings, TargetRuntime } from "@/lib/types";
 import { DEFAULT_MINIMUM_RUNNER_VERSION } from "@/lib/version";
-import { getScriptVersionError, getUpdateDescriptorUrlError } from "@/utils/script-update";
+import { getRepositoryUrlError, getScriptVersionError } from "@/utils/script-repository";
 
 type ProjectSettingsModalProps = {
 	description?: string;
@@ -64,7 +64,7 @@ export function ProjectSettingsModal({
 	const minimumRunnerError =
 		draft.minimumRunnerVersion.length > 64 ? "Minimum runner cannot exceed 64 characters." : "";
 	const versionError = getScriptVersionError(draft.version);
-	const updateUrlError = getUpdateDescriptorUrlError(draft.updateUrl);
+	const repositoryUrlError = getRepositoryUrlError(draft.repositoryUrl);
 	const websiteError = getOptionalUrlError(draft.website);
 	const sourceError = getOptionalUrlError(draft.source);
 	const tagsError = getTagsError(appendTags(tagsDraft, tagInput));
@@ -74,7 +74,7 @@ export function ProjectSettingsModal({
 			descriptionError ||
 			authorError ||
 			versionError ||
-			updateUrlError ||
+			repositoryUrlError ||
 			minimumRunnerError ||
 			websiteError ||
 			sourceError ||
@@ -94,7 +94,7 @@ export function ProjectSettingsModal({
 			description: draft.description.trim(),
 			author: draft.author.trim(),
 			version: draft.version.trim(),
-			updateUrl: draft.updateUrl.trim(),
+			repositoryUrl: draft.repositoryUrl.trim(),
 			website: draft.website.trim(),
 			source: draft.source.trim(),
 			minimumRunnerVersion: draft.minimumRunnerVersion.trim() || DEFAULT_MINIMUM_RUNNER_VERSION,
@@ -151,15 +151,15 @@ export function ProjectSettingsModal({
 							onChange={(value) => setDraft((current) => ({ ...current, version: value }))}
 						/>
 						<TextField
-							label="Update URL"
-							value={draft.updateUrl}
-							error={updateUrlError}
+							label="Repository URL"
+							value={draft.repositoryUrl}
+							error={repositoryUrlError}
 							maxLength={2048}
-							onChange={(value) => setDraft((current) => ({ ...current, updateUrl: value }))}
+							onChange={(value) => setDraft((current) => ({ ...current, repositoryUrl: value }))}
 						/>
 					</div>
 					<p className="-mt-3 text-xs leading-4 text-baud-muted">
-						The optional update URL must use HTTPS and point to update.json. The editor does not contact it.
+						The optional repository URL must use HTTPS and point to repository.json. The editor does not contact it.
 					</p>
 
 					<div>

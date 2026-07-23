@@ -112,7 +112,7 @@ const manifestFields = new Set([
 	"id",
 	"name",
 	"version",
-	"update_url",
+	"repository_url",
 	"description",
 	"author",
 	"website",
@@ -171,6 +171,7 @@ export function validateManifestContract(value: unknown) {
 		"script_language_version",
 		"id",
 		"name",
+		"version",
 		"created_with",
 		"created_at",
 		"minimum_runner_version",
@@ -198,7 +199,7 @@ export function validateManifestContract(value: unknown) {
 	) {
 		errors.push("manifest.json version must be a valid semantic version.");
 	}
-	validateManifestUpdateUrl(errors, manifest.update_url);
+	validateManifestRepositoryUrl(errors, manifest.repository_url);
 	validateManifestText(errors, "description", manifest.description, 4096, true, false);
 	validateManifestText(errors, "author", manifest.author, 128, false, false);
 	validateManifestUrl(errors, "website", manifest.website);
@@ -319,10 +320,10 @@ export function validateManifestContract(value: unknown) {
 	return errors;
 }
 
-function validateManifestUpdateUrl(errors: string[], value: unknown) {
+function validateManifestRepositoryUrl(errors: string[], value: unknown) {
 	if (value === undefined || value === "") return;
 	if (typeof value !== "string" || value.length > 2048) {
-		errors.push("manifest.json update_url must be a string no longer than 2048 characters.");
+		errors.push("manifest.json repository_url must be a string no longer than 2048 characters.");
 		return;
 	}
 	try {
@@ -334,13 +335,13 @@ function validateManifestUpdateUrl(errors: string[], value: unknown) {
 			url.username ||
 			url.password ||
 			url.hash ||
-			filename !== "update.json"
+			filename !== "repository.json"
 		) {
-			throw new Error("invalid update URL");
+			throw new Error("invalid repository URL");
 		}
 	} catch {
 		errors.push(
-			"manifest.json update_url must be an HTTPS URL without credentials or a fragment and must end in update.json.",
+			"manifest.json repository_url must be an HTTPS URL without credentials or a fragment and must end in repository.json.",
 		);
 	}
 }

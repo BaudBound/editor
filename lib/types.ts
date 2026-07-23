@@ -73,7 +73,7 @@ export type TargetRuntime =
 export type ProjectSettings = {
 	name: string;
 	version: string;
-	updateUrl: string;
+	repositoryUrl: string;
 	description: string;
 	author: string;
 	website: string;

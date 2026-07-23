@@ -26,6 +26,7 @@ import type {
 	TriggerActionType,
 } from "../lib/types";
 import { getEdgeExecutionOrder } from "./editor-graph";
+import { createScriptPackageFilename } from "./script-repository";
 
 const riskWeight: Record<RiskLevel, number> = {
 	low: 1,
@@ -97,12 +98,13 @@ export function calculateRiskLevel(permissions: PermissionSummary[]): RiskLevel 
 
 export function createExportSummary(
 	projectName: string,
+	scriptVersion: string,
 	targetRuntime: TargetRuntime,
 	minimumRunnerVersion: string,
 	assets: EditorAsset[] = [],
 ): ExportSummary {
 	return {
-		filename: `${slugFromName(projectName)}.bbs`,
+		filename: createScriptPackageFilename(projectName, scriptVersion),
 		formatVersion: 1,
 		languageVersion: 1,
 		minimumRunnerVersion,
@@ -117,16 +119,6 @@ export function createExportSummary(
 			...assets.map((asset) => asset.packagePath).sort(),
 		],
 	};
-}
-
-function slugFromName(name: string) {
-	return (
-		name
-			.trim()
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, "-")
-			.replace(/^-+|-+$/g, "") || "untitled-script"
-	);
 }
 
 export function createConsoleLogs(
