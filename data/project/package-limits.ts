@@ -1,4 +1,4 @@
-import limits from "../../contracts/schemas/package-limits.json";
+import limits from "../../contracts/package-limits.json";
 
 export const packageLimits = limits;
 

@@ -197,8 +197,10 @@ test("negative screen coordinates verify, simulate, export, and import", async (
 	await page.getByRole("button", { name: "Next" }).click();
 	await page.getByRole("button", { name: "Next" }).click();
 	await expect(page.getByText("Verification passed. The download button is now available.")).toBeVisible();
+	await page.getByRole("button", { name: "Prepare export" }).click();
+	await expect(page.getByRole("button", { name: "Download package" })).toBeVisible();
 	const downloadPromise = page.waitForEvent("download");
-	await page.getByRole("button", { name: "Download .bbs" }).click();
+	await page.getByRole("button", { name: "Download package" }).click();
 	const download = await downloadPromise;
 	const packagePath = testInfo.outputPath(download.suggestedFilename());
 	await download.saveAs(packagePath);
@@ -918,9 +920,11 @@ test("exported package preserves editor metadata and imports back", async ({ pag
 	await page.getByRole("button", { name: "Next" }).click();
 	await page.getByRole("button", { name: "Next" }).click();
 	await expect(page.getByText("Verification passed. The download button is now available.")).toBeVisible();
+	await page.getByRole("button", { name: "Prepare export" }).click();
+	await expect(page.getByRole("button", { name: "Download package" })).toBeVisible();
 
 	const downloadPromise = page.waitForEvent("download");
-	await page.getByRole("button", { name: "Download .bbs" }).click();
+	await page.getByRole("button", { name: "Download package" }).click();
 	const download = await downloadPromise;
 	const packagePath = testInfo.outputPath(download.suggestedFilename());
 	await download.saveAs(packagePath);

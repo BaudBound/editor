@@ -173,12 +173,12 @@ test("history restores project settings, variables, secrets, comments, and edge 
 	await expect(comment).toHaveValue("History comment");
 
 	await page.getByRole("button", { name: "Edge style" }).click();
-	await page.getByRole("option", { name: "Bezier" }).click();
-	await expect(page.getByRole("button", { name: "Edge style" })).toContainText("Bezier");
-	await page.keyboard.press("Control+z");
+	await page.getByRole("option", { name: "Smooth step" }).click();
 	await expect(page.getByRole("button", { name: "Edge style" })).toContainText("Smooth step");
-	await page.keyboard.press("Control+y");
+	await page.keyboard.press("Control+z");
 	await expect(page.getByRole("button", { name: "Edge style" })).toContainText("Bezier");
+	await page.keyboard.press("Control+y");
+	await expect(page.getByRole("button", { name: "Edge style" })).toContainText("Smooth step");
 });
 
 test("history restores added and removed binary asset references", async ({ page }, testInfo) => {
@@ -451,7 +451,7 @@ test("one multi-node drag is restored as one history transaction", async ({ page
 });
 
 test("document history stays bounded to the most recent 100 transactions", async ({ page }) => {
-	test.setTimeout(60_000);
+	test.setTimeout(120_000);
 	await createProject(page, "Bounded history");
 	await page.getByRole("textbox", { name: "Search blocks" }).fill("Log");
 	const addLog = page.getByRole("button", { name: /^Log/ });

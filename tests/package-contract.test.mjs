@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const appRoot = fileURLToPath(new URL("..", import.meta.url));
 const contractsRoot = join(appRoot, "contracts");
-const schemasRoot = join(contractsRoot, "schemas");
+const schemasRoot = contractsRoot;
 const runnerCapabilityContractPath = join(contractsRoot, "runner", "node-capabilities.json");
 const runnerPermissionContractPath = join(contractsRoot, "runner", "node-permissions.json");
 const runnerPortContractPath = join(contractsRoot, "runner", "node-ports.json");
@@ -719,7 +719,7 @@ test("editor enforces bounded package ingestion limits", () => {
 	assert.ok(limits.max_entry_count > 0);
 	assert.ok(limits.max_asset_bytes > 0);
 	assert.ok(limits.max_total_uncompressed_bytes >= limits.max_asset_bytes);
-	assert.match(limitsSource, /schemas\/package-limits\.json/);
+	assert.match(limitsSource, /contracts\/package-limits\.json/);
 	assert.match(assetsSource, /packageLimits\.max_asset_bytes/);
 	assert.match(packageSource, /assertZipWithinPackageLimits/);
 });

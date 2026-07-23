@@ -6,7 +6,7 @@ import ts from "typescript";
 
 const appRoot = fileURLToPath(new URL("..", import.meta.url));
 const contractsRoot = join(appRoot, "contracts");
-const schemasRoot = join(contractsRoot, "schemas");
+const schemasRoot = contractsRoot;
 const nodeSchemasRoot = join(schemasRoot, "nodes");
 const runnerCapabilityContractPath = join(contractsRoot, "runner", "node-capabilities.json");
 const runnerPermissionContractPath = join(contractsRoot, "runner", "node-permissions.json");
@@ -19,6 +19,11 @@ const programSchemaUrl = `${publicSchemaRoot}/program.schema.json`;
 const jsonValueRef = `${programSchemaUrl}#/$defs/jsonValue`;
 const runtimeOutputRef = `${programSchemaUrl}#/$defs/runtimeOutput`;
 const checkMode = process.argv.includes("--check");
+
+assert.ok(
+	existsSync(join(contractsRoot, "contract.json")),
+	"Contracts submodule is not initialized. Run `git submodule update --init --recursive`.",
+);
 
 const optionValues = createOptionValueMap();
 const sharedCapabilityValues = createSharedCapabilityValueMap();

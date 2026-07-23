@@ -15,4 +15,8 @@ Run the release checks before opening a pull request.
     pnpm test
     pnpm build
 
-The files under `contracts/` are a pinned, vendored snapshot of [BaudBound/contracts](https://github.com/BaudBound/contracts). Read `contracts/README.md` before changing package or node contracts.
+The `contracts/` submodule points to one reviewed commit from [BaudBound/contracts](https://github.com/BaudBound/contracts). Initialize it after cloning:
+
+    git submodule update --init --recursive
+
+Contract generation modifies the submodule working tree. Contract changes must be committed and reviewed in the contracts repository before the editor updates its submodule reference.
