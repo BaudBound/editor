@@ -1,17 +1,31 @@
 import type { Node } from "@xyflow/react";
-import { Clock } from "lucide-react";
+import { Clock, Play, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import type { ScriptNodeData, SimulationRunStatus, SimulationTriggerPayload } from "@/lib/types";
 
 type ScheduleTriggerStatusProps = {
+	active: boolean;
+	startDisabled: boolean;
 	status: SimulationRunStatus;
 	triggerNode: Node<ScriptNodeData>;
+	onStart: () => void;
+	onStop: () => void;
 	onTrigger: (triggerNodeId: string, payload: SimulationTriggerPayload) => void;
 };
 
-export function ScheduleTriggerStatus({ status, triggerNode, onTrigger }: ScheduleTriggerStatusProps) {
+const MAX_BROWSER_TIMEOUT_MS = 2_147_483_647;
+
+export function ScheduleTriggerStatus({
+	active,
+	startDisabled,
+	status,
+	triggerNode,
+	onStart,
+	onStop,
+	onTrigger,
+}: ScheduleTriggerStatusProps) {
 	const intervalMs = getScheduleIntervalMs(triggerNode);
-	const active = status === "waiting" || status === "running";
 	const statusRef = useRef(status);
 	const triggerRef = useRef(onTrigger);
 	const [lastRunAt, setLastRunAt] = useState<number | null>(null);
@@ -32,32 +46,44 @@ export function ScheduleTriggerStatus({ status, triggerNode, onTrigger }: Schedu
 	}, [active]);
 
 	useEffect(() => {
-		if (!active) {
+		if (!active || intervalMs === null) {
+			setNextRunAt(null);
 			return;
 		}
 
 		let timeoutId: number | null = null;
 		let cancelled = false;
+		let nextAt = Date.now() + intervalMs;
+
 		const scheduleNext = () => {
 			if (cancelled) {
 				return;
 			}
 
-			const nextAt = Date.now() + intervalMs;
 			setNextRunAt(nextAt);
-			timeoutId = window.setTimeout(() => {
-				if (cancelled) {
-					return;
-				}
+			const remainingMs = nextAt - Date.now();
+			timeoutId = window.setTimeout(
+				() => {
+					if (cancelled) {
+						return;
+					}
 
-				if (statusRef.current === "waiting") {
-					const firedAt = Date.now();
-					setLastRunAt(firedAt);
-					triggerRef.current(triggerNode.id, {});
-				}
+					if (Date.now() < nextAt) {
+						scheduleNext();
+						return;
+					}
 
-				scheduleNext();
-			}, intervalMs);
+					if (statusRef.current === "waiting") {
+						const firedAt = Date.now();
+						setLastRunAt(firedAt);
+						triggerRef.current(triggerNode.id, {});
+					}
+
+					nextAt = Date.now() + intervalMs;
+					scheduleNext();
+				},
+				Math.min(Math.max(1, remainingMs), MAX_BROWSER_TIMEOUT_MS),
+			);
 		};
 
 		scheduleNext();
@@ -72,10 +98,31 @@ export function ScheduleTriggerStatus({ status, triggerNode, onTrigger }: Schedu
 
 	return (
 		<div className="space-y-2 rounded border border-baud-border bg-baud-soft px-3 py-2 text-xs text-baud-muted">
-			<div className="flex items-center gap-2 text-baud-text">
-				<Clock size={13} />
-				<span className="font-semibold">Automatic schedule</span>
+			<div className="flex items-center justify-between gap-3">
+				<div className="flex items-center gap-2 text-baud-text">
+					<Clock size={13} />
+					<span className="font-semibold">Schedule simulation</span>
+				</div>
+				<Button
+					type="button"
+					aria-label={active ? "Stop Schedule" : "Start Schedule"}
+					disabled={!active && (startDisabled || intervalMs === null)}
+					size="sm"
+					title={
+						intervalMs === null
+							? "Enter a valid schedule interval before starting."
+							: startDisabled
+								? "Stop the active simulation before starting this schedule."
+								: undefined
+					}
+					variant={active ? "destructive" : "toolbarActive"}
+					onClick={active ? onStop : onStart}
+				>
+					{active ? <Square size={13} /> : <Play size={13} />}
+					{active ? "Stop Schedule" : "Start Schedule"}
+				</Button>
 			</div>
+			{intervalMs === null && <div className="text-baud-danger">The configured interval cannot be simulated.</div>}
 			<div className="grid gap-2 font-mono sm:grid-cols-3">
 				<ScheduleTime label="Last" value={lastRunAt ? formatTime(lastRunAt) : "not yet"} />
 				<ScheduleTime label="Next" value={nextRunAt ? formatTime(nextRunAt) : active ? "scheduling" : "inactive"} />
@@ -100,13 +147,21 @@ function ScheduleTime({ label, value }: { label: string; value: string }) {
 function getScheduleIntervalMs(triggerNode: Node<ScriptNodeData>) {
 	const every = Number(triggerNode.data.config.every);
 	const unit = String(triggerNode.data.config.unit ?? "seconds");
-	const safeEvery = Number.isFinite(every) && every > 0 ? every : 1;
 	const unitMultiplier = getScheduleUnitMultiplier(unit);
+	const intervalMs = every * unitMultiplier;
 
-	return Math.max(1000, Math.round(safeEvery * unitMultiplier));
+	if (!Number.isFinite(intervalMs) || intervalMs < 1 || intervalMs > Number.MAX_SAFE_INTEGER) {
+		return null;
+	}
+
+	return Math.max(1, Math.round(intervalMs));
 }
 
 function getScheduleUnitMultiplier(unit: string) {
+	if (unit === "milliseconds") {
+		return 1;
+	}
+
 	if (unit === "days") {
 		return 24 * 60 * 60 * 1000;
 	}
@@ -123,14 +178,23 @@ function getScheduleUnitMultiplier(unit: string) {
 }
 
 function formatTime(value: number) {
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) {
+		return "far future";
+	}
+
 	return new Intl.DateTimeFormat(undefined, {
 		hour: "2-digit",
 		minute: "2-digit",
 		second: "2-digit",
-	}).format(new Date(value));
+	}).format(date);
 }
 
 function formatDuration(milliseconds: number) {
+	if (milliseconds < 1000) {
+		return `${Math.max(1, Math.ceil(milliseconds))}ms`;
+	}
+
 	const totalSeconds = Math.ceil(milliseconds / 1000);
 	const hours = Math.floor(totalSeconds / 3600);
 	const minutes = Math.floor((totalSeconds % 3600) / 60);

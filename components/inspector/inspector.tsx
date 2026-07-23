@@ -75,6 +75,7 @@ import { VariableNameInput } from "./variable-name-input";
 
 type InspectorProps = {
 	activeTab: InspectorTab;
+	activeScheduleTriggerId: string | null;
 	assets: EditorAsset[];
 	edges: Edge[];
 	nodes: Node<ScriptNodeData>[];
@@ -89,7 +90,9 @@ type InspectorProps = {
 	onAddSimulationOverride: (nodeId: string) => void;
 	onRemoveSimulationOverride: (nodeId: string) => void;
 	onSimulationSettingsChange: (settings: SimulationSettings) => void;
+	onStartScheduleSimulation: (triggerNodeId: string) => void;
 	onStopSimulation: () => void;
+	onStopScheduleSimulation: (triggerNodeId: string) => void;
 	onTabChange: (tab: InspectorTab) => void;
 	onTriggerSimulation: (triggerNodeId: string, payload: SimulationTriggerPayload) => void;
 	onUpdateNodeConfig: (nodeId: string, key: string, value: JsonValue) => void;
@@ -103,6 +106,7 @@ type InspectorProps = {
 
 export function Inspector({
 	activeTab,
+	activeScheduleTriggerId,
 	assets,
 	edges,
 	nodes,
@@ -117,7 +121,9 @@ export function Inspector({
 	onAddSimulationOverride,
 	onRemoveSimulationOverride,
 	onSimulationSettingsChange,
+	onStartScheduleSimulation,
 	onStopSimulation,
+	onStopScheduleSimulation,
 	onTabChange,
 	onTriggerSimulation,
 	onUpdateNodeConfig,
@@ -190,6 +196,7 @@ export function Inspector({
 					))}
 				{activeTab === "simulator" && (
 					<SimulatorPanel
+						activeScheduleTriggerId={activeScheduleTriggerId}
 						nodes={nodes}
 						overrides={simulationOverrides}
 						settings={simulationSettings}
@@ -197,7 +204,9 @@ export function Inspector({
 						onAddOverride={onAddSimulationOverride}
 						onRemoveOverride={onRemoveSimulationOverride}
 						onSettingsChange={onSimulationSettingsChange}
+						onStartScheduleSimulation={onStartScheduleSimulation}
 						onStopSimulation={onStopSimulation}
+						onStopScheduleSimulation={onStopScheduleSimulation}
 						onTriggerSimulation={onTriggerSimulation}
 						onUpdateOverride={onUpdateSimulationOverride}
 					/>

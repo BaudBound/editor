@@ -245,7 +245,7 @@ const simulationRows = [
 	{
 		label: "Trigger inputs",
 		description:
-			"The Simulator tab lets you fire trigger nodes with sample payloads. Pressing a trigger verifies the script first, then starts that branch. Schedule triggers run from their configured interval while the simulator is active.",
+			"The Simulator tab lets you fire trigger nodes with sample payloads. Pressing a trigger verifies the script first, then starts that branch. Use Start Schedule and Stop Schedule on a Schedule trigger card to test its configured interval.",
 	},
 	{
 		label: "Overrides",

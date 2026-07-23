@@ -198,6 +198,7 @@ export function EditorPage({
 	});
 	const [simulationOverrides, setSimulationOverrides] = useState<SimulationOverride[]>([]);
 	const [simulationStatus, setSimulationStatus] = useState<SimulationRunStatus>("idle");
+	const [activeScheduleTriggerId, setActiveScheduleTriggerId] = useState<string | null>(null);
 	const [simulationLogs, setSimulationLogs] = useState<SimulationTraceEntry[]>([]);
 	const [simulationVariables, setSimulationVariables] = useState<SimulationVariableSnapshot[]>([]);
 	const [simulationMessageBox, setSimulationMessageBox] = useState<SimulationMessageBoxState>(null);
@@ -365,6 +366,7 @@ export function EditorPage({
 		lifecycle.abortController = null;
 		lifecycle.active = false;
 		lifecycle.runId += 1;
+		setActiveScheduleTriggerId(null);
 	}, []);
 
 	const restoreDocument = useCallback(
@@ -422,6 +424,7 @@ export function EditorPage({
 
 		lifecycle.abortController = null;
 		lifecycle.active = false;
+		setActiveScheduleTriggerId(null);
 	}, []);
 
 	useEffect(() => {
@@ -670,7 +673,7 @@ export function EditorPage({
 				...initialLogs,
 				{
 					level: "info",
-					message: `[Simulation] Waiting for input from ${triggerNodes.length} trigger${triggerNodes.length === 1 ? "" : "s"}. Schedule triggers run automatically while the simulation is active.`,
+					message: `[Simulation] Waiting for input from ${triggerNodes.length} trigger${triggerNodes.length === 1 ? "" : "s"}. Start a Schedule trigger from its simulator card when you want to test its interval.`,
 				},
 			]);
 			setSimulationVariables([]);
@@ -678,6 +681,51 @@ export function EditorPage({
 		},
 		[appendSimulationLogs, appendSystemLogs, expandPanel, scriptNodes, startSimulationLifecycle],
 	);
+
+	const startVerifiedSimulationSession = useCallback(() => {
+		const currentLifecycle = simulationLifecycleRef.current;
+		if (currentLifecycle.active && currentLifecycle.abortController) {
+			return currentLifecycle;
+		}
+
+		const summary = summarizeVerification(verificationChecks);
+		const verificationLog: SimulationTraceEntry = {
+			level: summary.status === "failed" ? "error" : summary.status === "warning" ? "warn" : "info",
+			message: `[Simulation] Verification ${summary.status}: ${summary.passed} passed, ${summary.warnings} warning${summary.warnings === 1 ? "" : "s"}, ${summary.failed} failed.`,
+		};
+
+		setVerificationRecord({ signature: verificationSignature, status: summary.status });
+		appendSystemLogs([
+			{
+				level: verificationLog.level,
+				message: `Simulation verification ${summary.status}: ${summary.passed} passed, ${summary.warnings} warning${summary.warnings === 1 ? "" : "s"}, ${summary.failed} failed.`,
+			},
+		]);
+
+		if (summary.status === "failed") {
+			setVerificationErrorDialog({
+				open: true,
+				title: "Simulation Blocked",
+				description: "The current script failed verification and cannot be simulated.",
+				checks: verificationChecks,
+			});
+			appendSimulationLogs([
+				verificationLog,
+				{ level: "error", message: "[Simulation] Simulation blocked: verification failed." },
+			]);
+			expandPanel("bottom");
+			return null;
+		}
+
+		return startSimulationSession([verificationLog]);
+	}, [
+		appendSimulationLogs,
+		appendSystemLogs,
+		expandPanel,
+		startSimulationSession,
+		verificationChecks,
+		verificationSignature,
+	]);
 
 	const handleTriggerSimulation = useCallback(
 		(triggerNodeId: string, payload: SimulationTriggerPayload) => {
@@ -692,37 +740,7 @@ export function EditorPage({
 				return;
 			}
 
-			const summary = summarizeVerification(verificationChecks);
-			const verificationLog: SimulationTraceEntry = {
-				level: summary.status === "failed" ? "error" : summary.status === "warning" ? "warn" : "info",
-				message: `[Simulation] Verification ${summary.status}: ${summary.passed} passed, ${summary.warnings} warning${summary.warnings === 1 ? "" : "s"}, ${summary.failed} failed.`,
-			};
-
-			setVerificationRecord({ signature: verificationSignature, status: summary.status });
-			appendSystemLogs([
-				{
-					level: verificationLog.level,
-					message: `Simulation verification ${summary.status}: ${summary.passed} passed, ${summary.warnings} warning${summary.warnings === 1 ? "" : "s"}, ${summary.failed} failed.`,
-				},
-			]);
-
-			if (summary.status === "failed") {
-				setVerificationErrorDialog({
-					open: true,
-					title: "Simulation Blocked",
-					description: "The current script failed verification and cannot be simulated.",
-					checks: verificationChecks,
-				});
-				appendSimulationLogs([
-					verificationLog,
-					{ level: "error", message: "[Simulation] Simulation blocked: verification failed." },
-				]);
-				expandPanel("bottom");
-				return;
-			}
-
-			appendSimulationLogs([verificationLog]);
-			const lifecycle = startSimulationSession([verificationLog]);
+			const lifecycle = startVerifiedSimulationSession();
 			if (!lifecycle?.abortController) {
 				return;
 			}
@@ -735,16 +753,59 @@ export function EditorPage({
 				triggerNodeId,
 			});
 		},
-		[
-			appendSimulationLogs,
-			appendSystemLogs,
-			expandPanel,
-			runSimulationTrigger,
-			simulationStatus,
-			startSimulationSession,
-			verificationChecks,
-			verificationSignature,
-		],
+		[appendSimulationLogs, expandPanel, runSimulationTrigger, simulationStatus, startVerifiedSimulationSession],
+	);
+
+	const handleStartScheduleSimulation = useCallback(
+		(triggerNodeId: string) => {
+			if (activeScheduleTriggerId && activeScheduleTriggerId !== triggerNodeId) {
+				appendSimulationLogs([
+					{
+						level: "warn",
+						message: "[Simulation] Stop the active schedule before starting another schedule.",
+					},
+				]);
+				expandPanel("bottom");
+				return;
+			}
+			if (simulationStatus === "running") {
+				appendSimulationLogs([
+					{
+						level: "warn",
+						message: "[Simulation] Wait for the active trigger to finish before starting a schedule.",
+					},
+				]);
+				expandPanel("bottom");
+				return;
+			}
+
+			const lifecycle = startVerifiedSimulationSession();
+			if (!lifecycle?.abortController) {
+				return;
+			}
+
+			setActiveScheduleTriggerId(triggerNodeId);
+			appendSimulationLogs([
+				{
+					level: "info",
+					message: `[Simulation] Schedule ${triggerNodeId} started. The first trigger will run after its configured interval.`,
+				},
+			]);
+		},
+		[activeScheduleTriggerId, appendSimulationLogs, expandPanel, simulationStatus, startVerifiedSimulationSession],
+	);
+
+	const handleStopScheduleSimulation = useCallback(
+		(triggerNodeId: string) => {
+			if (activeScheduleTriggerId !== triggerNodeId) {
+				return;
+			}
+
+			abortSimulationLifecycle("schedule stopped by user");
+			setSimulationStatus("stopped");
+			appendSimulationLogs([{ level: "info", message: `[Simulation] Schedule ${triggerNodeId} stopped.` }]);
+		},
+		[abortSimulationLifecycle, activeScheduleTriggerId, appendSimulationLogs],
 	);
 
 	const handleStopSimulation = () => {
@@ -1232,6 +1293,7 @@ export function EditorPage({
 				)}
 				<Inspector
 					activeTab={activeTab}
+					activeScheduleTriggerId={activeScheduleTriggerId}
 					assets={assets}
 					edges={edges}
 					nodes={scriptNodes}
@@ -1246,7 +1308,9 @@ export function EditorPage({
 					onAddSimulationOverride={handleAddSimulationOverride}
 					onRemoveSimulationOverride={handleRemoveSimulationOverride}
 					onSimulationSettingsChange={setSimulationSettings}
+					onStartScheduleSimulation={handleStartScheduleSimulation}
 					onStopSimulation={handleStopSimulation}
+					onStopScheduleSimulation={handleStopScheduleSimulation}
 					onTriggerSimulation={handleTriggerSimulation}
 					onTabChange={setActiveTab}
 					onUpdateNodeConfig={handleUpdateNodeConfig}

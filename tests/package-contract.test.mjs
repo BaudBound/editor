@@ -464,10 +464,15 @@ test("file watch uses a static path and explicit recursive configuration", () =>
 test("delay and schedule intervals use the shared millisecond duration contract", () => {
 	const delaySource = read(join(appRoot, "data", "nodes", "definitions", "actions", "delay.ts"));
 	const scheduleSource = read(join(appRoot, "data", "nodes", "definitions", "triggers", "schedule.ts"));
+	const scheduleSimulationSource = read(join(appRoot, "components", "simulation", "schedule-trigger-status.tsx"));
 	const validatorsSource = read(join(appRoot, "data", "nodes", "definitions", "validators.ts"));
 
 	assert.match(delaySource, /staticPositiveDurationConfig\(config, "amount", "unit", "delay duration", true\)/);
 	assert.match(scheduleSource, /staticPositiveDurationConfig\(config, "every", "unit", "schedule interval"\)/);
+	assert.match(scheduleSimulationSource, /unit === "milliseconds"/);
+	assert.match(scheduleSimulationSource, /Math\.max\(1, Math\.round\(intervalMs\)\)/);
+	assert.match(scheduleSimulationSource, /Start Schedule/);
+	assert.match(scheduleSimulationSource, /Stop Schedule/);
 	assert.match(validatorsSource, /milliseconds: 0\.001/);
 	assert.match(validatorsSource, /seconds < 0\.001/);
 	assert.match(validatorsSource, /cannot use runtime variable references/);

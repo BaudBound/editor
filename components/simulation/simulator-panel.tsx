@@ -7,6 +7,7 @@ import type { SimulatorPanelProps } from "./simulator-panel-types";
 import { TriggerInputCard } from "./trigger-input-card";
 
 export function SimulatorPanel({
+	activeScheduleTriggerId,
 	nodes,
 	overrides,
 	settings,
@@ -14,7 +15,9 @@ export function SimulatorPanel({
 	onAddOverride,
 	onRemoveOverride,
 	onSettingsChange,
+	onStartScheduleSimulation,
 	onStopSimulation,
+	onStopScheduleSimulation,
 	onTriggerSimulation,
 	onUpdateOverride,
 }: SimulatorPanelProps) {
@@ -71,8 +74,8 @@ export function SimulatorPanel({
 					<div>
 						<h3 className="text-xs font-bold tracking-[0.18em] text-baud-muted uppercase">Trigger Input</h3>
 						<p className="mt-1 text-xs leading-5 text-baud-muted">
-							Press a trigger to verify the script and start that branch. Schedule triggers run automatically while the
-							simulator is active.
+							Press a trigger to verify the script and start that branch. Start and stop each Schedule trigger from its
+							own card.
 						</p>
 					</div>
 					<Button
@@ -96,8 +99,11 @@ export function SimulatorPanel({
 						{triggerNodes.map((triggerNode) => (
 							<TriggerInputCard
 								key={triggerNode.id}
+								activeScheduleTriggerId={activeScheduleTriggerId}
 								status={status}
 								triggerNode={triggerNode}
+								onStartSchedule={onStartScheduleSimulation}
+								onStopSchedule={onStopScheduleSimulation}
 								onTrigger={onTriggerSimulation}
 							/>
 						))}

@@ -13,12 +13,22 @@ import { ScheduleTriggerStatus } from "./schedule-trigger-status";
 import { createDefaultTriggerPayload, createDefaultWebhookHeaders, createTriggerPayload } from "./trigger-payload";
 
 type TriggerInputCardProps = {
+	activeScheduleTriggerId: string | null;
 	status: SimulationRunStatus;
 	triggerNode: Node<ScriptNodeData>;
+	onStartSchedule: (triggerNodeId: string) => void;
+	onStopSchedule: (triggerNodeId: string) => void;
 	onTrigger: (triggerNodeId: string, payload: SimulationTriggerPayload) => void;
 };
 
-export function TriggerInputCard({ status, triggerNode, onTrigger }: TriggerInputCardProps) {
+export function TriggerInputCard({
+	activeScheduleTriggerId,
+	status,
+	triggerNode,
+	onStartSchedule,
+	onStopSchedule,
+	onTrigger,
+}: TriggerInputCardProps) {
 	const [payload, setPayload] = useState<SimulationTriggerPayload>(() => createDefaultTriggerPayload(triggerNode));
 	const [webhookHeaders, setWebhookHeaders] = useState<HeaderRow[]>(() => createDefaultWebhookHeaders());
 	const [webhookQuery, setWebhookQuery] = useState<HeaderRow[]>(() => []);
@@ -51,7 +61,17 @@ export function TriggerInputCard({ status, triggerNode, onTrigger }: TriggerInpu
 				)}
 			</div>
 			{triggerNode.data.actionType === "trigger.schedule" && (
-				<ScheduleTriggerStatus status={status} triggerNode={triggerNode} onTrigger={onTrigger} />
+				<ScheduleTriggerStatus
+					active={activeScheduleTriggerId === triggerNode.id}
+					startDisabled={
+						status === "running" || (activeScheduleTriggerId !== null && activeScheduleTriggerId !== triggerNode.id)
+					}
+					status={status}
+					triggerNode={triggerNode}
+					onStart={() => onStartSchedule(triggerNode.id)}
+					onStop={() => onStopSchedule(triggerNode.id)}
+					onTrigger={onTrigger}
+				/>
 			)}
 			{triggerNode.data.actionType === "trigger.serial_input" && (
 				<InputField label="Serial data" value={payload.data ?? ""} onChange={(value) => updatePayload("data", value)} />

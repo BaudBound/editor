@@ -24,6 +24,28 @@ test("editor shell loads the core controls", async ({ page }) => {
 	await expect(page.getByRole("button", { name: "Stop simulation" })).toBeVisible();
 });
 
+test("Schedule triggers can start and stop their simulator timer", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "Schedule" }).click();
+	await page.getByText("Every", { exact: true }).locator("..").getByRole("spinbutton").fill("25");
+	await page.getByText("Unit", { exact: true }).locator("..").getByRole("button").click();
+	await page.getByRole("option", { name: "Milliseconds" }).click();
+	await page.getByRole("button", { name: "Simulator" }).click();
+
+	const scheduleStatus = page.getByText("Schedule simulation", { exact: true }).locator("../..");
+	const startSchedule = page.getByRole("button", { name: "Start Schedule" });
+	await expect(startSchedule).toBeEnabled();
+	await startSchedule.click();
+
+	await expect(page.getByRole("button", { name: "Stop Schedule" })).toBeVisible();
+	await expect(scheduleStatus).not.toContainText("not yet", { timeout: 2_000 });
+
+	await page.getByRole("button", { name: "Stop Schedule" }).click();
+	await expect(page.getByRole("button", { name: "Start Schedule" })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Stop simulation" })).toBeDisabled();
+});
+
 test("panel collapse state persists across editor reloads", async ({ page }) => {
 	await openEditor(page);
 
