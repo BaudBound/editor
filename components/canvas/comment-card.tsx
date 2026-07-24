@@ -142,7 +142,7 @@ export function CommentCard({ data, id, selected }: NodeProps<CommentFlowNode>) 
 	return (
 		<div
 			className={cn(
-				"baud-comment-card nowheel pointer-events-auto h-full w-full rounded-md border text-baud-text shadow-lg backdrop-blur-sm",
+				"baud-comment-card nokey nowheel pointer-events-auto h-full w-full rounded-md border text-baud-text shadow-lg backdrop-blur-sm",
 				colorClasses[data.color],
 				selected && "border-baud-red ring-2 ring-baud-red/35",
 			)}

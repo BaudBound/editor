@@ -841,6 +841,39 @@ test("copy and paste preserves a selected graph fragment", async ({ page }) => {
 	await expect(page.getByRole("group", { name: `Edge from ${copiedLogId} to ${copiedHttpId}` })).toHaveCount(1);
 });
 
+test("control click keeps multiple nodes selected and opens the clicked node properties", async ({ page }) => {
+	await openEditor(page);
+
+	const pane = page.locator(".react-flow__pane");
+	const paneBox = await pane.boundingBox();
+	if (!paneBox) {
+		throw new Error("React Flow pane is not visible.");
+	}
+	const addNode = async (name: string, x: number) => {
+		await page.mouse.click(x, paneBox.y + paneBox.height / 2, { button: "right" });
+		const browser = page.getByRole("dialog", { name: "Add node" });
+		await browser.getByRole("textbox", { name: "Search nodes" }).fill(name);
+		await browser.getByRole("button", { name: new RegExp(name) }).click();
+	};
+
+	await addNode("Log", paneBox.x + 180);
+	await addNode("HTTP Request", paneBox.x + paneBox.width / 2);
+	await addNode("Delay", paneBox.x + paneBox.width - 180);
+
+	const logNode = page.locator(".react-flow__node").filter({ hasText: "Log" }).first();
+	const httpNode = page.locator(".react-flow__node").filter({ hasText: "HTTP Request" }).first();
+	const delayNode = page.locator(".react-flow__node").filter({ hasText: "Delay" }).first();
+
+	await logNode.click();
+	await page.keyboard.down("Control");
+	await httpNode.click();
+	await delayNode.click();
+	await page.keyboard.up("Control");
+
+	await expect(page.locator(".react-flow__node.selected")).toHaveCount(3);
+	await expect(page.getByRole("heading", { name: "Delay" })).toBeVisible();
+});
+
 test("a node cannot connect its output to its own input", async ({ page }) => {
 	await openEditor(page);
 

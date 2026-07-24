@@ -21,7 +21,7 @@ export function ScriptNode({ data, id, selected }: NodeProps<ScriptFlowNode>) {
 
 	return (
 		<div
-			className={`relative w-64 rounded border bg-baud-node shadow-[0_14px_40px_rgba(0,0,0,0.24)] ${
+			className={`nokey relative w-64 rounded border bg-baud-node shadow-[0_14px_40px_rgba(0,0,0,0.24)] ${
 				selected ? "border-baud-red ring-2 ring-baud-red/35" : "border-baud-border"
 			}`}
 		>
