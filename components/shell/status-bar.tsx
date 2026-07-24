@@ -7,12 +7,12 @@ type StatusBarProps = {
 	nodes: Node<ScriptNodeData>[];
 	edges: Edge[];
 	riskLevel: RiskLevel;
-	targetRuntime: TargetRuntime;
+	targetRuntimes: TargetRuntime[];
 	verificationStatus: VerificationStatus;
 	saveStatus: "saved" | "unsaved" | "saving" | "error";
 };
 
-export function StatusBar({ nodes, edges, riskLevel, targetRuntime, verificationStatus, saveStatus }: StatusBarProps) {
+export function StatusBar({ nodes, edges, riskLevel, targetRuntimes, verificationStatus, saveStatus }: StatusBarProps) {
 	const verification = getVerificationPresentation(verificationStatus);
 
 	return (
@@ -29,7 +29,7 @@ export function StatusBar({ nodes, edges, riskLevel, targetRuntime, verification
 					<span className={`size-1.5 rounded-full ${verification.dotClassName}`} />
 					{verification.label}
 				</span>
-				<span>{targetRuntime}</span>
+				<span>{targetRuntimes.join(", ")}</span>
 				<span>{nodes.length} nodes</span>
 				<span>{edges.length} edges</span>
 				<span>risk {riskLevel}</span>

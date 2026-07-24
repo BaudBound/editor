@@ -164,7 +164,7 @@ export function toProjectSummary(recordValue: unknown): ProjectSummary {
 		name: record.settings.name,
 		nodeCount: record.nodes.length,
 		revision: record.revision,
-		targetRuntime: record.settings.targetRuntime,
+		targetRuntimes: record.settings.targetRuntimes,
 		updatedAt: record.updatedAt,
 	};
 }
@@ -326,26 +326,62 @@ function isProjectSettings(value: unknown): value is ProjectSettings {
 		typeof value.source === "string" &&
 		Array.isArray(value.tags) &&
 		value.tags.every((tag) => typeof tag === "string") &&
-		typeof value.targetRuntime === "string" &&
-		targetRuntimes.includes(value.targetRuntime as ProjectSettings["targetRuntime"]) &&
+		Array.isArray(value.targetRuntimes) &&
+		value.targetRuntimes.length > 0 &&
+		value.targetRuntimes.every(
+			(runtime) =>
+				typeof runtime === "string" && targetRuntimes.includes(runtime as ProjectSettings["targetRuntimes"][number]),
+		) &&
+		new Set(value.targetRuntimes).size === value.targetRuntimes.length &&
 		typeof value.minimumRunnerVersion === "string"
 	);
 }
 
 function migrateStoredProjectRecord(value: unknown): unknown {
-	if (!isRecord(value) || value.schemaVersion !== 1 || !isRecord(value.settings)) {
+	if (!isRecord(value) || !isRecord(value.settings) || (value.schemaVersion !== 1 && value.schemaVersion !== 2)) {
 		return value;
 	}
 
+	const migratedTargetRuntimes = migrateTargetRuntimes(value.settings);
 	return {
 		...value,
 		schemaVersion: editorProjectSchemaVersion,
+		secretDeclarations: Array.isArray(value.secretDeclarations)
+			? value.secretDeclarations.map((declaration) =>
+					isRecord(declaration) ? { ...declaration, type: "string" } : declaration,
+				)
+			: value.secretDeclarations,
 		settings: {
 			...value.settings,
 			version: typeof value.settings.version === "string" ? value.settings.version : DEFAULT_SCRIPT_VERSION,
 			repositoryUrl: typeof value.settings.repositoryUrl === "string" ? value.settings.repositoryUrl : "",
+			targetRuntimes: migratedTargetRuntimes,
 		},
 	};
+}
+
+function migrateTargetRuntimes(settings: Record<string, unknown>): ProjectSettings["targetRuntimes"] {
+	if (Array.isArray(settings.targetRuntimes)) {
+		const valid = settings.targetRuntimes.filter(
+			(value): value is ProjectSettings["targetRuntimes"][number] =>
+				typeof value === "string" && targetRuntimes.includes(value as ProjectSettings["targetRuntimes"][number]),
+		);
+		if (valid.length > 0) {
+			return [...new Set(valid)];
+		}
+	}
+
+	switch (settings.targetRuntime) {
+		case "Linux Headless":
+		case "Windows Headless":
+		case "Windows Desktop":
+		case "Linux Desktop":
+			return [settings.targetRuntime];
+		case "Generic Headless":
+			return ["Windows Headless", "Linux Headless"];
+		default:
+			return ["Windows Desktop", "Linux Desktop"];
+	}
 }
 
 function isStoredNode(value: unknown): value is StoredScriptNode {
@@ -410,8 +446,7 @@ function isSecretDeclaration(value: unknown): value is SecretDeclaration {
 		typeof value.name === "string" &&
 		typeof value.description === "string" &&
 		typeof value.required === "boolean" &&
-		typeof value.type === "string" &&
-		variableTypes.includes(value.type as SecretDeclaration["type"])
+		value.type === "string"
 	);
 }
 

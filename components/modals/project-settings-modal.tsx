@@ -13,7 +13,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { OptionCombobox } from "@/components/ui/option-combobox";
+import { MultiOptionCombobox } from "@/components/ui/multi-option-combobox";
 import { Textarea } from "@/components/ui/textarea";
 import { targetRuntimes } from "@/data/project/runtimes";
 import type { ProjectSettings, TargetRuntime } from "@/lib/types";
@@ -68,6 +68,7 @@ export function ProjectSettingsModal({
 	const websiteError = getOptionalUrlError(draft.website);
 	const sourceError = getOptionalUrlError(draft.source);
 	const tagsError = getTagsError(appendTags(tagsDraft, tagInput));
+	const targetRuntimesError = draft.targetRuntimes.length === 0 ? "Select at least one target runtime." : "";
 	const hasErrors = Boolean(
 		nameError ||
 			nameLengthError ||
@@ -78,7 +79,8 @@ export function ProjectSettingsModal({
 			minimumRunnerError ||
 			websiteError ||
 			sourceError ||
-			tagsError,
+			tagsError ||
+			targetRuntimesError,
 	);
 
 	const handleSave = () => {
@@ -105,7 +107,11 @@ export function ProjectSettingsModal({
 
 	return (
 		<Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-			<DialogContent aria-labelledby={titleId} className="sm:max-w-2xl">
+			<DialogContent
+				aria-labelledby={titleId}
+				className="sm:max-w-2xl"
+				onOpenAutoFocus={(event) => event.preventDefault()}
+			>
 				<DialogHeader>
 					<DialogTitle id={titleId}>{title}</DialogTitle>
 					<DialogDescription>{description}</DialogDescription>
@@ -132,13 +138,16 @@ export function ProjectSettingsModal({
 							onChange={(value) => setDraft((current) => ({ ...current, name: value }))}
 						/>
 						<div>
-							<span className="mb-1 block font-mono text-sm text-baud-muted">Target Runtime</span>
-							<OptionCombobox
-								ariaLabel="Target runtime"
+							<span className="mb-1 block font-mono text-sm text-baud-muted">Target Runtimes</span>
+							<MultiOptionCombobox
+								ariaLabel="Target runtimes"
 								options={targetRuntimes.map((runtime) => ({ label: runtime, value: runtime }))}
-								value={draft.targetRuntime}
-								onChange={(value) => setDraft((current) => ({ ...current, targetRuntime: value as TargetRuntime }))}
+								values={draft.targetRuntimes}
+								onChange={(values) =>
+									setDraft((current) => ({ ...current, targetRuntimes: values as TargetRuntime[] }))
+								}
 							/>
+							{targetRuntimesError && <p className="mt-1 text-xs leading-4 text-baud-danger">{targetRuntimesError}</p>}
 						</div>
 					</div>
 
@@ -185,7 +194,7 @@ export function ProjectSettingsModal({
 							onChange={(value) => setDraft((current) => ({ ...current, author: value }))}
 						/>
 						<TextField
-							label="Minimum Runner"
+							label="Minimum BaudBound Version"
 							value={draft.minimumRunnerVersion}
 							error={minimumRunnerError}
 							maxLength={64}
@@ -288,6 +297,12 @@ function TagField({
 	};
 
 	const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+		if (event.key === "Backspace" && !inputValue && tags.length > 0) {
+			event.preventDefault();
+			onTagsChange(tags.slice(0, -1));
+			return;
+		}
+
 		if (!isTagCommitKey(event.key)) {
 			return;
 		}

@@ -620,7 +620,7 @@ test("removed Apple target runtimes are not exposed or accepted", () => {
 	assert.ok(!targetRuntimeSource.includes(removedTargetPrefix));
 	assert.ok(!typeSource.includes(removedTargetPrefix));
 	assert.ok(
-		!capabilitiesSchema.properties.target_runtime.enum.some((targetRuntime) =>
+		!capabilitiesSchema.properties.target_runtimes.items.enum.some((targetRuntime) =>
 			targetRuntime.includes(removedTargetPrefix),
 		),
 		"capabilities schema must not expose removed Apple runtimes",
@@ -717,7 +717,7 @@ test("package contract validates graph structure and import rejects malformed ed
 	assert.match(registrySource, /validateNumericConfigValue/);
 	assert.match(registrySource, /Invalid value for \$\{field\.key\}: expected boolean/);
 	assert.match(contractSource, /getTargetRuntimeCompatibilityErrors/);
-	assert.match(contractSource, /capabilities\.target_runtime/);
+	assert.match(contractSource, /capabilities\.target_runtimes/);
 	assert.equal(/return \[\];\s*\n\s*}\);\s*\n}/.test(packageSource), false, "import must not silently drop edges");
 });
 
@@ -963,7 +963,9 @@ test("default variables are typed package metadata and runner execution state", 
 	assert.match(defaultVariableSource, /Default value is required/);
 	assert.match(editorPage, /defaultVariables/);
 	assert.match(packageSource, /variables:\s*params\.defaultVariables\.map/);
-	assert.match(simulationSource, /defaultVariables\.map/);
+	assert.match(simulationSource, /defaultVariables[\s\S]*variable\.scope === "persistent"/);
+	assert.match(simulationSource, /defaultVariables[\s\S]*variable\.scope === "runtime"/);
+	assert.match(simulationSource, /persistentVariables:\s*structuredClone/);
 });
 
 test("IndexedDB is the editor's only normal durable browser storage", () => {

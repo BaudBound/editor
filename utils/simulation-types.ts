@@ -22,6 +22,7 @@ export type SimulationRunOptions = {
 	overrides: SimulationOverride[];
 	projectSettings: ProjectSettings;
 	defaultVariables?: DefaultVariable[];
+	persistentVariables?: Record<string, JsonValue>;
 	secretValues?: Record<string, JsonValue>;
 	signal?: AbortSignal;
 	stepDelayMs?: number;
@@ -70,6 +71,7 @@ export type SimulationSideEffectResult = {
 
 export type SimulationRun = {
 	finalVariables: SimulationVariableSnapshot[];
+	persistentVariables: Record<string, JsonValue>;
 	status: "completed" | "failed";
 };
 
@@ -84,6 +86,7 @@ export type SimulationContext = {
 		step: SimulationStep,
 	) => Promise<SimulationSideEffectResult[] | undefined> | SimulationSideEffectResult[] | undefined;
 	overridesByNodeId: Map<string, SimulationOverride["outcome"]>;
+	persistentVariables: Record<string, JsonValue>;
 	runtimeVariables: Record<string, JsonValue>;
 	secretNames: Set<string>;
 	secretValues: JsonValue[];

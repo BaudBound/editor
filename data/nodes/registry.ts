@@ -273,35 +273,39 @@ export function getNodeDefinition(actionType: ActionType) {
 
 export function getTargetRuntimeCompatibilityErrors(
 	nodes: TargetRuntimeCompatibilityNode[],
-	targetRuntime: TargetRuntime,
+	targetRuntimes: readonly TargetRuntime[],
 ) {
-	return nodes.flatMap((node) => {
-		const definition = getNodeDefinition(node.actionType);
-		if (!definition) {
-			return [];
-		}
+	return nodes.flatMap((node) =>
+		targetRuntimes.flatMap((targetRuntime) => {
+			const definition = getNodeDefinition(node.actionType);
+			if (!definition) {
+				return [];
+			}
 
-		const label = definition.label ?? node.label ?? node.actionType;
-		const errors: string[] = [];
+			const label = definition.label ?? node.label ?? node.actionType;
+			const errors: string[] = [];
 
-		if (definition.supportedTargetRuntimes && !definition.supportedTargetRuntimes.includes(targetRuntime)) {
+			if (definition.supportedTargetRuntimes && !definition.supportedTargetRuntimes.includes(targetRuntime)) {
+				errors.push(
+					`${node.id} (${label}) requires ${formatTargetRuntimeList(definition.supportedTargetRuntimes)}, but the script targets ${targetRuntime}.`,
+				);
+			}
+
+			if (definition.desktopOnly && !isDesktopTargetRuntime(targetRuntime)) {
+				errors.push(
+					`${node.id} (${label}) requires a desktop target runtime, but the script targets ${targetRuntime}.`,
+				);
+			}
+
 			errors.push(
-				`${node.id} (${label}) requires ${formatTargetRuntimeList(definition.supportedTargetRuntimes)}, but the script targets ${targetRuntime}.`,
+				...(definition
+					.validateTargetRuntime?.({ config: node.config ?? {}, targetRuntime })
+					.map((error) => `${node.id} (${label}) ${error}`) ?? []),
 			);
-		}
 
-		if (definition.desktopOnly && !isDesktopTargetRuntime(targetRuntime)) {
-			errors.push(`${node.id} (${label}) requires a desktop target runtime, but the script targets ${targetRuntime}.`);
-		}
-
-		errors.push(
-			...(definition
-				.validateTargetRuntime?.({ config: node.config ?? {}, targetRuntime })
-				.map((error) => `${node.id} (${label}) ${error}`) ?? []),
-		);
-
-		return errors;
-	});
+			return errors;
+		}),
+	);
 }
 
 export function getPaletteGroups(): PaletteGroup[] {

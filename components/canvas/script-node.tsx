@@ -1,5 +1,6 @@
 import { Handle, type Node, type NodeProps, Position } from "@xyflow/react";
 import { kindAccentClassName } from "@/data/editor/risk";
+import { sanitizeNodeConfig } from "@/data/nodes/registry";
 import type { JsonValue, ScriptNodeData } from "@/lib/types";
 import { RiskBadge } from "../shell/risk-badge";
 
@@ -12,7 +13,9 @@ const baseBodyHeight = 62;
 export function ScriptNode({ data, id, selected }: NodeProps<ScriptFlowNode>) {
 	const customName = typeof data.config.customName === "string" ? data.config.customName.trim() : "";
 	const subtitle = customName || id;
-	const configEntries = Object.entries(data.config).filter(([key]) => key !== "customName");
+	const configEntries = Object.entries(sanitizeNodeConfig(data.actionType, data.config)).filter(
+		([key]) => key !== "customName",
+	);
 	const headerHeight = namedHeaderHeight;
 	const bodyMinHeight = getBodyMinHeight(data.outputs.length);
 

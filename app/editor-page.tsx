@@ -144,6 +144,13 @@ export function EditorPage({
 	const handleCopyGraphRef = useRef<(nodeId?: string) => boolean>(() => false);
 	const simulationLifecycleRef = useRef<SimulationLifecycle>({ abortController: null, active: false, runId: 0 });
 	const simulationMessageBoxResolveRef = useRef<((button: string) => void) | null>(null);
+	const simulationPersistentVariablesRef = useRef<Record<string, JsonValue>>(
+		Object.fromEntries(
+			initialProject.defaultVariables
+				.filter((variable) => variable.scope === "persistent")
+				.map((variable) => [variable.name, structuredClone(variable.value)]),
+		),
+	);
 	const initialNodes = useMemo<EditorFlowNode[]>(
 		() => [
 			...(initialProject.nodes as ScriptFlowNode[]),
@@ -205,7 +212,7 @@ export function EditorPage({
 	const [systemLogs, setSystemLogs] = useState<LogEntry[]>(() =>
 		createConsoleLogs(
 			initialProject.settings.name,
-			initialProject.settings.targetRuntime,
+			initialProject.settings.targetRuntimes,
 			calculatePermissions(initialNodes.filter(isScriptFlowNode)),
 		),
 	);
@@ -242,7 +249,7 @@ export function EditorPage({
 			createExportSummary(
 				projectSettings.name,
 				projectSettings.version,
-				projectSettings.targetRuntime,
+				projectSettings.targetRuntimes,
 				projectSettings.minimumRunnerVersion,
 				assets,
 			),
@@ -250,7 +257,7 @@ export function EditorPage({
 			assets,
 			projectSettings.minimumRunnerVersion,
 			projectSettings.name,
-			projectSettings.targetRuntime,
+			projectSettings.targetRuntimes,
 			projectSettings.version,
 		],
 	);
@@ -264,7 +271,7 @@ export function EditorPage({
 				defaultVariables,
 				secretDeclarations,
 				scriptName: projectSettings.name,
-				targetRuntime: projectSettings.targetRuntime,
+				targetRuntimes: projectSettings.targetRuntimes,
 			}),
 		[
 			assets,
@@ -273,7 +280,7 @@ export function EditorPage({
 			scriptNodes,
 			permissions,
 			projectSettings.name,
-			projectSettings.targetRuntime,
+			projectSettings.targetRuntimes,
 			secretDeclarations,
 		],
 	);
@@ -459,6 +466,18 @@ export function EditorPage({
 		setSimulationOverrides((currentOverrides) => currentOverrides.filter((override) => nodeIds.has(override.nodeId)));
 	}, [scriptNodes]);
 
+	useEffect(() => {
+		const currentValues = simulationPersistentVariablesRef.current;
+		simulationPersistentVariablesRef.current = Object.fromEntries(
+			defaultVariables
+				.filter((variable) => variable.scope === "persistent")
+				.map((variable) => [
+					variable.name,
+					variable.name in currentValues ? currentValues[variable.name] : structuredClone(variable.value),
+				]),
+		);
+	}, [defaultVariables]);
+
 	const handleExport = () => {
 		setExportOpen(true);
 	};
@@ -597,6 +616,7 @@ export function EditorPage({
 					overrides: simulationOverrides,
 					projectSettings,
 					defaultVariables,
+					persistentVariables: simulationPersistentVariablesRef.current,
 					secretValues: createSimulationSecretValues(secretDeclarations, simulationSecretValues),
 					signal: abortController.signal,
 					stepDelayMs: getSimulationStepDelay(simulationSettings.speed),
@@ -608,6 +628,8 @@ export function EditorPage({
 					return;
 				}
 
+				simulationPersistentVariablesRef.current = run.persistentVariables;
+				setSimulationVariables(run.finalVariables);
 				setSimulationStatus(abortController.signal.aborted ? "stopped" : keepWaiting ? "waiting" : run.status);
 				if (keepWaiting && !abortController.signal.aborted) {
 					appendSimulationLogs([{ level: "info", message: "[Simulation] Waiting for the next trigger input." }]);
@@ -823,7 +845,7 @@ export function EditorPage({
 		appendSystemLogs([
 			{
 				level: "info",
-				message: `Project settings saved: ${settings.name} (${settings.targetRuntime})`,
+				message: `Project settings saved: ${settings.name} (${settings.targetRuntimes.join(", ")})`,
 			},
 		]);
 		expandPanel("bottom");
@@ -1200,7 +1222,7 @@ export function EditorPage({
 				<BlockLibrary
 					collapsed={collapsed.left}
 					width={sizes.left}
-					targetRuntime={projectSettings.targetRuntime}
+					targetRuntimes={projectSettings.targetRuntimes}
 					onAddBlock={handleAddBlock}
 					onToggleCollapsed={() => togglePanel("left")}
 				/>
@@ -1244,7 +1266,7 @@ export function EditorPage({
 						onSpawnDevelopmentNodes={handleSpawnDevelopmentNodes}
 						showDevelopmentNodeSpawner={isDevelopmentGraphEnabled}
 						onViewportCenterChange={setViewportCenter}
-						targetRuntime={projectSettings.targetRuntime}
+						targetRuntimes={projectSettings.targetRuntimes}
 					/>
 					{!collapsed.bottom && (
 						<ResizeHandle
@@ -1327,7 +1349,7 @@ export function EditorPage({
 				nodes={scriptNodes}
 				edges={edges}
 				riskLevel={riskLevel}
-				targetRuntime={projectSettings.targetRuntime}
+				targetRuntimes={projectSettings.targetRuntimes}
 				verificationStatus={verificationRecord.status}
 				saveStatus={projectSave.status}
 			/>

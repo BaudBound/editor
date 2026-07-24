@@ -30,7 +30,7 @@ export type CanvasContextMenuState = {
 type CanvasContextMenuProps = {
 	canPaste: boolean;
 	menu: CanvasContextMenuState;
-	targetRuntime: TargetRuntime;
+	targetRuntimes: TargetRuntime[];
 	onAddNode: (item: PaletteItem, position: { x: number; y: number }) => void;
 	onClose: () => void;
 	onCopyNode: (nodeId: string) => void;
@@ -43,7 +43,7 @@ type CanvasContextMenuProps = {
 export function CanvasContextMenu({
 	canPaste,
 	menu,
-	targetRuntime,
+	targetRuntimes,
 	onAddNode,
 	onClose,
 	onCopyNode,
@@ -64,7 +64,7 @@ export function CanvasContextMenu({
 			<div data-canvas-overlay className="fixed z-10000" style={position}>
 				<CanvasNodeMenu
 					canPaste={canPaste}
-					targetRuntime={targetRuntime}
+					targetRuntimes={targetRuntimes}
 					onAddNode={(item) => runAction(() => onAddNode(item, menu.flowPosition))}
 					onPaste={() => runAction(() => onPaste(menu.flowPosition))}
 				/>

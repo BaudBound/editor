@@ -62,13 +62,7 @@ export type TriggerActionType = Extract<ActionType, `trigger.${string}`>;
 export type ControlActionType = Extract<ActionType, `control.${string}`>;
 export type ExecutableActionType = Extract<ActionType, `action.${string}`>;
 
-export type TargetRuntime =
-	| "Generic Headless"
-	| "Linux Headless"
-	| "Windows Headless"
-	| "Generic Desktop"
-	| "Windows Desktop"
-	| "Linux Desktop";
+export type TargetRuntime = "Linux Headless" | "Windows Headless" | "Windows Desktop" | "Linux Desktop";
 
 export type ProjectSettings = {
 	name: string;
@@ -79,7 +73,7 @@ export type ProjectSettings = {
 	website: string;
 	source: string;
 	tags: string[];
-	targetRuntime: TargetRuntime;
+	targetRuntimes: TargetRuntime[];
 	minimumRunnerVersion: string;
 };
 
@@ -185,7 +179,7 @@ export type SecretDeclaration = {
 	description: string;
 	name: string;
 	required: boolean;
-	type: import("@/data/project/variables").VariableType;
+	type: "string";
 };
 
 export type DefaultVariable = {
@@ -205,7 +199,7 @@ export type ExportSummary = {
 	formatVersion: number;
 	languageVersion: number;
 	minimumRunnerVersion: string;
-	targetRuntime: TargetRuntime;
+	targetRuntimes: TargetRuntime[];
 	contents: string[];
 };
 
@@ -266,7 +260,7 @@ export type SimulationTriggerPayload = {
 
 export type SimulationVariableSnapshot = {
 	name: string;
-	source: "runtime" | "node_output" | "secret";
+	source: "runtime" | "persistent" | "node_output" | "secret";
 	value: JsonValue;
 };
 

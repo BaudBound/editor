@@ -11,10 +11,8 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { secretSimulationValueError, validateSecretDeclaration } from "@/data/project/secrets";
-import { type VariableType, variableTypes } from "@/data/project/variables";
 import type { SecretDeclaration } from "@/lib/types";
 
 type SecretReferenceManagerProps = {
@@ -44,7 +42,6 @@ export function SecretReferenceManager({
 	const [dialogOpen, setDialogOpen] = useState(false);
 	const [visibleValues, setVisibleValues] = useState<Set<string>>(new Set());
 	const nameInputId = useId();
-	const typeInputId = useId();
 	const descriptionInputId = useId();
 	const declarationError = useMemo(
 		() => validateSecretDeclaration(draft, declarations, editingName ?? undefined, reservedVariableNames),
@@ -124,9 +121,6 @@ export function SecretReferenceManager({
 											<div className="min-w-0 break-all font-mono text-sm font-semibold text-baud-text">
 												{declaration.name}
 											</div>
-											<Badge variant="outline" className="font-mono text-baud-muted">
-												Type: {declaration.type}
-											</Badge>
 											<Badge variant={declaration.required ? "medium" : "outline"}>
 												{declaration.required ? "Required" : "Optional"}
 											</Badge>
@@ -215,24 +209,6 @@ export function SecretReferenceManager({
 							value={draft.name}
 							onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
 						/>
-					</label>
-					<label htmlFor={typeInputId} className="grid gap-1 text-xs text-baud-muted">
-						Type
-						<Select
-							value={draft.type}
-							onValueChange={(value) => setDraft((current) => ({ ...current, type: value as VariableType }))}
-						>
-							<SelectTrigger id={typeInputId} className="w-full">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								{variableTypes.map((type) => (
-									<SelectItem key={type} value={type}>
-										{type}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
 					</label>
 					<label htmlFor={descriptionInputId} className="grid gap-1 text-xs text-baud-muted">
 						Description

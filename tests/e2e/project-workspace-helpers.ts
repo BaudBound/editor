@@ -55,14 +55,13 @@ export async function downloadPackage(page: Page, destination: string) {
 	await page.getByRole("button", { name: "Export package" }).click();
 	await page.getByRole("button", { name: "Next" }).click();
 	await page.getByRole("button", { name: "Next" }).click();
-	await expect(page.getByText("Verification passed. The download button is now available.")).toBeVisible();
-	await page.getByRole("button", { name: "Prepare export" }).click();
+	await expect(page.getByText("Verification passed. The package is being prepared.")).toBeVisible();
 	await expect(page.getByRole("button", { name: "Download package" })).toBeVisible();
 	const downloadPromise = page.waitForEvent("download");
 	await page.getByRole("button", { name: "Download package" }).click();
 	const download = await downloadPromise;
 	await download.saveAs(destination);
-	await page.getByRole("button", { name: "Cancel export" }).click();
+	await page.getByRole("button", { name: "Close export" }).click();
 }
 
 export async function readPackageManifest(path: string) {

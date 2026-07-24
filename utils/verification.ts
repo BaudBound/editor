@@ -49,7 +49,7 @@ type CreateVerificationChecksOptions = {
 	permissions: PermissionSummary[];
 	secretDeclarations?: SecretDeclaration[];
 	scriptName: string;
-	targetRuntime: TargetRuntime;
+	targetRuntimes: TargetRuntime[];
 };
 
 export type PackageVerificationContext = {
@@ -106,13 +106,18 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 	{
 		id: "metadata",
 		title: "Script metadata",
-		description: "Checking script identity and target runtime.",
-		run: ({ scriptName, targetRuntime }) => ({
-			outcome: scriptName.trim() ? "passed" : "failed",
-			message: scriptName.trim()
-				? `${scriptName.trim()} targets ${targetRuntime}.`
-				: "Script name is required before export.",
-		}),
+		description: "Checking script identity and target runtimes.",
+		run: ({ scriptName, targetRuntimes }) => {
+			const name = scriptName.trim();
+			return {
+				outcome: name && targetRuntimes.length > 0 ? "passed" : "failed",
+				message: !name
+					? "Script name is required before export."
+					: targetRuntimes.length === 0
+						? "Select at least one target runtime before export."
+						: `${name} targets ${targetRuntimes.join(", ")}.`,
+			};
+		},
 	},
 	{
 		id: "secret-references",
@@ -143,16 +148,16 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 	},
 	{
 		id: "target-runtime",
-		title: "Target runtime",
-		description: "Checking that nodes are compatible with the selected target runtime.",
-		run: ({ nodes, targetRuntime }) => {
-			const incompatibleNodes = getTargetRuntimeCompatibilityErrors(nodes, targetRuntime);
+		title: "Target runtimes",
+		description: "Checking that nodes are compatible with every selected target runtime.",
+		run: ({ nodes, targetRuntimes }) => {
+			const incompatibleNodes = getTargetRuntimeCompatibilityErrors(nodes, targetRuntimes);
 
 			return {
 				outcome: incompatibleNodes.length === 0 ? "passed" : "failed",
 				message:
 					incompatibleNodes.length === 0
-						? `${targetRuntime} supports all nodes in this script.`
+						? `${targetRuntimes.join(", ")} support all nodes in this script.`
 						: incompatibleNodes.join(" "),
 			};
 		},
@@ -319,7 +324,7 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 			const invalidGraphConfigs = getInvalidNodeGraphConfigs(context.nodes, context.edges, context.assets);
 			const invalidNodeConfigKeys = getInvalidNodeConfigKeys(context.nodes);
 			const invalidAssets = validateEditorAssets(context.assets).errors;
-			const invalidTargetRuntime = getTargetRuntimeCompatibilityErrors(context.nodes, context.targetRuntime);
+			const invalidTargetRuntime = getTargetRuntimeCompatibilityErrors(context.nodes, context.targetRuntimes);
 			const ready =
 				context.scriptName.trim() &&
 				context.nodes.length > 0 &&
@@ -494,14 +499,17 @@ const packageVerificationRules: VerificationRule<PackageVerificationContext>[] =
 		description: "Checking target runtime metadata.",
 		run: ({ jsonFiles }) => {
 			const capabilities = asRecord(jsonFiles["capabilities.json"]);
-			const targetRuntime = capabilities?.target_runtime;
+			const targetRuntimes = capabilities?.target_runtimes;
+			const validTargetRuntimes =
+				Array.isArray(targetRuntimes) &&
+				targetRuntimes.length > 0 &&
+				targetRuntimes.every((targetRuntime) => typeof targetRuntime === "string" && targetRuntime.trim());
 
 			return {
-				outcome: typeof targetRuntime === "string" && targetRuntime.trim() ? "passed" : "failed",
-				message:
-					typeof targetRuntime === "string" && targetRuntime.trim()
-						? `Target runtime: ${targetRuntime}.`
-						: "Package capabilities must define target_runtime.",
+				outcome: validTargetRuntimes ? "passed" : "failed",
+				message: validTargetRuntimes
+					? `Target runtimes: ${targetRuntimes.join(", ")}.`
+					: "Package capabilities must define at least one target runtime.",
 			};
 		},
 	},
@@ -537,7 +545,7 @@ function getInvalidEdges(nodes: Node<ScriptNodeData>[], edges: Edge[]) {
 	});
 }
 
-function getTargetRuntimeCompatibilityErrors(nodes: Node<ScriptNodeData>[], targetRuntime: TargetRuntime) {
+function getTargetRuntimeCompatibilityErrors(nodes: Node<ScriptNodeData>[], targetRuntimes: TargetRuntime[]) {
 	return getRegistryTargetRuntimeCompatibilityErrors(
 		nodes.map((node) => ({
 			actionType: node.data.actionType,
@@ -545,7 +553,7 @@ function getTargetRuntimeCompatibilityErrors(nodes: Node<ScriptNodeData>[], targ
 			id: node.id,
 			label: node.data.label,
 		})),
-		targetRuntime,
+		targetRuntimes,
 	);
 }
 

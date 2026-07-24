@@ -9,7 +9,7 @@ import type {
 	SecretDeclaration,
 } from "@/lib/types";
 
-export const editorProjectSchemaVersion = 2;
+export const editorProjectSchemaVersion = 3;
 
 export type ProjectIdentity = {
 	createdAt: string;
@@ -39,7 +39,7 @@ export type ProjectSummary = {
 	name: string;
 	nodeCount: number;
 	revision: number;
-	targetRuntime: ProjectSettings["targetRuntime"];
+	targetRuntimes: ProjectSettings["targetRuntimes"];
 	updatedAt: string;
 };
 

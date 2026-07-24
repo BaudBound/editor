@@ -1,5 +1,4 @@
-import { runtimeNumberContract, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
-import { type VariableType, validateVariableName } from "@/data/project/variables";
+import { validateVariableName } from "@/data/project/variables";
 import type { JsonValue, SecretDeclaration } from "@/lib/types";
 
 export function validateSecretDeclaration(
@@ -21,39 +20,15 @@ export function validateSecretDeclaration(
 	return null;
 }
 
-export function parseSecretSimulationValue(type: VariableType, rawValue: string): JsonValue | undefined {
+export function parseSecretSimulationValue(_type: "string", rawValue: string): JsonValue | undefined {
 	if (rawValue === "") {
 		return undefined;
 	}
-	if (type === "string" || type === "file_path") {
-		return rawValue;
-	}
-	if (type === "number") {
-		return validateNumericConfigValue(rawValue, runtimeNumberContract) ? undefined : Number(rawValue);
-	}
-	if (type === "boolean") {
-		return rawValue === "true" ? true : rawValue === "false" ? false : undefined;
-	}
-
-	try {
-		const value = JSON.parse(rawValue) as JsonValue;
-		if (type === "list") {
-			return Array.isArray(value) ? value : undefined;
-		}
-		return value !== null && typeof value === "object" && !Array.isArray(value) ? value : undefined;
-	} catch {
-		return undefined;
-	}
+	return rawValue;
 }
 
-export function secretSimulationValueError(type: VariableType, rawValue: string) {
-	if (rawValue === "" || parseSecretSimulationValue(type, rawValue) !== undefined) {
-		return null;
-	}
-	if (type === "number") return "Enter a finite number.";
-	if (type === "boolean") return 'Enter "true" or "false".';
-	if (type === "list") return "Enter a valid JSON array.";
-	return "Enter a valid JSON object.";
+export function secretSimulationValueError(_type: "string", _rawValue: string) {
+	return null;
 }
 
 export function createSimulationSecretValues(declarations: SecretDeclaration[], rawValues: Record<string, string>) {

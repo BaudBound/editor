@@ -13,7 +13,7 @@ export const defaultProjectSettings: ProjectSettings = {
 	website: "",
 	source: "",
 	tags: [],
-	targetRuntime: "Generic Desktop",
+	targetRuntimes: ["Windows Desktop"],
 	minimumRunnerVersion: DEFAULT_MINIMUM_RUNNER_VERSION,
 };
 

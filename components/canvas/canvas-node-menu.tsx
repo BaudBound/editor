@@ -7,7 +7,7 @@ import type { PaletteGroup, PaletteItem, TargetRuntime } from "@/lib/types";
 
 type CanvasNodeMenuProps = {
 	canPaste: boolean;
-	targetRuntime: TargetRuntime;
+	targetRuntimes: TargetRuntime[];
 	onAddNode: (item: PaletteItem) => void;
 	onPaste: () => void;
 };
@@ -16,15 +16,15 @@ type NodeCategory = Pick<PaletteGroup, "id" | "items" | "label">;
 
 const nodeCategories = getPaletteGroups().flatMap(toNodeCategories);
 
-export function CanvasNodeMenu({ canPaste, onAddNode, onPaste, targetRuntime }: CanvasNodeMenuProps) {
+export function CanvasNodeMenu({ canPaste, onAddNode, onPaste, targetRuntimes }: CanvasNodeMenuProps) {
 	const [query, setQuery] = useState("");
 	const filteredCategories = useMemo(() => filterCategories(nodeCategories, query), [query]);
 	const firstAvailableItem = useMemo(
 		() =>
 			filteredCategories
 				.flatMap((category) => category.items)
-				.find((item) => getCompatibilityErrors(item, targetRuntime).length === 0),
-		[filteredCategories, targetRuntime],
+				.find((item) => getCompatibilityErrors(item, targetRuntimes).length === 0),
+		[filteredCategories, targetRuntimes],
 	);
 
 	return (
@@ -80,7 +80,7 @@ export function CanvasNodeMenu({ canPaste, onAddNode, onPaste, targetRuntime }: 
 							key={category.id}
 							category={category}
 							onAddNode={onAddNode}
-							targetRuntime={targetRuntime}
+							targetRuntimes={targetRuntimes}
 						/>
 					))
 				)}
@@ -92,11 +92,11 @@ export function CanvasNodeMenu({ canPaste, onAddNode, onPaste, targetRuntime }: 
 function NodeCategorySection({
 	category,
 	onAddNode,
-	targetRuntime,
+	targetRuntimes,
 }: {
 	category: NodeCategory;
 	onAddNode: (item: PaletteItem) => void;
-	targetRuntime: TargetRuntime;
+	targetRuntimes: TargetRuntime[];
 }) {
 	return (
 		<section aria-labelledby={`canvas-node-category-${category.id}`} className="pb-2 last:pb-0">
@@ -111,7 +111,7 @@ function NodeCategorySection({
 			</div>
 			<div className="grid gap-0.5">
 				{category.items.map((item) => (
-					<CanvasNodeButton key={item.actionType} item={item} onAddNode={onAddNode} targetRuntime={targetRuntime} />
+					<CanvasNodeButton key={item.actionType} item={item} onAddNode={onAddNode} targetRuntimes={targetRuntimes} />
 				))}
 			</div>
 		</section>
@@ -121,14 +121,14 @@ function NodeCategorySection({
 function CanvasNodeButton({
 	item,
 	onAddNode,
-	targetRuntime,
+	targetRuntimes,
 }: {
 	item: PaletteItem;
 	onAddNode: (item: PaletteItem) => void;
-	targetRuntime: TargetRuntime;
+	targetRuntimes: TargetRuntime[];
 }) {
 	const Icon = item.icon;
-	const compatibilityErrors = getCompatibilityErrors(item, targetRuntime);
+	const compatibilityErrors = getCompatibilityErrors(item, targetRuntimes);
 	const unavailable = compatibilityErrors.length > 0;
 
 	return (
@@ -149,10 +149,10 @@ function CanvasNodeButton({
 	);
 }
 
-function getCompatibilityErrors(item: PaletteItem, targetRuntime: TargetRuntime) {
+function getCompatibilityErrors(item: PaletteItem, targetRuntimes: TargetRuntime[]) {
 	return getTargetRuntimeCompatibilityErrors(
 		[{ actionType: item.actionType, id: item.label, label: item.label }],
-		targetRuntime,
+		targetRuntimes,
 	);
 }
 

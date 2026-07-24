@@ -39,7 +39,7 @@ export function ProjectList({
 						>
 							<div className="truncate text-sm font-semibold text-baud-text">{project.name}</div>
 							<div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-baud-muted">
-								<span>{project.targetRuntime}</span>
+								<span>{project.targetRuntimes.join(", ")}</span>
 								<span>{formatProjectCounts(project)}</span>
 								<span>Updated {formatUpdatedAt(project.updatedAt)}</span>
 							</div>

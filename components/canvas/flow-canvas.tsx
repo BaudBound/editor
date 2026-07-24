@@ -73,7 +73,7 @@ type FlowCanvasProps = {
 	edgeStyle: EditorEdgeStyle;
 	onEdgeStyleChange: (edgeStyle: EditorEdgeStyle) => void;
 	onViewportCenterChange: (position: XYPosition) => void;
-	targetRuntime: TargetRuntime;
+	targetRuntimes: TargetRuntime[];
 };
 
 const nodeTypes = {
@@ -114,7 +114,7 @@ export function FlowCanvas({
 	showDevelopmentNodeSpawner,
 	onViewportCenterChange,
 	selectedEdgeId,
-	targetRuntime,
+	targetRuntimes,
 }: FlowCanvasProps) {
 	return (
 		<ReactFlowProvider>
@@ -144,7 +144,7 @@ export function FlowCanvas({
 				showDevelopmentNodeSpawner={showDevelopmentNodeSpawner}
 				onViewportCenterChange={onViewportCenterChange}
 				selectedEdgeId={selectedEdgeId}
-				targetRuntime={targetRuntime}
+				targetRuntimes={targetRuntimes}
 			/>
 		</ReactFlowProvider>
 	);
@@ -154,7 +154,7 @@ function FlowCanvasContent({
 	nodes,
 	edges,
 	selectedEdgeId,
-	targetRuntime,
+	targetRuntimes,
 	onNodesChange,
 	onEdgesChange,
 	onEdgesCommit,
@@ -547,7 +547,7 @@ function FlowCanvasContent({
 				<CanvasContextMenu
 					canPaste={canPaste}
 					menu={contextMenu}
-					targetRuntime={targetRuntime}
+					targetRuntimes={targetRuntimes}
 					onAddNode={(item, position) => onDropPaletteNode(item.actionType, position)}
 					onClose={closeContextMenu}
 					onCopyNode={onCopyNode}

@@ -254,8 +254,8 @@ export function validateManifestContract(value: unknown) {
 					errors.push(`manifest.json contains duplicate secret name "${name}".`);
 				}
 				names.add(name);
-				if (!variableTypes.includes(secret.type as (typeof variableTypes)[number])) {
-					errors.push(`manifest.json secret "${name}" has invalid type "${String(secret.type)}".`);
+				if (secret.type !== "string") {
+					errors.push(`manifest.json secret "${name}" must use the string type.`);
 				}
 				if (typeof secret.required !== "boolean") {
 					errors.push(`manifest.json secret "${name}" required must be boolean.`);
@@ -658,16 +658,20 @@ export function validateCapabilitiesContract(
 	}
 
 	if (
-		typeof capabilities.target_runtime !== "string" ||
-		!targetRuntimes.includes(capabilities.target_runtime as TargetRuntime)
+		!Array.isArray(capabilities.target_runtimes) ||
+		capabilities.target_runtimes.length === 0 ||
+		!capabilities.target_runtimes.every(
+			(targetRuntime) => typeof targetRuntime === "string" && targetRuntimes.includes(targetRuntime as TargetRuntime),
+		) ||
+		new Set(capabilities.target_runtimes).size !== capabilities.target_runtimes.length
 	) {
-		errors.push("capabilities.json target_runtime must be a supported target runtime.");
+		errors.push("capabilities.json target_runtimes must contain unique supported target runtimes.");
 	} else {
 		errors.push(
 			...getTargetRuntimeCompatibilityErrors(
 				getProgramCompatibilityNodes(programValue),
-				capabilities.target_runtime as TargetRuntime,
-			).map((error) => `capabilities.json target_runtime ${error}`),
+				capabilities.target_runtimes as TargetRuntime[],
+			).map((error) => `capabilities.json target_runtimes ${error}`),
 		);
 	}
 

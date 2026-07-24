@@ -10,7 +10,7 @@ import { RiskBadge } from "./risk-badge";
 
 type BlockLibraryProps = {
 	collapsed: boolean;
-	targetRuntime: TargetRuntime;
+	targetRuntimes: TargetRuntime[];
 	width: number;
 	onAddBlock: (item: PaletteItem) => void;
 	onToggleCollapsed: () => void;
@@ -25,7 +25,7 @@ const defaultExpandedPaletteGroups: Record<string, boolean> = {
 const paletteGroups = getPaletteGroups();
 const defaultExpandedGroups = createDefaultExpandedGroups(paletteGroups);
 
-export function BlockLibrary({ collapsed, targetRuntime, width, onAddBlock, onToggleCollapsed }: BlockLibraryProps) {
+export function BlockLibrary({ collapsed, targetRuntimes, width, onAddBlock, onToggleCollapsed }: BlockLibraryProps) {
 	const [query, setQuery] = useState("");
 	const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(defaultExpandedGroups);
 	const compact = width < 190;
@@ -79,7 +79,7 @@ export function BlockLibrary({ collapsed, targetRuntime, width, onAddBlock, onTo
 							expandedGroups={expandedGroups}
 							forceExpanded={query.trim().length > 0}
 							group={group}
-							targetRuntime={targetRuntime}
+							targetRuntimes={targetRuntimes}
 							onAddBlock={onAddBlock}
 							onToggleGroup={(groupId) =>
 								setExpandedGroups((current) => ({ ...current, [groupId]: !current[groupId] }))
@@ -100,7 +100,7 @@ function PaletteGroupSection({
 	nested = false,
 	onAddBlock,
 	onToggleGroup,
-	targetRuntime,
+	targetRuntimes,
 }: {
 	compact: boolean;
 	expandedGroups: Record<string, boolean>;
@@ -109,7 +109,7 @@ function PaletteGroupSection({
 	nested?: boolean;
 	onAddBlock: (item: PaletteItem) => void;
 	onToggleGroup: (groupId: string) => void;
-	targetRuntime: TargetRuntime;
+	targetRuntimes: TargetRuntime[];
 }) {
 	const Icon = group.icon;
 	const expanded = forceExpanded || (expandedGroups[group.id] ?? false);
@@ -144,7 +144,7 @@ function PaletteGroupSection({
 							nested
 							onAddBlock={onAddBlock}
 							onToggleGroup={onToggleGroup}
-							targetRuntime={targetRuntime}
+							targetRuntimes={targetRuntimes}
 						/>
 					))}
 					{group.items.map((item) => (
@@ -153,7 +153,7 @@ function PaletteGroupSection({
 							compact={compact}
 							item={item}
 							onAddBlock={onAddBlock}
-							targetRuntime={targetRuntime}
+							targetRuntimes={targetRuntimes}
 						/>
 					))}
 				</div>
@@ -166,17 +166,17 @@ function PaletteItemButton({
 	compact,
 	item,
 	onAddBlock,
-	targetRuntime,
+	targetRuntimes,
 }: {
 	compact: boolean;
 	item: PaletteItem;
 	onAddBlock: (item: PaletteItem) => void;
-	targetRuntime: TargetRuntime;
+	targetRuntimes: TargetRuntime[];
 }) {
 	const Icon = item.icon;
 	const compatibilityErrors = getTargetRuntimeCompatibilityErrors(
 		[{ actionType: item.actionType, id: item.label, label: item.label }],
-		targetRuntime,
+		targetRuntimes,
 	);
 	const unavailable = compatibilityErrors.length > 0;
 

@@ -96,6 +96,7 @@ export async function createSimulationRun({
 	nodes,
 	onStep,
 	overrides,
+	persistentVariables = {},
 	projectSettings,
 	secretValues = {},
 	signal,
@@ -113,9 +114,21 @@ export async function createSimulationRun({
 		nodesById: new Map(nodes.map((node) => [node.id, node])),
 		onStep,
 		overridesByNodeId: new Map(overrides.map((override) => [override.nodeId, override.outcome])),
+		persistentVariables: {
+			...Object.fromEntries(
+				defaultVariables
+					.filter((variable) => variable.scope === "persistent")
+					.map((variable) => [variable.name, structuredClone(variable.value)]),
+			),
+			...structuredClone(persistentVariables),
+		},
 		runtimeVariables: {
 			...createSimulationBuiltInVariableValues(projectSettings),
-			...Object.fromEntries(defaultVariables.map((variable) => [variable.name, structuredClone(variable.value)])),
+			...Object.fromEntries(
+				defaultVariables
+					.filter((variable) => variable.scope === "runtime")
+					.map((variable) => [variable.name, structuredClone(variable.value)]),
+			),
 			...secretValues,
 		},
 		secretNames: new Set(Object.keys(secretValues)),
@@ -132,7 +145,7 @@ export async function createSimulationRun({
 			level: "error",
 			message: `[Simulation] Invalid connection execution order: ${executionOrderErrors.join(" ")}`,
 		});
-		return { finalVariables: createVariableSnapshot(context), status: "failed" };
+		return createSimulationRunResult(context, "failed");
 	}
 
 	if (!trigger) {
@@ -140,10 +153,7 @@ export async function createSimulationRun({
 			level: "error",
 			message: "[Simulation] No trigger node exists, so the script cannot be simulated.",
 		});
-		return {
-			finalVariables: createVariableSnapshot(context),
-			status: "failed",
-		};
+		return createSimulationRunResult(context, "failed");
 	}
 
 	await pushStep(context, {
@@ -156,14 +166,22 @@ export async function createSimulationRun({
 			level: "warn",
 			message: "[Simulation] Simulation stopped by user.",
 		});
-		return { finalVariables: createVariableSnapshot(context), status: "failed" };
+		return createSimulationRunResult(context, "failed");
 	}
 	await pushStep(context, {
 		level: context.failed ? "error" : "info",
 		message: context.failed ? "[Simulation] Simulation finished with errors." : "[Simulation] Simulation completed.",
 	});
 
-	return { finalVariables: createVariableSnapshot(context), status: context.failed ? "failed" : "completed" };
+	return createSimulationRunResult(context, context.failed ? "failed" : "completed");
+}
+
+function createSimulationRunResult(context: SimulationContext, status: SimulationRun["status"]): SimulationRun {
+	return {
+		finalVariables: createVariableSnapshot(context),
+		persistentVariables: structuredClone(context.persistentVariables),
+		status,
+	};
 }
 
 function getSimulationTrigger(nodes: Node<ScriptNodeData>[], triggerNodeId: string | undefined) {
@@ -1116,7 +1134,13 @@ function getReferenceValue(reference: string, context: SimulationContext): JsonV
 		return context.runtimeVariables[reference];
 	}
 
-	const variableReference = getRuntimeVariableReference(reference, context.runtimeVariables);
+	if (reference in context.persistentVariables) {
+		return context.persistentVariables[reference];
+	}
+
+	const variableReference =
+		getRuntimeVariableReference(reference, context.runtimeVariables) ??
+		getRuntimeVariableReference(reference, context.persistentVariables);
 	if (variableReference) {
 		if (context.secretNames.has(variableReference.name) && variableReference.path.startsWith("$")) {
 			return `{{${reference}}}`;
@@ -1351,6 +1375,12 @@ function createVariableSnapshot(context: SimulationContext): SimulationVariableS
 			value: createSnapshotValue(redactSnapshotValue(context, value)),
 		}));
 
+	const persistentVariables = Object.entries(context.persistentVariables).map(([name, value]) => ({
+		name,
+		source: "persistent" as const,
+		value: createSnapshotValue(redactSnapshotValue(context, value)),
+	}));
+
 	const nodeOutputVariables = Object.entries(context.nodeOutputs).flatMap(([nodeId, outputs]) =>
 		flattenObject(outputs).map(([name, value]) => ({
 			name: `${nodeId}.${name}`,
@@ -1359,7 +1389,7 @@ function createVariableSnapshot(context: SimulationContext): SimulationVariableS
 		})),
 	);
 
-	return [...runtimeVariables, ...nodeOutputVariables]
+	return [...runtimeVariables, ...persistentVariables, ...nodeOutputVariables]
 		.sort((a, b) => a.name.localeCompare(b.name))
 		.slice(0, MAX_VARIABLE_SNAPSHOT_ENTRIES);
 }

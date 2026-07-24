@@ -77,7 +77,7 @@ export function ExportWizardModal({
 		[onVerificationComplete],
 	);
 
-	const handlePrepare = async () => {
+	const handlePrepare = useCallback(async () => {
 		setExporting(true);
 		setExportError("");
 		try {
@@ -87,12 +87,27 @@ export function ExportWizardModal({
 		} finally {
 			setExporting(false);
 		}
-	};
+	}, [onPrepareExport]);
+
+	useEffect(() => {
+		if (
+			currentStep.id !== "verification" ||
+			!isPassingVerification(verificationSummary) ||
+			generatedPackage ||
+			exporting ||
+			exportError
+		) {
+			return;
+		}
+
+		void handlePrepare();
+	}, [currentStep.id, exportError, exporting, generatedPackage, handlePrepare, verificationSummary]);
 
 	const handleNext = () => {
 		const nextIndex = Math.min(exportSteps.length - 1, stepIndex + 1);
 		if (exportSteps[nextIndex]?.id === "verification") {
 			setVerificationSummary(null);
+			setExportError("");
 		}
 
 		setStepIndex(nextIndex);
@@ -106,6 +121,7 @@ export function ExportWizardModal({
 		if (exportSteps[index]?.id === "verification") {
 			setVerificationSummary(null);
 			setGeneratedPackage(null);
+			setExportError("");
 		}
 
 		setStepIndex(index);
@@ -125,7 +141,7 @@ export function ExportWizardModal({
 								<DialogTitle className="text-lg text-baud-text">Export .bbs</DialogTitle>
 								<DialogDescription>Review the package, verify the script, then download the export.</DialogDescription>
 							</div>
-							<Button type="button" onClick={onClose} aria-label="Cancel export" size="icon" variant="icon">
+							<Button type="button" onClick={onClose} aria-label="Close export" size="icon" variant="icon">
 								<X size={15} />
 							</Button>
 						</div>
@@ -152,31 +168,39 @@ export function ExportWizardModal({
 					</div>
 
 					<div className="flex items-center justify-between border-t border-baud-border px-6 py-4">
-						<Button type="button" onClick={onClose} variant="toolbar">
-							Cancel
-						</Button>
+						{stepIndex > 0 ? (
+							<Button type="button" onClick={() => setStepIndex((index) => Math.max(0, index - 1))} variant="toolbar">
+								Back
+							</Button>
+						) : (
+							<span />
+						)}
 						<div className="flex items-center gap-2">
-							{stepIndex > 0 && (
-								<Button type="button" onClick={() => setStepIndex((index) => Math.max(0, index - 1))} variant="toolbar">
-									Back
-								</Button>
-							)}
 							{currentStep.id !== "verification" ? (
 								<Button type="button" disabled={!canGoNext} onClick={handleNext} variant="toolbarActive">
 									Next
 								</Button>
 							) : !generatedPackage ? (
-								<Button
-									type="button"
-									disabled={exporting || !isPassingVerification(verificationSummary)}
-									onClick={handlePrepare}
-									variant="primary"
-								>
-									<Download size={14} />
-									{exporting ? "Preparing..." : "Prepare export"}
-								</Button>
+								exportError ? (
+									<Button type="button" disabled={exporting} onClick={handlePrepare} variant="toolbarActive">
+										{exporting ? "Preparing package..." : "Retry package generation"}
+									</Button>
+								) : (
+									<Button type="button" disabled variant="toolbar">
+										<Download size={14} />
+										{exporting ? "Preparing package..." : "Waiting for verification"}
+									</Button>
+								)
 							) : (
 								<>
+									<Button
+										type="button"
+										disabled={exporting}
+										onClick={() => setRepositoryDialogOpen(true)}
+										variant="toolbarActive"
+									>
+										<FileJson size={14} /> Create repository entry
+									</Button>
 									<Button
 										type="button"
 										disabled={exporting}
@@ -187,17 +211,9 @@ export function ExportWizardModal({
 												"application/vnd.baudbound.script+zip",
 											)
 										}
-										variant="toolbarActive"
-									>
-										<Download size={14} /> Download package
-									</Button>
-									<Button
-										type="button"
-										disabled={exporting}
-										onClick={() => setRepositoryDialogOpen(true)}
 										variant="primary"
 									>
-										<FileJson size={14} /> Create repository entry
+										<Download size={14} /> Download package
 									</Button>
 								</>
 							)}
@@ -301,7 +317,7 @@ function ProjectReviewStep({
 				<SectionTitle title="Project Information" />
 				<div className="rounded border border-baud-border bg-baud-elevated p-4">
 					<SummaryRow label="Name" value={projectSettings.name} />
-					<SummaryRow label="Target" value={projectSettings.targetRuntime} />
+					<SummaryRow label="Targets" value={projectSettings.targetRuntimes.join(", ")} />
 					<SummaryRow label="Author" value={projectSettings.author || "Not set"} />
 					<SummaryRow label="Website" value={projectSettings.website || "Not set"} />
 					<SummaryRow label="Source" value={projectSettings.source || "Not set"} />
@@ -329,7 +345,7 @@ function ProjectReviewStep({
 					<SummaryRow label="Filename" value={exportSummary.filename} />
 					<SummaryRow label="Package" value={`v${exportSummary.formatVersion}`} />
 					<SummaryRow label="Runtime" value={`v${exportSummary.languageVersion}`} />
-					<SummaryRow label="Target" value={exportSummary.targetRuntime} />
+					<SummaryRow label="Targets" value={exportSummary.targetRuntimes.join(", ")} />
 				</div>
 				<div className="rounded border border-baud-border bg-baud-elevated p-4">
 					<h3 className="mb-3 text-xs font-bold tracking-[0.18em] text-baud-muted uppercase">Package Contents</h3>
@@ -513,7 +529,7 @@ function VerificationStep({
 			)}
 			{isPassingVerification(summary) && (
 				<div className="rounded border border-baud-green/35 bg-baud-green/10 px-4 py-3 text-sm text-baud-green">
-					Verification passed. The download button is now available.
+					Verification passed. The package is being prepared.
 				</div>
 			)}
 			{exportError && (

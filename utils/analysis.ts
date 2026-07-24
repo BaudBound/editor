@@ -99,7 +99,7 @@ export function calculateRiskLevel(permissions: PermissionSummary[]): RiskLevel 
 export function createExportSummary(
 	projectName: string,
 	scriptVersion: string,
-	targetRuntime: TargetRuntime,
+	targetRuntimes: TargetRuntime[],
 	minimumRunnerVersion: string,
 	assets: EditorAsset[] = [],
 ): ExportSummary {
@@ -108,7 +108,7 @@ export function createExportSummary(
 		formatVersion: 1,
 		languageVersion: 1,
 		minimumRunnerVersion,
-		targetRuntime,
+		targetRuntimes,
 		contents: [
 			"manifest.json",
 			"program.json",
@@ -123,13 +123,13 @@ export function createExportSummary(
 
 export function createConsoleLogs(
 	scriptName: string,
-	targetRuntime: TargetRuntime,
+	targetRuntimes: TargetRuntime[],
 	permissions: PermissionSummary[],
 ): LogEntry[] {
 	const risk = calculateRiskLevel(permissions);
 	const logs: LogEntry[] = [
 		{ level: "info", message: `Script loaded: ${scriptName}` },
-		{ level: "info", message: `Target runtime: ${targetRuntime}` },
+		{ level: "info", message: `Target runtimes: ${targetRuntimes.join(", ")}` },
 		{ level: "info", message: `Permissions calculated: ${permissions.length} required` },
 	];
 

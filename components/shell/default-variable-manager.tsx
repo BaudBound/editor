@@ -222,17 +222,29 @@ export function DefaultVariableManager({ secrets, variables, onChange }: Default
 					</label>
 					<label htmlFor={valueId} className="grid gap-1 text-xs text-baud-muted">
 						Default value
-						<VariableCodeInput
-							id={valueId}
-							ariaLabel="Default value"
-							className="min-h-28 [&_pre]:min-h-28 [&_textarea]:min-h-28"
-							hasError={Boolean(valueError)}
-							multiline
-							placeholder="Enter a required default value"
-							value={rawValue}
-							variables={defaultValueCompletions}
-							onChange={setRawValue}
-						/>
+						{draft.type === "boolean" ? (
+							<Select value={rawValue} onValueChange={setRawValue}>
+								<SelectTrigger id={valueId} className="w-full">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="true">true</SelectItem>
+									<SelectItem value="false">false</SelectItem>
+								</SelectContent>
+							</Select>
+						) : (
+							<VariableCodeInput
+								id={valueId}
+								ariaLabel="Default value"
+								className="min-h-28 [&_pre]:min-h-28 [&_textarea]:min-h-28"
+								hasError={Boolean(valueError)}
+								multiline
+								placeholder="Enter a required default value"
+								value={rawValue}
+								variables={defaultValueCompletions}
+								onChange={setRawValue}
+							/>
+						)}
 					</label>
 					<label htmlFor={descriptionId} className="grid gap-1 text-xs text-baud-muted">
 						Description

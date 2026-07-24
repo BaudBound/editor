@@ -93,7 +93,9 @@ export const variableOperationNode = defineNode({
 			}
 
 			const result = applyVariableOperation(node.data.config, context, api);
-			context.runtimeVariables[name] = result.value;
+			const scope = api.getConfigString(node, "scope");
+			const variables = scope === "persistent" ? context.persistentVariables : context.runtimeVariables;
+			variables[name] = result.value;
 
 			return [
 				{
@@ -127,7 +129,10 @@ function applyVariableOperation(
 	const name = configString(config.name).trim();
 	const operation = normalizeVariableOperation(configString(config.operation));
 	const type = getVariableOperationFixedType(operation) ?? normalizeVariableType(configString(config.valueType));
-	const currentValue = context.runtimeVariables[name];
+	const scope = configString(config.scope);
+	const variables = scope === "persistent" ? context.persistentVariables : context.runtimeVariables;
+	const scopeLabel = scope === "persistent" ? "persistent" : scope === "global" ? "global" : "runtime";
+	const currentValue = variables[name];
 
 	if (operation === "increment") {
 		const amount = Number(api.resolveTemplate(configString(config.value), context));
@@ -136,7 +141,7 @@ function applyVariableOperation(
 
 		return {
 			value,
-			message: `Incremented runtime variable "${name}" by ${api.formatValue(amount)} to ${api.formatValue(value)}.`,
+			message: `Incremented ${scopeLabel} variable "${name}" by ${api.formatValue(amount)} to ${api.formatValue(value)}.`,
 		};
 	}
 
@@ -166,14 +171,14 @@ function applyVariableOperation(
 
 		return {
 			value,
-			message: `Cleared runtime variable "${name}" to ${api.formatValue(value)}.`,
+			message: `Cleared ${scopeLabel} variable "${name}" to ${api.formatValue(value)}.`,
 		};
 	}
 
 	const value = resolveVariableInput(configString(config.value), type, context, api);
 	return {
 		value,
-		message: `Set runtime variable "${name}" to ${api.formatValue(value)}.`,
+		message: `Set ${scopeLabel} variable "${name}" to ${api.formatValue(value)}.`,
 	};
 }
 

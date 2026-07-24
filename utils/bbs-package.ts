@@ -130,7 +130,7 @@ export async function buildBbsPackage(params: {
 	};
 	const capabilitiesJson = {
 		required_capabilities: capabilities.map((capability) => capability.name),
-		target_runtime: params.projectSettings.targetRuntime,
+		target_runtimes: params.projectSettings.targetRuntimes,
 	};
 	const contractErrors = validatePackageJsonContracts({
 		"manifest.json": manifestJson,
@@ -322,7 +322,7 @@ function toSecretDeclarations(manifest: Record<string, unknown>): SecretDeclarat
 		if (
 			!secret ||
 			typeof secret.name !== "string" ||
-			typeof secret.type !== "string" ||
+			secret.type !== "string" ||
 			typeof secret.required !== "boolean"
 		) {
 			return [];
@@ -333,7 +333,7 @@ function toSecretDeclarations(manifest: Record<string, unknown>): SecretDeclarat
 				description: typeof secret.description === "string" ? secret.description : "",
 				name: secret.name,
 				required: secret.required,
-				type: secret.type as SecretDeclaration["type"],
+				type: "string",
 			},
 		];
 	});
@@ -408,7 +408,7 @@ async function readPackageJsonFiles(zip: JSZip) {
 }
 
 function toProjectSettings(manifest: Record<string, unknown>, capabilities: Record<string, unknown>): ProjectSettings {
-	const targetRuntime = asTargetRuntime(capabilities.target_runtime);
+	const targetRuntimes = asTargetRuntimes(capabilities.target_runtimes);
 
 	return {
 		name: stringOrDefault(manifest.name, "untitled-script"),
@@ -419,7 +419,7 @@ function toProjectSettings(manifest: Record<string, unknown>, capabilities: Reco
 		website: stringOrDefault(manifest.website, ""),
 		source: stringOrDefault(manifest.source, ""),
 		tags: Array.isArray(manifest.tags) ? manifest.tags.filter((tag): tag is string => typeof tag === "string") : [],
-		targetRuntime,
+		targetRuntimes,
 		minimumRunnerVersion: stringOrDefault(manifest.minimum_runner_version, DEFAULT_MINIMUM_RUNNER_VERSION),
 	};
 }
@@ -813,10 +813,19 @@ function asActionType(value: unknown): ActionType {
 	return value as ActionType;
 }
 
-function asTargetRuntime(value: unknown): TargetRuntime {
-	return typeof value === "string" && targetRuntimes.includes(value as TargetRuntime)
-		? (value as TargetRuntime)
-		: "Generic Headless";
+function asTargetRuntimes(value: unknown): TargetRuntime[] {
+	if (
+		!Array.isArray(value) ||
+		value.length === 0 ||
+		!value.every(
+			(targetRuntime): targetRuntime is TargetRuntime =>
+				typeof targetRuntime === "string" && targetRuntimes.includes(targetRuntime as TargetRuntime),
+		)
+	) {
+		throw new Error("Package capabilities must contain at least one supported target runtime.");
+	}
+
+	return [...new Set(value)];
 }
 
 function asAssetKind(value: unknown): AssetKind {

@@ -7,6 +7,12 @@ export const MAX_RELEASE_NOTES_BYTES = 8_000;
 export const MAX_REPOSITORY_BYTES = 32 * 1024 * 1024;
 const MAX_PACKAGE_FILENAME_LENGTH = 240;
 const windowsReservedFilenamePattern = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+const allowedTargetRuntimes = new Set<TargetRuntime>([
+	"Windows Desktop",
+	"Windows Headless",
+	"Linux Desktop",
+	"Linux Headless",
+]);
 
 export type ScriptRepositoryDocument = {
 	format: typeof SCRIPT_REPOSITORY_FORMAT;
@@ -26,7 +32,7 @@ export type ScriptRepositoryEntry = {
 	website?: string;
 	source?: string;
 	license?: string;
-	target_runtime: TargetRuntime;
+	target_runtimes: TargetRuntime[];
 	minimum_runner_version: string;
 	risk_level: RiskLevel;
 	tags: string[];
@@ -97,6 +103,9 @@ export async function createScriptRepositoryDocument(params: {
 	packageUrl: string;
 	permissions: PermissionSummary[];
 	projectSettings: ProjectSettings;
+	repositoryDescription: string;
+	repositoryHomepage: string;
+	repositoryName: string;
 	releaseNotes: string;
 	riskLevel: RiskLevel;
 	scriptId: string;
@@ -108,7 +117,15 @@ export async function createScriptRepositoryDocument(params: {
 	if (versionError) throw new Error(versionError);
 	if (!uuidPattern.test(params.scriptId)) throw new Error("Project ID must be a UUID.");
 	if (params.bytes.byteLength === 0) throw new Error("The generated package is empty.");
+	validateBoundedText("Repository name", params.repositoryName, 160, false);
+	validateBoundedText("Repository description", params.repositoryDescription, 4_000, true);
 	validateBoundedText("Release notes", params.releaseNotes, MAX_RELEASE_NOTES_BYTES, true);
+	const repositoryHomepage = params.repositoryHomepage.trim();
+	if (repositoryHomepage) {
+		const homepageErrors: string[] = [];
+		validateOptionalUrl(homepageErrors, "Repository homepage", repositoryHomepage);
+		if (homepageErrors.length > 0) throw new Error(homepageErrors.join(" "));
+	}
 
 	const settings = params.projectSettings;
 	const description = settings.description.trim();
@@ -118,9 +135,9 @@ export async function createScriptRepositoryDocument(params: {
 	const repository: ScriptRepositoryDocument = {
 		format: SCRIPT_REPOSITORY_FORMAT,
 		format_version: SCRIPT_REPOSITORY_FORMAT_VERSION,
-		name: settings.name.trim(),
-		...(description ? { description } : {}),
-		...(website ? { homepage: website } : {}),
+		name: params.repositoryName.trim(),
+		...(params.repositoryDescription.trim() ? { description: params.repositoryDescription.trim() } : {}),
+		...(repositoryHomepage ? { homepage: repositoryHomepage } : {}),
 		scripts: [
 			{
 				script_id: params.scriptId,
@@ -130,7 +147,7 @@ export async function createScriptRepositoryDocument(params: {
 				...(author ? { author } : {}),
 				...(website ? { website } : {}),
 				...(source ? { source } : {}),
-				target_runtime: settings.targetRuntime,
+				target_runtimes: [...settings.targetRuntimes],
 				minimum_runner_version: settings.minimumRunnerVersion,
 				risk_level: params.riskLevel,
 				tags: [...settings.tags],
@@ -213,7 +230,7 @@ function validateRepositoryScript(value: unknown, index: number, scriptIds: Set<
 		"script_id",
 		"name",
 		"summary",
-		"target_runtime",
+		"target_runtimes",
 		"minimum_runner_version",
 		"risk_level",
 		"tags",
@@ -236,8 +253,20 @@ function validateRepositoryScript(value: unknown, index: number, scriptIds: Set<
 	validateOptionalTextValue(errors, `${label} license`, value.license, 128, false);
 	validateOptionalUrl(errors, `${label} website`, value.website);
 	validateOptionalUrl(errors, `${label} source`, value.source);
-	if (typeof value.target_runtime !== "string" || !value.target_runtime.trim()) {
-		errors.push(`${label} target_runtime is required.`);
+	if (!Array.isArray(value.target_runtimes) || value.target_runtimes.length === 0) {
+		errors.push(`${label} target_runtimes must contain at least one target runtime.`);
+	} else {
+		const seenRuntimes = new Set<string>();
+		for (const runtime of value.target_runtimes) {
+			if (typeof runtime !== "string" || !allowedTargetRuntimes.has(runtime as TargetRuntime)) {
+				errors.push(`${label} target_runtimes contains unsupported value ${String(runtime)}.`);
+				continue;
+			}
+			if (seenRuntimes.has(runtime)) {
+				errors.push(`${label} target_runtimes contains duplicate value ${runtime}.`);
+			}
+			seenRuntimes.add(runtime);
+		}
 	}
 	if (typeof value.minimum_runner_version !== "string" || !isSemanticVersion(value.minimum_runner_version)) {
 		errors.push(`${label} minimum_runner_version must be a semantic version.`);

@@ -101,14 +101,14 @@ test("history restores project settings, variables, secrets, comments, and edge 
 	await createProject(page, "Durable history fields");
 
 	await page.getByRole("button", { name: "Open project settings" }).click();
-	await page.getByRole("button", { name: "Target runtime" }).click();
-	await page.getByRole("option", { name: "Windows Desktop" }).click();
+	await page.getByRole("button", { name: "Target runtimes" }).click();
+	await page.getByRole("option", { name: "Linux Desktop" }).click();
 	await page.getByRole("button", { name: "Save Settings" }).click();
-	await expect(page.getByText("Windows Desktop", { exact: true })).toBeVisible();
+	await expect(page.getByText("Windows Desktop, Linux Desktop", { exact: true })).toBeVisible();
 	await page.keyboard.press("Control+z");
-	await expect(page.getByText("Generic Desktop", { exact: true })).toBeVisible();
-	await page.keyboard.press("Control+y");
 	await expect(page.getByText("Windows Desktop", { exact: true })).toBeVisible();
+	await page.keyboard.press("Control+y");
+	await expect(page.getByText("Windows Desktop, Linux Desktop", { exact: true })).toBeVisible();
 
 	await page.getByRole("button", { name: "Variables", exact: true }).click();
 	await page.getByRole("button", { name: "Add variable" }).click();

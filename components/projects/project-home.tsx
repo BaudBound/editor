@@ -259,7 +259,7 @@ export function ProjectHome() {
 				open={createOpen}
 				settings={defaultProjectSettings}
 				title="Create project"
-				description="Set the project identity and target runtime before opening the workspace."
+				description="Set the project identity and target runtimes before opening the workspace."
 				saveLabel="Create project"
 				onClose={() => setCreateOpen(false)}
 				onSave={handleCreate}

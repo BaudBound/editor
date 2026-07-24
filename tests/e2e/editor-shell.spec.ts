@@ -100,17 +100,17 @@ test("help modal exposes controls, references, expressions, and node docs", asyn
 	await expect(page.getByText("Send an HTTP request.")).toBeVisible();
 });
 
-test("project settings target runtime can be changed with the combobox", async ({ page }) => {
+test("project settings target runtimes can be selected together", async ({ page }) => {
 	await openEditor(page);
 
 	await page.getByRole("button", { name: "Open project settings" }).click();
 	await expect(page.getByRole("heading", { name: "Project Settings" })).toBeVisible();
 
-	await page.getByRole("button", { name: "Target runtime" }).click();
-	await page.getByRole("option", { name: "Windows Desktop" }).click();
+	await page.getByRole("button", { name: "Target runtimes" }).click();
+	await page.getByRole("option", { name: "Linux Desktop" }).click();
 	await page.getByRole("button", { name: "Save Settings" }).click();
 
-	await expect(page.getByText("Windows Desktop", { exact: true })).toBeVisible();
+	await expect(page.getByText("Windows Desktop, Linux Desktop", { exact: true })).toBeVisible();
 	await expect(page.getByText("not verified", { exact: true })).toBeVisible();
 });
 
@@ -129,6 +129,11 @@ test("text transform accepts a default variable with inactive optional numeric f
 	await page.getByRole("button", { name: "Operation", exact: true }).click();
 	await page.getByRole("option", { name: "Uppercase" }).click();
 	await page.getByRole("textbox", { name: "Input" }).fill("{{test}}");
+	const transformNode = page.locator(".react-flow__node").filter({ hasText: "Text Transform" });
+	await expect(transformNode).toContainText("uppercase");
+	await page.getByRole("button", { name: "Operation", exact: true }).click();
+	await page.getByRole("option", { name: "Lowercase" }).click();
+	await expect(transformNode).toContainText("lowercase");
 	await page.getByRole("button", { name: "Verify script" }).click();
 
 	await expect(page.getByRole("heading", { name: "Verification" })).toBeVisible();
@@ -156,12 +161,46 @@ test("variable operation completes writable variable names without template brac
 	await expect(nameInput).not.toHaveValue("{{preferred_status}}");
 });
 
+test("persistent variable simulation carries changes into the next run", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await page.getByRole("button", { name: "Add variable" }).click();
+	const variableDialog = page.getByRole("dialog");
+	await variableDialog.getByRole("textbox", { name: "Name" }).fill("counter");
+	await variableDialog.getByRole("combobox", { name: "Scope" }).click();
+	await page.getByRole("option", { name: "persistent" }).click();
+	await variableDialog.getByRole("combobox", { name: "Type" }).click();
+	await page.getByRole("option", { name: "number" }).click();
+	await variableDialog.getByRole("textbox", { name: "Default value" }).fill("0");
+	await variableDialog.getByRole("button", { name: "Save" }).click();
+
+	await page.getByRole("button", { name: "Manual" }).click();
+	await page.getByRole("button", { name: "Data & Variables" }).click();
+	await page.getByRole("button", { name: "Variable Operation" }).click();
+	await page.getByRole("button", { name: "Operation", exact: true }).click();
+	await page.getByRole("option", { name: "Increment" }).click();
+	await page.getByRole("combobox", { name: "Variable name" }).fill("counter");
+	await page.getByRole("button", { name: "Scope", exact: true }).click();
+	await page.getByRole("option", { name: "persistent" }).click();
+
+	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
+	const variableNode = page.locator(".react-flow__node").filter({ hasText: "Variable Operation" });
+	await manualNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
+	await variableNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Simulation speed" }).click();
+	await page.getByRole("option", { name: "Instant" }).click();
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+	const counterValue = page.getByText("{{counter}}", { exact: true }).locator("../..").locator("pre");
+	await expect(counterValue).toHaveText("1");
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+	await expect(counterValue).toHaveText("2");
+});
+
 test("coordinate verification rejects values outside the signed i32 contract", async ({ page }) => {
 	await openEditor(page);
-	await page.getByRole("button", { name: "Open project settings" }).click();
-	await page.getByRole("button", { name: "Target runtime" }).click();
-	await page.getByRole("option", { name: "Windows Desktop" }).click();
-	await page.getByRole("button", { name: "Save Settings" }).click();
 
 	await page.getByRole("textbox", { name: "Search blocks" }).fill("Get Pixel Color");
 	await page.getByRole("button", { name: /Get Pixel Color medium/ }).click();
@@ -179,10 +218,6 @@ test("coordinate verification rejects values outside the signed i32 contract", a
 
 test("negative screen coordinates verify, simulate, export, and import", async ({ page }, testInfo) => {
 	await openEditor(page);
-	await page.getByRole("button", { name: "Open project settings" }).click();
-	await page.getByRole("button", { name: "Target runtime" }).click();
-	await page.getByRole("option", { name: "Windows Desktop" }).click();
-	await page.getByRole("button", { name: "Save Settings" }).click();
 
 	await page.getByRole("button", { name: "Manual" }).click();
 	await page.getByRole("textbox", { name: "Search blocks" }).fill("Get Pixel Color");
@@ -218,15 +253,14 @@ test("negative screen coordinates verify, simulate, export, and import", async (
 	await page.getByRole("button", { name: "Export package" }).click();
 	await page.getByRole("button", { name: "Next" }).click();
 	await page.getByRole("button", { name: "Next" }).click();
-	await expect(page.getByText("Verification passed. The download button is now available.")).toBeVisible();
-	await page.getByRole("button", { name: "Prepare export" }).click();
+	await expect(page.getByText("Verification passed. The package is being prepared.")).toBeVisible();
 	await expect(page.getByRole("button", { name: "Download package" })).toBeVisible();
 	const downloadPromise = page.waitForEvent("download");
 	await page.getByRole("button", { name: "Download package" }).click();
 	const download = await downloadPromise;
 	const packagePath = testInfo.outputPath(download.suggestedFilename());
 	await download.saveAs(packagePath);
-	await page.getByRole("button", { name: "Cancel export" }).click();
+	await page.getByRole("button", { name: "Close export" }).click();
 
 	const zip = await JSZip.loadAsync(readFileSync(packagePath));
 	const programEntry = zip.file("program.json");
@@ -263,10 +297,6 @@ test("negative screen coordinates verify, simulate, export, and import", async (
 
 test("hotkey capture accepts plain and modified keys from the shared Windows catalog", async ({ page }) => {
 	await openEditor(page);
-	await page.getByRole("button", { name: "Open project settings" }).click();
-	await page.getByRole("button", { name: "Target runtime" }).click();
-	await page.getByRole("option", { name: "Windows Desktop" }).click();
-	await page.getByRole("button", { name: "Save Settings" }).click();
 
 	await page.getByRole("textbox", { name: "Search blocks" }).fill("Hotkey");
 	await page.getByRole("button", { name: /Hotkey medium/ }).click();
@@ -304,10 +334,6 @@ test("hotkey capture accepts plain and modified keys from the shared Windows cat
 
 test("keyboard and mouse actions share press hold and release controls", async ({ page }) => {
 	await openEditor(page);
-	await page.getByRole("button", { name: "Open project settings" }).click();
-	await page.getByRole("button", { name: "Target runtime" }).click();
-	await page.getByRole("option", { name: "Windows Desktop" }).click();
-	await page.getByRole("button", { name: "Save Settings" }).click();
 
 	await page.getByRole("textbox", { name: "Search blocks" }).fill("Keyboard");
 	await page.getByRole("button", { name: /Keyboard high/ }).click();
@@ -340,10 +366,6 @@ test("keyboard and mouse actions share press hold and release controls", async (
 
 test("Windows key reference buttons build a key expression", async ({ page }) => {
 	await openEditor(page);
-	await page.getByRole("button", { name: "Open project settings" }).click();
-	await page.getByRole("button", { name: "Target runtime" }).click();
-	await page.getByRole("option", { name: "Windows Desktop" }).click();
-	await page.getByRole("button", { name: "Save Settings" }).click();
 
 	await page.getByRole("textbox", { name: "Search blocks" }).fill("Hotkey");
 	await page.getByRole("button", { name: /Hotkey medium/ }).click();
@@ -941,8 +963,7 @@ test("exported package preserves editor metadata and imports back", async ({ pag
 	await expect(page.getByRole("heading", { name: "Export .bbs" })).toBeVisible();
 	await page.getByRole("button", { name: "Next" }).click();
 	await page.getByRole("button", { name: "Next" }).click();
-	await expect(page.getByText("Verification passed. The download button is now available.")).toBeVisible();
-	await page.getByRole("button", { name: "Prepare export" }).click();
+	await expect(page.getByText("Verification passed. The package is being prepared.")).toBeVisible();
 	await expect(page.getByRole("button", { name: "Download package" })).toBeVisible();
 
 	const downloadPromise = page.waitForEvent("download");
@@ -950,7 +971,7 @@ test("exported package preserves editor metadata and imports back", async ({ pag
 	const download = await downloadPromise;
 	const packagePath = testInfo.outputPath(download.suggestedFilename());
 	await download.saveAs(packagePath);
-	await page.getByRole("button", { name: "Cancel export" }).click();
+	await page.getByRole("button", { name: "Close export" }).click();
 
 	const zip = await JSZip.loadAsync(readFileSync(packagePath));
 	const editorEntry = zip.file("editor.json");
@@ -1072,7 +1093,10 @@ function addMinimalPackageDocuments(zip: JSZip) {
 	zip.file("permissions.json", JSON.stringify({ declared_permissions: [], risk_level: "low" }));
 	zip.file(
 		"capabilities.json",
-		JSON.stringify({ required_capabilities: ["trigger.manual"], target_runtime: "Generic Desktop" }),
+		JSON.stringify({
+			required_capabilities: ["trigger.manual"],
+			target_runtimes: ["Windows Desktop", "Linux Desktop"],
+		}),
 	);
 }
 

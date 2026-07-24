@@ -952,6 +952,16 @@ function VariableOperationConfigPanel({
 					<div className="rounded border border-baud-border bg-baud-soft p-3 text-sm leading-5 text-baud-muted">
 						This operation clears the variable to the empty value for its type. No manual value is required.
 					</div>
+				) : selectedType === "boolean" ? (
+					<OptionCombobox
+						ariaLabel={operationDefinition.valueLabel}
+						value={draftValue === "true" ? "true" : "false"}
+						options={[
+							{ label: "true", value: "true" },
+							{ label: "false", value: "false" },
+						]}
+						onChange={handleValueChange}
+					/>
 				) : (
 					<VariableCodeInput
 						ariaLabel={operationDefinition.valueLabel}
