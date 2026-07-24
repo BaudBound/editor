@@ -195,9 +195,18 @@ const nodeBehaviorRows = [
 			"Every node can have a custom display name. The node type remains visible so users can still identify what it does.",
 	},
 	{
-		label: "Loop",
+		label: "Repeat",
 		description:
-			"Runs the loop output branch once per iteration. The body branch should end naturally and must not connect back to the Loop input. The done output runs after all iterations complete.",
+			"Runs the repeat output branch once per iteration. The body branch should end naturally and must not connect back to the Repeat input. The done output runs after all iterations complete.",
+	},
+	{
+		label: "Break Loop",
+		description: "Ends the nearest active Repeat, While, or For Each loop and continues from that loop's done output.",
+	},
+	{
+		label: "Continue Loop",
+		description:
+			"Skips the remaining nodes in the current iteration of the nearest active Repeat, While, or For Each loop and starts its next iteration.",
 	},
 	{
 		label: "While",

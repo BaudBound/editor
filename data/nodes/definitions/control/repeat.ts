@@ -1,11 +1,11 @@
-import { Clock } from "lucide-react";
+import { Repeat2 } from "lucide-react";
 import { defineNode } from "../../node-definition";
 import { validateLoopBodyDoesNotReturn } from "../shared";
 import { staticPositiveNumberConfig } from "../validators";
 
-export const loopNode = defineNode({
-	actionType: "control.loop",
-	capabilities: ["runtime.loop"],
+export const repeatNode = defineNode({
+	actionType: "control.repeat",
+	capabilities: ["runtime.repeat"],
 	configFields: [
 		{
 			key: "count",
@@ -22,15 +22,15 @@ export const loopNode = defineNode({
 			},
 		},
 	],
-	controlType: "loop",
+	controlType: "repeat",
 	defaultConfig: () => ({ count: "3" }),
 	description: "Repeat a block of steps.",
 	group: "control",
-	icon: Clock,
+	icon: Repeat2,
 	kind: "control",
-	label: "Loop",
-	portPolicy: { kind: "fixed", inputs: ["input"], outputs: ["done", "loop"] },
+	label: "Repeat",
+	portPolicy: { kind: "fixed", inputs: ["input"], outputs: ["done", "repeat"] },
 	risk: "low",
-	validateConfig: (config) => [staticPositiveNumberConfig(config, "count", "loop repeat count")].filter(Boolean),
-	validateGraph: ({ context, node }) => validateLoopBodyDoesNotReturn(node.id, context.edges, "loop"),
+	validateConfig: (config) => [staticPositiveNumberConfig(config, "count", "repeat count")].filter(Boolean),
+	validateGraph: ({ context, node }) => validateLoopBodyDoesNotReturn(node.id, context.edges, "repeat"),
 });

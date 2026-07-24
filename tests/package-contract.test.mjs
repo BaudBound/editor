@@ -223,7 +223,7 @@ test("generated numeric contract preserves exact editor ranges and conditional P
 		required: true,
 		allows_variables: true,
 	});
-	assert.equal(contract.nodes["control.loop"].count.maximum, "18446744073709551615");
+	assert.equal(contract.nodes["control.repeat"].count.maximum, "18446744073709551615");
 	for (const actionType of ["action.process.kill", "action.process.status", "action.window.focus"]) {
 		assert.deepEqual(contract.nodes[actionType].target.when, { key: "matchMode", equals: "pid" });
 		assert.equal(contract.nodes[actionType].target.maximum, "4294967295");
@@ -832,21 +832,26 @@ test("node-specific verification is owned by node definitions", () => {
 
 test("loop control bodies do not require return edges", () => {
 	const sharedSource = read(join(appRoot, "data", "nodes", "definitions", "shared.ts"));
-	const loopSource = read(join(appRoot, "data", "nodes", "definitions", "control", "loop.ts"));
+	const repeatSource = read(join(appRoot, "data", "nodes", "definitions", "control", "repeat.ts"));
+	const breakSource = read(join(appRoot, "data", "nodes", "definitions", "control", "break-loop.ts"));
+	const continueSource = read(join(appRoot, "data", "nodes", "definitions", "control", "continue-loop.ts"));
 	const whileSource = read(join(appRoot, "data", "nodes", "definitions", "control", "while.ts"));
 	const forEachSource = read(join(appRoot, "data", "nodes", "definitions", "control", "for-each.ts"));
 	const inspectorSource = read(join(appRoot, "components", "inspector", "inspector.tsx"));
 	const helpSource = read(join(appRoot, "components", "modals", "help-modal.tsx"));
 
-	for (const source of [sharedSource, loopSource, whileSource, forEachSource, inspectorSource, helpSource]) {
+	for (const source of [sharedSource, repeatSource, whileSource, forEachSource, inspectorSource, helpSource]) {
 		assert.equal(/eventually return|flow back to the loop input|must connect its loop output back/.test(source), false);
 	}
 
 	assert.match(sharedSource, /validateLoopBodyDoesNotReturn/);
-	assert.match(loopSource, /validateLoopBodyDoesNotReturn\(node\.id,\s*context\.edges,\s*"loop"\)/);
+	assert.match(sharedSource, /validateLoopControlPlacement/);
+	assert.match(repeatSource, /validateLoopBodyDoesNotReturn\(node\.id,\s*context\.edges,\s*"repeat"\)/);
 	assert.match(whileSource, /validateLoopBodyDoesNotReturn\(node\.id,\s*context\.edges,\s*"loop"\)/);
 	assert.match(forEachSource, /validateLoopBodyDoesNotReturn\(node\.id,\s*context\.edges,\s*"loop"\)/);
-	assert.match(inspectorSource, /do not connect it\s+back to the loop input/);
+	assert.match(breakSource, /validateLoopControlPlacement/);
+	assert.match(continueSource, /validateLoopControlPlacement/);
+	assert.match(inspectorSource, /do not connect it\s+back to the Repeat input/);
 	assert.match(helpSource, /body branch should end naturally/);
 });
 

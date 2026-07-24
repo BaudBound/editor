@@ -1207,11 +1207,11 @@ function NodeSpecificHelp({ actionType }: { actionType: ActionType }) {
 		);
 	}
 
-	if (actionType === "control.loop") {
+	if (actionType === "control.repeat") {
 		return (
 			<p className="mb-3 rounded border border-baud-border bg-baud-soft px-3 py-2 text-xs leading-4 text-baud-muted">
-				The loop output runs the repeated body once per iteration. Let the body branch end naturally; do not connect it
-				back to the loop input. The done output runs after all iterations complete.
+				The repeat output runs the body once per iteration. Let the body branch end naturally and do not connect it back
+				to the Repeat input. The done output runs after all iterations complete.
 			</p>
 		);
 	}

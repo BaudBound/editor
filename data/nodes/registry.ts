@@ -60,10 +60,12 @@ import { variableOperationNode } from "./definitions/actions/variable-operation"
 import { webhookResponseNode } from "./definitions/actions/webhook-response";
 import { websocketWriteNode } from "./definitions/actions/websocket-write";
 import { windowFocusNode } from "./definitions/actions/window-focus";
+import { breakLoopNode } from "./definitions/control/break-loop";
 import { colorMatchNode } from "./definitions/control/color-match";
+import { continueLoopNode } from "./definitions/control/continue-loop";
 import { forEachNode } from "./definitions/control/for-each";
 import { ifElseNode } from "./definitions/control/if-else";
-import { loopNode } from "./definitions/control/loop";
+import { repeatNode } from "./definitions/control/repeat";
 import { switchNode } from "./definitions/control/switch";
 import { whileNode } from "./definitions/control/while";
 import { createSwitchOutputPorts, getSwitchCaseRowsFromValue } from "./definitions/rows";
@@ -101,9 +103,11 @@ const nodeDefinitions: NodeDefinition[] = [
 	colorMatchNode,
 	ifElseNode,
 	switchNode,
-	loopNode,
+	repeatNode,
 	whileNode,
 	forEachNode,
+	breakLoopNode,
+	continueLoopNode,
 	variableOperationNode,
 	calculateNode,
 	formatTextNode,

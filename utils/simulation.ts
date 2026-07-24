@@ -61,7 +61,7 @@ type SimulationFrame =
 			nodeId: string;
 	  }
 	| {
-			kind: "loop";
+			kind: "repeat";
 			count: bigint;
 			index: bigint;
 			nodeId: string;
@@ -233,8 +233,8 @@ async function processSimulationFrame(context: SimulationContext, frame: Simulat
 		return;
 	}
 
-	if (frame.kind === "loop") {
-		await processLoopFrame(context, frames, frame);
+	if (frame.kind === "repeat") {
+		await processRepeatFrame(context, frames, frame);
 		return;
 	}
 
@@ -266,6 +266,11 @@ async function executeNodeFrame(
 			level: "error",
 			message: `[Simulation] Missing target node ${nodeId}; branch stopped.`,
 		});
+		return;
+	}
+
+	if (node.data.actionType === "control.break_loop" || node.data.actionType === "control.continue_loop") {
+		await processLoopControlNode(node, context, frames);
 		return;
 	}
 
@@ -347,9 +352,9 @@ async function executeNodeFrame(
 		await pushOutputLog(context, log);
 	}
 
-	if (node.data.actionType === "control.loop") {
+	if (node.data.actionType === "control.repeat") {
 		const count = normalizeIterationCount(resolveTemplate(getConfigString(node, "count"), context));
-		frames.push({ kind: "loop", nodeId: node.id, index: BigInt(0), count });
+		frames.push({ kind: "repeat", nodeId: node.id, index: BigInt(0), count });
 		return;
 	}
 
@@ -376,16 +381,16 @@ async function executeNodeFrame(
 	frames.push({ kind: "follow", sourceNodeId: node.id, handle });
 }
 
-async function processLoopFrame(
+async function processRepeatFrame(
 	context: SimulationContext,
 	frames: SimulationFrame[],
-	frame: Extract<SimulationFrame, { kind: "loop" }>,
+	frame: Extract<SimulationFrame, { kind: "repeat" }>,
 ) {
 	const node = context.nodesById.get(frame.nodeId);
 	if (!node) {
 		await pushStep(context, {
 			level: "error",
-			message: `[Simulation] Missing loop node ${frame.nodeId}; branch stopped.`,
+			message: `[Simulation] Missing Repeat node ${frame.nodeId}; branch stopped.`,
 		});
 		return;
 	}
@@ -397,10 +402,57 @@ async function processLoopFrame(
 
 	await pushStep(context, {
 		level: "info",
-		message: `[Simulation] Loop ${node.id} iteration ${frame.index + BigInt(1)} of ${frame.count}.`,
+		message: `[Simulation] Repeat ${node.id} iteration ${frame.index + BigInt(1)} of ${frame.count}.`,
 	});
-	frames.push({ kind: "loop", nodeId: node.id, index: frame.index + BigInt(1), count: frame.count });
-	frames.push({ kind: "follow", sourceNodeId: node.id, handle: "loop", stopAtNodeId: node.id });
+	frames.push({ kind: "repeat", nodeId: node.id, index: frame.index + BigInt(1), count: frame.count });
+	frames.push({ kind: "follow", sourceNodeId: node.id, handle: "repeat", stopAtNodeId: node.id });
+}
+
+async function processLoopControlNode(
+	node: Node<ScriptNodeData>,
+	context: SimulationContext,
+	frames: SimulationFrame[],
+) {
+	const loopFrameIndex = findActiveLoopFrameIndex(frames);
+	if (loopFrameIndex === -1) {
+		context.failed = true;
+		await pushStep(context, {
+			level: "error",
+			message: `[Simulation] ${node.data.label} (${node.id}) is not inside an active loop.`,
+		});
+		return;
+	}
+
+	const loopFrame = frames[loopFrameIndex];
+	if (!loopFrame || !isLoopFrame(loopFrame)) {
+		return;
+	}
+
+	if (node.data.actionType === "control.break_loop") {
+		frames.length = loopFrameIndex;
+		frames.push({ kind: "follow", sourceNodeId: loopFrame.nodeId, handle: "done" });
+		await pushStep(context, {
+			level: "info",
+			message: `[Simulation] Break Loop (${node.id}) exited loop ${loopFrame.nodeId}.`,
+		});
+		return;
+	}
+
+	frames.length = loopFrameIndex + 1;
+	await pushStep(context, {
+		level: "info",
+		message: `[Simulation] Continue Loop (${node.id}) advanced loop ${loopFrame.nodeId}.`,
+	});
+}
+
+function findActiveLoopFrameIndex(frames: SimulationFrame[]) {
+	return frames.findLastIndex(isLoopFrame);
+}
+
+function isLoopFrame(
+	frame: SimulationFrame,
+): frame is Extract<SimulationFrame, { kind: "for_each" | "repeat" | "while" }> {
+	return frame.kind === "repeat" || frame.kind === "while" || frame.kind === "for_each";
 }
 
 async function processWhileFrame(

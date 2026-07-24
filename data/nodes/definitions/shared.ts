@@ -1,4 +1,5 @@
-import type { JsonValue } from "@/lib/types";
+import type { Edge, Node } from "@xyflow/react";
+import type { JsonValue, ScriptNodeData } from "@/lib/types";
 import { booleanConditionOperatorOptions, comparisonOperatorOptions } from "./options";
 import { isConditionRow } from "./rows";
 
@@ -16,6 +17,35 @@ export function validateLoopBodyDoesNotReturn(
 	}
 
 	return [];
+}
+
+export function validateLoopControlPlacement(
+	controlNodeId: string,
+	nodes: Node<ScriptNodeData>[],
+	edges: Edge[],
+	label: string,
+) {
+	for (const node of nodes) {
+		const bodyHandle = getLoopBodyHandle(node.data.actionType);
+		if (!bodyHandle) {
+			continue;
+		}
+
+		const bodyStarts = edges.filter((edge) => edge.source === node.id && edge.sourceHandle === bodyHandle);
+		if (bodyStarts.some((edge) => canReachNode(edge.target, controlNodeId, edges))) {
+			return [];
+		}
+	}
+
+	return [`${controlNodeId} ${label} must be connected inside a Repeat, While, or For Each body.`];
+}
+
+function getLoopBodyHandle(actionType: string) {
+	if (actionType === "control.repeat") {
+		return "repeat";
+	}
+
+	return actionType === "control.while" || actionType === "control.for_each" ? "loop" : null;
 }
 
 function canReachNode(startNodeId: string, targetNodeId: string, edges: { source: string; target: string }[]) {
