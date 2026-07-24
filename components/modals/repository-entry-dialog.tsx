@@ -52,6 +52,7 @@ export function RepositoryEntryDialog({
 	const [repositoryDescription, setRepositoryDescription] = useState("");
 	const [repositoryHomepage, setRepositoryHomepage] = useState("");
 	const [packageUrl, setPackageUrl] = useState("");
+	const [loadedPackageUrl, setLoadedPackageUrl] = useState("");
 	const [releaseNotes, setReleaseNotes] = useState("");
 	const [releaseNotesTab, setReleaseNotesTab] = useState<ReleaseNotesTab>("editor");
 	const [repositoryJson, setRepositoryJson] = useState("");
@@ -70,6 +71,7 @@ export function RepositoryEntryDialog({
 		setRepositoryDescription("");
 		setRepositoryHomepage("");
 		setPackageUrl("");
+		setLoadedPackageUrl("");
 		setReleaseNotes("");
 		setReleaseNotesTab("editor");
 		setRepositoryJson("");
@@ -162,6 +164,10 @@ export function RepositoryEntryDialog({
 			setRepositoryName(repository.name);
 			setRepositoryDescription(repository.description ?? "");
 			setRepositoryHomepage(repository.homepage ?? "");
+			const existingScript = repository.scripts.find((script) => script.script_id === generatedPackage.scriptId);
+			const existingPackageUrl = existingScript?.latest.package_url ?? "";
+			setPackageUrl(existingPackageUrl);
+			setLoadedPackageUrl(existingPackageUrl);
 		} catch (reason) {
 			setError(
 				reason instanceof Error
@@ -241,6 +247,12 @@ export function RepositoryEntryDialog({
 								/>
 								{packageUrl && packageUrlError ? (
 									<p className="mt-1 text-xs text-baud-danger">{packageUrlError}</p>
+								) : null}
+								{loadedPackageUrl && !packageUrlError && packageUrl === loadedPackageUrl ? (
+									<p className="mt-1 text-xs text-baud-amber">
+										This is the package URL from the loaded repository. Change it to the new .bbs package URL before
+										publishing the updated repository.
+									</p>
 								) : null}
 							</Field>
 						</div>
