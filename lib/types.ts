@@ -258,6 +258,18 @@ export type SimulationTriggerPayload = {
 	windowTitle?: string;
 };
 
+export type SimulationTriggerInputRow = {
+	id: string;
+	name: string;
+	value: string;
+};
+
+export type SimulationTriggerInputDraft = {
+	headers: SimulationTriggerInputRow[];
+	payload: SimulationTriggerPayload;
+	query: SimulationTriggerInputRow[];
+};
+
 export type SimulationVariableSnapshot = {
 	name: string;
 	source: "runtime" | "persistent" | "node_output" | "secret";

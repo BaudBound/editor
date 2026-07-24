@@ -1,6 +1,7 @@
 "use client";
 
 import { type KeyboardEvent, type ReactNode, useMemo, useRef, useState } from "react";
+import { normalizeIndexedVariableReference } from "@/data/project/variables";
 import { cn } from "@/lib/utils";
 
 export type VariableCompletion = {
@@ -50,7 +51,10 @@ export function VariableCodeInput({
 	const lineCount = Math.max(1, value.split("\n").length);
 	const lineNumberWidth = `calc(${String(lineCount).length}ch + 1.5rem)`;
 	const textLayerStyle = multiline ? { paddingLeft: `calc(${lineNumberWidth} + 0.625rem)` } : undefined;
-	const variableNames = useMemo(() => new Set(variables.map((variable) => variable.name)), [variables]);
+	const variableNames = useMemo(
+		() => new Set(variables.map((variable) => normalizeIndexedVariableReference(variable.name))),
+		[variables],
+	);
 	const completion = getCompletionState(value, caretPosition);
 	const suggestions = completion ? getSuggestions(variables, completion.query) : [];
 	const showSuggestions = isFocused && !!completion && suggestions.length > 0;
@@ -290,7 +294,7 @@ function renderHighlightedValue(value: string, variableNames: ReadonlySet<string
 		const name = token.slice(2, -2);
 		const normalizedName = name.trim();
 		const hasSpacing = name !== normalizedName;
-		const known = variableNames.has(normalizedName);
+		const known = variableNames.has(normalizeIndexedVariableReference(normalizedName));
 
 		elements.push(
 			<span

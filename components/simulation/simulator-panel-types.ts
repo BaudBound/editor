@@ -5,6 +5,7 @@ import type {
 	SimulationOverrideOutcome,
 	SimulationRunStatus,
 	SimulationSettings,
+	SimulationTriggerInputDraft,
 	SimulationTriggerPayload,
 } from "@/lib/types";
 
@@ -14,6 +15,7 @@ export type SimulatorPanelProps = {
 	overrides: SimulationOverride[];
 	settings: SimulationSettings;
 	status: SimulationRunStatus;
+	triggerInputDrafts: Record<string, SimulationTriggerInputDraft>;
 	onAddOverride: (nodeId: string) => void;
 	onRemoveOverride: (nodeId: string) => void;
 	onSettingsChange: (settings: SimulationSettings) => void;
@@ -21,6 +23,7 @@ export type SimulatorPanelProps = {
 	onStopSimulation: () => void;
 	onStopScheduleSimulation: (triggerNodeId: string) => void;
 	onTriggerSimulation: (triggerNodeId: string, payload: SimulationTriggerPayload) => void;
+	onTriggerInputDraftChange: (triggerNodeId: string, draft: SimulationTriggerInputDraft) => void;
 	onUpdateOverride: (nodeId: string, outcome: SimulationOverrideOutcome) => void;
 };
 

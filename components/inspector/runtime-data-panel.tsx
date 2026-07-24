@@ -1,6 +1,7 @@
 import type { Node } from "@xyflow/react";
 import { ChevronDown } from "lucide-react";
 import { CopyTextButton } from "@/components/common/copy-text-button";
+import { createRuntimeOutputFieldReference } from "@/data/project/variables";
 import type { ScriptNodeData } from "@/lib/types";
 
 type RuntimeDataPanelProps = {
@@ -37,7 +38,11 @@ export function RuntimeDataPanel({ selectedNode }: RuntimeDataPanelProps) {
 								{output.fields && (
 									<div className="mt-2 space-y-1 rounded border border-baud-border bg-baud-panel/70 p-2">
 										{output.fields.map((field) => {
-											const reference = `${selectedNode.id}.${output.name}.${field.name}`;
+											const reference = createRuntimeOutputFieldReference(
+												`${selectedNode.id}.${output.name}`,
+												output.type,
+												field.name,
+											);
 
 											return (
 												<div

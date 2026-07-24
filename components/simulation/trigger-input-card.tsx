@@ -1,21 +1,27 @@
 import type { Node } from "@xyflow/react";
 import { Play } from "lucide-react";
-import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OptionCombobox } from "@/components/ui/option-combobox";
 import { Textarea } from "@/components/ui/textarea";
 import { fileWatchEventOptions, httpMethodOptions } from "@/data/nodes/definitions/options";
 import type { HeaderRow } from "@/data/nodes/definitions/rows";
-import type { ScriptNodeData, SimulationRunStatus, SimulationTriggerPayload } from "@/lib/types";
+import type {
+	ScriptNodeData,
+	SimulationRunStatus,
+	SimulationTriggerInputDraft,
+	SimulationTriggerPayload,
+} from "@/lib/types";
 import { KeyValueRowsEditor } from "./key-value-rows-editor";
 import { ScheduleTriggerStatus } from "./schedule-trigger-status";
 import { createDefaultTriggerPayload, createDefaultWebhookHeaders, createTriggerPayload } from "./trigger-payload";
 
 type TriggerInputCardProps = {
 	activeScheduleTriggerId: string | null;
+	draft?: SimulationTriggerInputDraft;
 	status: SimulationRunStatus;
 	triggerNode: Node<ScriptNodeData>;
+	onDraftChange: (triggerNodeId: string, draft: SimulationTriggerInputDraft) => void;
 	onStartSchedule: (triggerNodeId: string) => void;
 	onStopSchedule: (triggerNodeId: string) => void;
 	onTrigger: (triggerNodeId: string, payload: SimulationTriggerPayload) => void;
@@ -23,24 +29,28 @@ type TriggerInputCardProps = {
 
 export function TriggerInputCard({
 	activeScheduleTriggerId,
+	draft: storedDraft,
 	status,
 	triggerNode,
+	onDraftChange,
 	onStartSchedule,
 	onStopSchedule,
 	onTrigger,
 }: TriggerInputCardProps) {
-	const [payload, setPayload] = useState<SimulationTriggerPayload>(() => createDefaultTriggerPayload(triggerNode));
-	const [webhookHeaders, setWebhookHeaders] = useState<HeaderRow[]>(() => createDefaultWebhookHeaders());
-	const [webhookQuery, setWebhookQuery] = useState<HeaderRow[]>(() => []);
-
-	useEffect(() => {
-		setPayload(createDefaultTriggerPayload(triggerNode));
-		setWebhookHeaders(createDefaultWebhookHeaders());
-		setWebhookQuery([]);
-	}, [triggerNode]);
+	const draft: SimulationTriggerInputDraft = storedDraft ?? {
+		headers: createDefaultWebhookHeaders(),
+		payload: createDefaultTriggerPayload(triggerNode),
+		query: [],
+	};
+	const payload = draft.payload;
+	const webhookHeaders = draft.headers;
+	const webhookQuery = draft.query;
 
 	const updatePayload = (key: keyof SimulationTriggerPayload, value: string) => {
-		setPayload((currentPayload) => ({ ...currentPayload, [key]: value }));
+		onDraftChange(triggerNode.id, {
+			...draft,
+			payload: { ...payload, [key]: value },
+		});
 	};
 	const handleTrigger = () => {
 		onTrigger(triggerNode.id, createTriggerPayload(triggerNode, payload, webhookHeaders, webhookQuery));
@@ -111,7 +121,7 @@ export function TriggerInputCard({
 						rows={webhookQuery}
 						title="Query"
 						valuePlaceholder="Value"
-						onChange={setWebhookQuery}
+						onChange={(query: HeaderRow[]) => onDraftChange(triggerNode.id, { ...draft, query })}
 					/>
 					<KeyValueRowsEditor
 						addLabel="Add header"
@@ -120,7 +130,7 @@ export function TriggerInputCard({
 						rows={webhookHeaders}
 						title="Headers"
 						valuePlaceholder="Value"
-						onChange={setWebhookHeaders}
+						onChange={(headers: HeaderRow[]) => onDraftChange(triggerNode.id, { ...draft, headers })}
 					/>
 					<div>
 						<span className="mb-1 block font-mono text-xs text-baud-muted">Body</span>
@@ -150,7 +160,7 @@ export function TriggerInputCard({
 						rows={webhookQuery}
 						title="Query"
 						valuePlaceholder="Value"
-						onChange={setWebhookQuery}
+						onChange={(query: HeaderRow[]) => onDraftChange(triggerNode.id, { ...draft, query })}
 					/>
 					<KeyValueRowsEditor
 						addLabel="Add header"
@@ -159,7 +169,7 @@ export function TriggerInputCard({
 						rows={webhookHeaders}
 						title="Headers"
 						valuePlaceholder="Value"
-						onChange={setWebhookHeaders}
+						onChange={(headers: HeaderRow[]) => onDraftChange(triggerNode.id, { ...draft, headers })}
 					/>
 					<div>
 						<span className="mb-1 block font-mono text-xs text-baud-muted">Message</span>

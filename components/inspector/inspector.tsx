@@ -61,6 +61,7 @@ import type {
 	SimulationOverrideOutcome,
 	SimulationRunStatus,
 	SimulationSettings,
+	SimulationTriggerInputDraft,
 	SimulationTriggerPayload,
 } from "@/lib/types";
 import { PanelCollapseButton } from "../shell/panel-collapse-button";
@@ -84,6 +85,7 @@ type InspectorProps = {
 	simulationOverrides: SimulationOverride[];
 	simulationSettings: SimulationSettings;
 	simulationStatus: SimulationRunStatus;
+	simulationTriggerInputDrafts: Record<string, SimulationTriggerInputDraft>;
 	variables: EditorVariable[];
 	width: number;
 	collapsed: boolean;
@@ -95,6 +97,7 @@ type InspectorProps = {
 	onStopScheduleSimulation: (triggerNodeId: string) => void;
 	onTabChange: (tab: InspectorTab) => void;
 	onTriggerSimulation: (triggerNodeId: string, payload: SimulationTriggerPayload) => void;
+	onTriggerSimulationInputChange: (triggerNodeId: string, draft: SimulationTriggerInputDraft) => void;
 	onUpdateNodeConfig: (nodeId: string, key: string, value: JsonValue) => void;
 	onUpdateSimulationOverride: (nodeId: string, outcome: SimulationOverrideOutcome) => void;
 	onDeleteNode: (nodeId: string) => void;
@@ -115,6 +118,7 @@ export function Inspector({
 	simulationOverrides,
 	simulationSettings,
 	simulationStatus,
+	simulationTriggerInputDrafts,
 	variables,
 	width,
 	collapsed,
@@ -126,6 +130,7 @@ export function Inspector({
 	onStopScheduleSimulation,
 	onTabChange,
 	onTriggerSimulation,
+	onTriggerSimulationInputChange,
 	onUpdateNodeConfig,
 	onUpdateSimulationOverride,
 	onDeleteEdge,
@@ -201,6 +206,7 @@ export function Inspector({
 						overrides={simulationOverrides}
 						settings={simulationSettings}
 						status={simulationStatus}
+						triggerInputDrafts={simulationTriggerInputDrafts}
 						onAddOverride={onAddSimulationOverride}
 						onRemoveOverride={onRemoveSimulationOverride}
 						onSettingsChange={onSimulationSettingsChange}
@@ -208,6 +214,7 @@ export function Inspector({
 						onStopSimulation={onStopSimulation}
 						onStopScheduleSimulation={onStopScheduleSimulation}
 						onTriggerSimulation={onTriggerSimulation}
+						onTriggerInputDraftChange={onTriggerSimulationInputChange}
 						onUpdateOverride={onUpdateSimulationOverride}
 					/>
 				)}

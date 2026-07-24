@@ -62,6 +62,7 @@ import type {
 	SimulationRunStatus,
 	SimulationSettings,
 	SimulationTraceEntry,
+	SimulationTriggerInputDraft,
 	SimulationTriggerPayload,
 	SimulationVariableSnapshot,
 } from "@/lib/types";
@@ -204,6 +205,9 @@ export function EditorPage({
 		speed: "instant",
 	});
 	const [simulationOverrides, setSimulationOverrides] = useState<SimulationOverride[]>([]);
+	const [simulationTriggerInputDrafts, setSimulationTriggerInputDrafts] = useState<
+		Record<string, SimulationTriggerInputDraft>
+	>({});
 	const [simulationStatus, setSimulationStatus] = useState<SimulationRunStatus>("idle");
 	const [activeScheduleTriggerId, setActiveScheduleTriggerId] = useState<string | null>(null);
 	const [simulationLogs, setSimulationLogs] = useState<SimulationTraceEntry[]>([]);
@@ -1324,6 +1328,7 @@ export function EditorPage({
 					simulationOverrides={simulationOverrides}
 					simulationSettings={simulationSettings}
 					simulationStatus={simulationStatus}
+					simulationTriggerInputDrafts={simulationTriggerInputDrafts}
 					variables={variableEntries}
 					width={sizes.right}
 					collapsed={collapsed.right}
@@ -1334,6 +1339,9 @@ export function EditorPage({
 					onStopSimulation={handleStopSimulation}
 					onStopScheduleSimulation={handleStopScheduleSimulation}
 					onTriggerSimulation={handleTriggerSimulation}
+					onTriggerSimulationInputChange={(triggerNodeId, draft) =>
+						setSimulationTriggerInputDrafts((current) => ({ ...current, [triggerNodeId]: draft }))
+					}
 					onTabChange={setActiveTab}
 					onUpdateNodeConfig={handleUpdateNodeConfig}
 					onUpdateSimulationOverride={handleUpdateSimulationOverride}

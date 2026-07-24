@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { parseAbsoluteUrl } from "../../data/nodes/definitions/actions/parse-url";
+import { createRuntimeOutputFieldReference, normalizeIndexedVariableReference } from "../../data/project/variables";
 
 test("parses standard and custom absolute URLs", () => {
 	expect(parseAbsoluteUrl("https://nat.gg:8443/test?param=value1&tag=one&tag=two#result")).toEqual({
@@ -50,4 +51,12 @@ test("rejects relative and malformed URLs", () => {
 	for (const value of ["", "/relative/path?param=value", "https://[invalid"]) {
 		expect(parseAbsoluteUrl(value).ok).toBe(false);
 	}
+});
+
+test("normalizes valid list indexes for variable reference matching", () => {
+	expect(normalizeIndexedVariableReference("node.query_parameters[0].name")).toBe("node.query_parameters[0].name");
+	expect(normalizeIndexedVariableReference("node.query_parameters[42].value")).toBe("node.query_parameters[0].value");
+	expect(createRuntimeOutputFieldReference("node.query_parameters", "list", "name")).toBe(
+		"node.query_parameters[0].name",
+	);
 });

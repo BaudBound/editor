@@ -12,6 +12,7 @@ export function SimulatorPanel({
 	overrides,
 	settings,
 	status,
+	triggerInputDrafts,
 	onAddOverride,
 	onRemoveOverride,
 	onSettingsChange,
@@ -19,6 +20,7 @@ export function SimulatorPanel({
 	onStopSimulation,
 	onStopScheduleSimulation,
 	onTriggerSimulation,
+	onTriggerInputDraftChange,
 	onUpdateOverride,
 }: SimulatorPanelProps) {
 	const overrideNodeIds = new Set(overrides.map((override) => override.nodeId));
@@ -102,9 +104,11 @@ export function SimulatorPanel({
 								activeScheduleTriggerId={activeScheduleTriggerId}
 								status={status}
 								triggerNode={triggerNode}
+								draft={triggerInputDrafts[triggerNode.id]}
 								onStartSchedule={onStartScheduleSimulation}
 								onStopSchedule={onStopScheduleSimulation}
 								onTrigger={onTriggerSimulation}
+								onDraftChange={onTriggerInputDraftChange}
 							/>
 						))}
 					</div>

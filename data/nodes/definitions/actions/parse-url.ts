@@ -54,6 +54,20 @@ export const parseUrlNode = defineNode({
 			type: "list",
 			description: "Ordered query parameters as objects containing name and value fields.",
 			example: "n-mr3zyt6f-18.query_parameters",
+			fields: [
+				{
+					name: "name",
+					type: "string",
+					description: "Name of the query parameter at the selected list index.",
+					example: "n-mr3zyt6f-18.query_parameters[0].name",
+				},
+				{
+					name: "value",
+					type: "string",
+					description: "Value of the query parameter at the selected list index.",
+					example: "n-mr3zyt6f-18.query_parameters[0].value",
+				},
+			],
 		},
 		{
 			name: "fragment",

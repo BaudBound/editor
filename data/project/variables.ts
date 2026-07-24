@@ -359,6 +359,14 @@ export function normalizeVariableReferenceName(name: string) {
 	return templateMatch ? templateMatch[1].trim() : trimmed;
 }
 
+export function normalizeIndexedVariableReference(name: string) {
+	return name.replace(/\[(?:0|[1-9]\d*)\]/g, "[0]");
+}
+
+export function createRuntimeOutputFieldReference(outputName: string, outputType: RuntimeDataType, fieldName: string) {
+	return outputType === "list" ? `${outputName}[0].${fieldName}` : `${outputName}.${fieldName}`;
+}
+
 export function createNodeOutputVariables(nodes: Node<ScriptNodeData>[]): EditorVariable[] {
 	return nodes.flatMap((node) =>
 		(node.data.runtimeOutputs ?? []).flatMap((output) => {
@@ -375,7 +383,7 @@ export function createNodeOutputVariables(nodes: Node<ScriptNodeData>[]): Editor
 			};
 			const fieldVariables =
 				output.fields?.map((field) => {
-					const fieldName = `${outputName}.${field.name}`;
+					const fieldName = createRuntimeOutputFieldReference(outputName, output.type, field.name);
 					return {
 						description: field.description,
 						name: fieldName,
