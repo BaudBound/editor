@@ -100,6 +100,7 @@ export function createScriptPackageFilename(name: string, version: string) {
 export async function createScriptRepositoryDocument(params: {
 	bytes: Uint8Array;
 	capabilities: CapabilitySummary[];
+	existingRepository?: ScriptRepositoryDocument;
 	packageUrl: string;
 	permissions: PermissionSummary[];
 	projectSettings: ProjectSettings;
@@ -117,6 +118,12 @@ export async function createScriptRepositoryDocument(params: {
 	if (versionError) throw new Error(versionError);
 	if (!uuidPattern.test(params.scriptId)) throw new Error("Project ID must be a UUID.");
 	if (params.bytes.byteLength === 0) throw new Error("The generated package is empty.");
+	if (params.existingRepository) {
+		const existingErrors = validateScriptRepositoryDocument(params.existingRepository);
+		if (existingErrors.length > 0) {
+			throw new Error(`Existing repository is invalid. ${existingErrors.join(" ")}`);
+		}
+	}
 	validateBoundedText("Repository name", params.repositoryName, 160, false);
 	validateBoundedText("Repository description", params.repositoryDescription, 4_000, true);
 	validateBoundedText("Release notes", params.releaseNotes, MAX_RELEASE_NOTES_BYTES, true);
@@ -132,37 +139,43 @@ export async function createScriptRepositoryDocument(params: {
 	const author = settings.author.trim();
 	const website = settings.website.trim();
 	const source = settings.source.trim();
+	const script: ScriptRepositoryEntry = {
+		script_id: params.scriptId,
+		name: settings.name.trim(),
+		summary: repositorySummary(settings.name, description),
+		...(description ? { description } : {}),
+		...(author ? { author } : {}),
+		...(website ? { website } : {}),
+		...(source ? { source } : {}),
+		target_runtimes: [...settings.targetRuntimes],
+		minimum_runner_version: settings.minimumRunnerVersion,
+		risk_level: params.riskLevel,
+		tags: [...settings.tags],
+		permissions: params.permissions.map((permission) => permission.name),
+		capabilities: params.capabilities.map((capability) => capability.name),
+		latest: {
+			version: settings.version,
+			package_url: params.packageUrl.trim(),
+			sha256: await sha256Hex(params.bytes),
+			size: params.bytes.byteLength,
+			published_at: (params.publishedAt ?? new Date()).toISOString(),
+			release_notes: params.releaseNotes,
+		},
+	};
+	const scripts = params.existingRepository ? [...params.existingRepository.scripts] : [];
+	const existingScriptIndex = scripts.findIndex((entry) => entry.script_id === params.scriptId);
+	if (existingScriptIndex === -1) {
+		scripts.push(script);
+	} else {
+		scripts[existingScriptIndex] = script;
+	}
 	const repository: ScriptRepositoryDocument = {
 		format: SCRIPT_REPOSITORY_FORMAT,
 		format_version: SCRIPT_REPOSITORY_FORMAT_VERSION,
 		name: params.repositoryName.trim(),
 		...(params.repositoryDescription.trim() ? { description: params.repositoryDescription.trim() } : {}),
 		...(repositoryHomepage ? { homepage: repositoryHomepage } : {}),
-		scripts: [
-			{
-				script_id: params.scriptId,
-				name: settings.name.trim(),
-				summary: repositorySummary(settings.name, description),
-				...(description ? { description } : {}),
-				...(author ? { author } : {}),
-				...(website ? { website } : {}),
-				...(source ? { source } : {}),
-				target_runtimes: [...settings.targetRuntimes],
-				minimum_runner_version: settings.minimumRunnerVersion,
-				risk_level: params.riskLevel,
-				tags: [...settings.tags],
-				permissions: params.permissions.map((permission) => permission.name),
-				capabilities: params.capabilities.map((capability) => capability.name),
-				latest: {
-					version: settings.version,
-					package_url: params.packageUrl.trim(),
-					sha256: await sha256Hex(params.bytes),
-					size: params.bytes.byteLength,
-					published_at: (params.publishedAt ?? new Date()).toISOString(),
-					release_notes: params.releaseNotes,
-				},
-			},
-		],
+		scripts,
 	};
 
 	const errors = validateScriptRepositoryDocument(repository);

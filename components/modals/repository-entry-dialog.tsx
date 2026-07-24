@@ -2,8 +2,8 @@
 
 import { json } from "@codemirror/lang-json";
 import CodeMirror from "@uiw/react-codemirror";
-import { Check, Copy, FileJson, X } from "lucide-react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { Check, Copy, Download, FileJson, FolderOpen, X } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -14,8 +14,12 @@ import type { CapabilitySummary, PermissionSummary, ProjectSettings, RiskLevel }
 import type { GeneratedBbsPackage } from "@/utils/bbs-package";
 import {
 	createScriptRepositoryDocument,
+	downloadBytes,
 	getDirectPackageUrlError,
 	MAX_RELEASE_NOTES_BYTES,
+	MAX_REPOSITORY_BYTES,
+	type ScriptRepositoryDocument,
+	validateScriptRepositoryDocument,
 } from "@/utils/script-repository";
 
 type RepositoryEntryDialogProps = {
@@ -51,8 +55,10 @@ export function RepositoryEntryDialog({
 	const [releaseNotes, setReleaseNotes] = useState("");
 	const [releaseNotesTab, setReleaseNotesTab] = useState<ReleaseNotesTab>("editor");
 	const [repositoryJson, setRepositoryJson] = useState("");
+	const [existingRepository, setExistingRepository] = useState<ScriptRepositoryDocument | undefined>();
 	const [error, setError] = useState("");
 	const [copied, setCopied] = useState(false);
+	const repositoryFileInputRef = useRef<HTMLInputElement>(null);
 	const packageUrlError = getDirectPackageUrlError(packageUrl);
 
 	useEffect(() => {
@@ -67,6 +73,7 @@ export function RepositoryEntryDialog({
 		setReleaseNotes("");
 		setReleaseNotesTab("editor");
 		setRepositoryJson("");
+		setExistingRepository(undefined);
 		setError("");
 		setCopied(false);
 	}, [open]);
@@ -82,6 +89,7 @@ export function RepositoryEntryDialog({
 		void createScriptRepositoryDocument({
 			bytes: generatedPackage.bytes,
 			capabilities,
+			existingRepository,
 			packageUrl,
 			permissions,
 			projectSettings,
@@ -107,6 +115,7 @@ export function RepositoryEntryDialog({
 		};
 	}, [
 		capabilities,
+		existingRepository,
 		generatedPackage,
 		open,
 		packageUrl,
@@ -132,6 +141,39 @@ export function RepositoryEntryDialog({
 		} catch {
 			setError("The repository JSON could not be copied. Select it in the editor and copy it manually.");
 		}
+	};
+
+	const loadRepositoryJson = async (file: File | undefined) => {
+		if (!file) return;
+		setCopied(false);
+		setError("");
+		try {
+			if (file.size > MAX_REPOSITORY_BYTES) {
+				throw new Error(`Repository JSON cannot exceed ${MAX_REPOSITORY_BYTES} bytes.`);
+			}
+			const source = new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer());
+			const document: unknown = JSON.parse(source);
+			const errors = validateScriptRepositoryDocument(document);
+			if (errors.length > 0) {
+				throw new Error(errors.join(" "));
+			}
+			const repository = document as ScriptRepositoryDocument;
+			setExistingRepository(repository);
+			setRepositoryName(repository.name);
+			setRepositoryDescription(repository.description ?? "");
+			setRepositoryHomepage(repository.homepage ?? "");
+		} catch (reason) {
+			setError(
+				reason instanceof Error
+					? `The repository JSON could not be loaded. ${reason.message}`
+					: "The repository JSON could not be loaded.",
+			);
+		}
+	};
+
+	const downloadRepositoryJson = () => {
+		if (!repositoryJson) return;
+		downloadBytes(new TextEncoder().encode(repositoryJson), "repository.json", "application/json");
 	};
 
 	return (
@@ -274,14 +316,40 @@ export function RepositoryEntryDialog({
 					) : null}
 				</div>
 
-				<div className="flex items-center justify-between gap-4 border-t border-baud-border px-6 py-4">
-					<p className="text-xs text-baud-muted">
-						Copy this document into the repository.json file hosted by the publisher.
-					</p>
-					<Button disabled={!repositoryJson} onClick={() => void copyRepositoryJson()} type="button" variant="primary">
-						{copied ? <Check size={14} /> : <Copy size={14} />}
-						{copied ? "Copied" : "Copy repository JSON"}
-					</Button>
+				<div className="flex flex-wrap items-center justify-between gap-4 border-t border-baud-border px-6 py-4">
+					<div>
+						<input
+							accept=".json,application/json"
+							aria-label="Load existing repository JSON"
+							className="hidden"
+							onChange={(event) => {
+								const file = event.target.files?.[0];
+								event.target.value = "";
+								void loadRepositoryJson(file);
+							}}
+							ref={repositoryFileInputRef}
+							type="file"
+						/>
+						<Button onClick={() => repositoryFileInputRef.current?.click()} type="button" variant="toolbar">
+							<FolderOpen size={14} />
+							Load repository JSON
+						</Button>
+					</div>
+					<div className="flex flex-wrap items-center gap-2">
+						<Button
+							disabled={!repositoryJson}
+							onClick={() => void copyRepositoryJson()}
+							type="button"
+							variant="primary"
+						>
+							{copied ? <Check size={14} /> : <Copy size={14} />}
+							{copied ? "Copied" : "Copy repository JSON"}
+						</Button>
+						<Button disabled={!repositoryJson} onClick={downloadRepositoryJson} type="button" variant="toolbarActive">
+							<Download size={14} />
+							Download repository JSON
+						</Button>
+					</div>
 				</div>
 			</DialogContent>
 		</Dialog>

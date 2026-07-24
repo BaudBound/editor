@@ -141,6 +141,51 @@ test("package filenames contain a safe script name and exact version", async () 
 	assert.throws(() => createScriptPackageFilename("Example", ""), /Script version is required/);
 });
 
+test("repository generation preserves other scripts and replaces the matching script", async () => {
+	const { createScriptRepositoryDocument } = await loadScriptRepositoryUtilities();
+	const createDocument = (scriptId, name, version, existingRepository) =>
+		createScriptRepositoryDocument({
+			bytes: new Uint8Array([1, 2, 3]),
+			capabilities: [{ name: "runtime.variables" }],
+			existingRepository,
+			packageUrl: `https://example.com/packages/${scriptId}/${name.toLowerCase()}-${version}.bbs`,
+			permissions: [{ name: "set_runtime_variable", risk: "low" }],
+			projectSettings: {
+				author: "Example Author",
+				description: `${name} description`,
+				minimumRunnerVersion: "2.0.0",
+				name,
+				repositoryUrl: "https://example.com/repository.json",
+				source: "https://example.com/source",
+				tags: ["example"],
+				targetRuntimes: ["Windows Desktop"],
+				version,
+				website: "https://example.com",
+			},
+			releaseNotes: `${name} ${version}`,
+			repositoryDescription: "Example scripts",
+			repositoryHomepage: "https://example.com",
+			repositoryName: "Example repository",
+			riskLevel: "low",
+			scriptId,
+			publishedAt: new Date("2026-07-24T12:00:00.000Z"),
+		});
+
+	const firstId = "00000000-0000-4000-8000-000000000001";
+	const secondId = "00000000-0000-4000-8000-000000000002";
+	const first = await createDocument(firstId, "First", "1.0.0");
+	const withSecond = await createDocument(secondId, "Second", "1.0.0", first);
+	const updated = await createDocument(firstId, "First updated", "1.1.0", withSecond);
+
+	assert.deepEqual(
+		updated.scripts.map((script) => script.script_id),
+		[firstId, secondId],
+	);
+	assert.equal(updated.scripts[0].name, "First updated");
+	assert.equal(updated.scripts[0].latest.version, "1.1.0");
+	assert.equal(updated.scripts[1].name, "Second");
+});
+
 test("source metadata uses only the current manifest source names", () => {
 	const manifestSchema = JSON.parse(read(join(schemasRoot, "manifest.schema.json")));
 	const builtInSource = read(join(appRoot, "data", "project", "built-in-variables.ts"));

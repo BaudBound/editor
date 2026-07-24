@@ -689,9 +689,10 @@ function SimulationAndExportSection() {
 				<SectionTitle icon={PackageCheck} title="Publishing Updates" />
 				<InfoCard>
 					Set a new semantic version before exporting a changed script. After verification, download the package and
-					create a <Code>{"repository.json"}</Code> entry from the same generated package. Publish the package and
-					repository file through the public HTTPS addresses entered during export. The runner discovers updates but
-					still requires package review and approval.
+					create a <Code>{"repository.json"}</Code> entry from the same generated package. Load an existing repository
+					file to preserve its other scripts and replace this script&apos;s entry. Copy or download the merged
+					repository file, then publish it at the public HTTPS address configured for the project. The runner discovers
+					updates but still requires package review and approval.
 				</InfoCard>
 			</div>
 		</section>
