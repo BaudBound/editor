@@ -1,7 +1,8 @@
 "use client";
 
-import { type KeyboardEvent, type ReactNode, useMemo, useRef, useState } from "react";
-import { normalizeIndexedVariableReference } from "@/data/project/variables";
+import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
+import { getVariableReferenceStatus, type VariableReferenceCandidate } from "@/data/project/variables";
+import type { JsonValue } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export type VariableCompletion = {
@@ -9,7 +10,8 @@ export type VariableCompletion = {
 	name: string;
 	readOnly: boolean;
 	token: string;
-	type: string;
+	type: VariableReferenceCandidate["type"];
+	value?: JsonValue;
 };
 
 type VariableCodeInputProps = {
@@ -51,10 +53,6 @@ export function VariableCodeInput({
 	const lineCount = Math.max(1, value.split("\n").length);
 	const lineNumberWidth = `calc(${String(lineCount).length}ch + 1.5rem)`;
 	const textLayerStyle = multiline ? { paddingLeft: `calc(${lineNumberWidth} + 0.625rem)` } : undefined;
-	const variableNames = useMemo(
-		() => new Set(variables.map((variable) => normalizeIndexedVariableReference(variable.name))),
-		[variables],
-	);
 	const completion = getCompletionState(value, caretPosition);
 	const suggestions = completion ? getSuggestions(variables, completion.query) : [];
 	const showSuggestions = isFocused && !!completion && suggestions.length > 0;
@@ -174,11 +172,7 @@ export function VariableCodeInput({
 							multiline ? "min-h-24" : "h-8 whitespace-pre",
 						)}
 					>
-						{value ? (
-							renderHighlightedValue(value, variableNames)
-						) : (
-							<span className="text-baud-muted">{placeholder}</span>
-						)}
+						{value ? renderHighlightedValue(value, variables) : <span className="text-baud-muted">{placeholder}</span>}
 						{"\n"}
 					</pre>
 					<textarea
@@ -278,7 +272,7 @@ function getSuggestions(variables: VariableCompletion[], query: string) {
 		.slice(0, 12);
 }
 
-function renderHighlightedValue(value: string, variableNames: ReadonlySet<string>) {
+function renderHighlightedValue(value: string, variables: VariableCompletion[]) {
 	const elements: ReactNode[] = [];
 	const variablePattern = /\{\{[^{}]*\}\}/g;
 	let lastIndex = 0;
@@ -294,16 +288,18 @@ function renderHighlightedValue(value: string, variableNames: ReadonlySet<string
 		const name = token.slice(2, -2);
 		const normalizedName = name.trim();
 		const hasSpacing = name !== normalizedName;
-		const known = variableNames.has(normalizeIndexedVariableReference(normalizedName));
+		const status = getVariableReferenceStatus(normalizedName, variables);
+		const displayStatus = status === "known" && hasSpacing ? "possible" : status;
 
 		elements.push(
 			<span
 				key={`variable-${start}`}
+				title={getVariableReferenceTitle(displayStatus, hasSpacing)}
 				className={cn(
 					"rounded px-0.5",
-					known && !hasSpacing && "bg-emerald-400/12 text-emerald-300",
-					known && hasSpacing && "bg-amber-400/12 text-amber-300",
-					!known && "bg-baud-danger/15 text-baud-danger",
+					displayStatus === "known" && "bg-emerald-400/12 text-emerald-300",
+					displayStatus === "possible" && "bg-amber-400/12 text-amber-300",
+					displayStatus === "invalid" && "bg-baud-danger/15 text-baud-danger",
 				)}
 			>
 				{token}
@@ -318,4 +314,20 @@ function renderHighlightedValue(value: string, variableNames: ReadonlySet<string
 	}
 
 	return elements;
+}
+
+function getVariableReferenceTitle(status: "invalid" | "known" | "possible", hasSpacing: boolean) {
+	if (status === "known") {
+		return "This variable reference is known.";
+	}
+
+	if (hasSpacing) {
+		return "Remove the spaces inside this variable reference.";
+	}
+
+	if (status === "possible") {
+		return "This nested path may exist at runtime, but the editor cannot confirm it yet.";
+	}
+
+	return "This variable reference is not available.";
 }

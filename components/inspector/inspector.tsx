@@ -1547,6 +1547,7 @@ function createVariableCompletions(variables: EditorVariable[]): VariableComplet
 			readOnly: variable.read_only,
 			token: variable.token,
 			type: variable.type,
+			value: variable.value,
 		});
 	}
 

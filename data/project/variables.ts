@@ -41,6 +41,10 @@ export type EditorVariable<TValue extends JsonValue | undefined = JsonValue | un
 	value?: TValue;
 };
 
+export type VariableReferenceCandidate = Pick<EditorVariable, "name" | "type" | "value">;
+
+export type VariableReferenceStatus = "invalid" | "known" | "possible";
+
 export const variableTypeDefinitions: Record<VariableType, { description: string; example: string }> = {
 	string: {
 		description: "Plain text. Variables are allowed inside the text.",
@@ -363,6 +367,76 @@ export function normalizeIndexedVariableReference(name: string) {
 	return name.replace(/\[(?:0|[1-9]\d*)\]/g, "[0]");
 }
 
+export function getVariableReferenceStatus(
+	reference: string,
+	variables: readonly VariableReferenceCandidate[],
+): VariableReferenceStatus {
+	const trimmedReference = reference.trim();
+	const normalizedReference = normalizeIndexedVariableReference(trimmedReference);
+	if (!normalizedReference) {
+		return "invalid";
+	}
+
+	const normalizedVariables = variables.map((variable) => ({
+		...variable,
+		normalizedName: normalizeIndexedVariableReference(variable.name),
+	}));
+	if (normalizedVariables.some((variable) => variable.normalizedName === normalizedReference)) {
+		return "known";
+	}
+
+	const parent = normalizedVariables
+		.filter(
+			(variable) =>
+				normalizedReference.startsWith(`${variable.normalizedName}.`) ||
+				normalizedReference.startsWith(`${variable.normalizedName}[`),
+		)
+		.sort((left, right) => right.normalizedName.length - left.normalizedName.length)[0];
+	if (!parent) {
+		return "invalid";
+	}
+
+	const usesOriginalParent =
+		trimmedReference.startsWith(`${parent.name}.`) || trimmedReference.startsWith(`${parent.name}[`);
+	const path = usesOriginalParent
+		? trimmedReference.slice(parent.name.length)
+		: normalizedReference.slice(parent.normalizedName.length);
+	const parts = parseVariableReferencePath(path);
+	if (!parts || !canContainNestedValues(parent.type, parent.value)) {
+		return "invalid";
+	}
+
+	if (parent.value === undefined || parent.value === null) {
+		return "possible";
+	}
+
+	let current: JsonValue | undefined = parent.value;
+	for (const part of parts) {
+		if (current === undefined || current === null || typeof current !== "object") {
+			return "invalid";
+		}
+
+		if (Array.isArray(current)) {
+			if (typeof part !== "number") {
+				return "invalid";
+			}
+			if (part >= current.length) {
+				return "possible";
+			}
+			current = current[part];
+			continue;
+		}
+
+		const key = String(part);
+		if (!(key in current)) {
+			return "possible";
+		}
+		current = current[key];
+	}
+
+	return "known";
+}
+
 export function createRuntimeOutputFieldReference(outputName: string, outputType: RuntimeDataType, fieldName: string) {
 	return outputType === "list" ? `${outputName}[0].${fieldName}` : `${outputName}.${fieldName}`;
 }
@@ -591,6 +665,36 @@ function parseJson(value: string): { ok: true; value: unknown } | { ok: false } 
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function canContainNestedValues(type: EditorVariable["type"], value: JsonValue | undefined) {
+	return (
+		type === "list" ||
+		type === "object" ||
+		type === "http_response" ||
+		type === "http_headers" ||
+		Array.isArray(value) ||
+		isRecord(value)
+	);
+}
+
+function parseVariableReferencePath(path: string): Array<number | string> | null {
+	const parts: Array<number | string> = [];
+	const pattern = /\.([A-Za-z_$][A-Za-z0-9_$]*)|\[((?:0|[1-9][0-9]*))\]/gy;
+	let cursor = 0;
+
+	while (cursor < path.length) {
+		pattern.lastIndex = cursor;
+		const match = pattern.exec(path);
+		if (!match || match.index !== cursor) {
+			return null;
+		}
+
+		parts.push(match[1] ?? Number(match[2]));
+		cursor = pattern.lastIndex;
+	}
+
+	return parts.length > 0 ? parts : null;
 }
 
 function isTemplateReference(value: string) {

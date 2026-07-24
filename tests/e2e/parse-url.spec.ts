@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { parseAbsoluteUrl } from "../../data/nodes/definitions/actions/parse-url";
-import { createRuntimeOutputFieldReference, normalizeIndexedVariableReference } from "../../data/project/variables";
+import {
+	createRuntimeOutputFieldReference,
+	getVariableReferenceStatus,
+	normalizeIndexedVariableReference,
+} from "../../data/project/variables";
 
 test("parses standard and custom absolute URLs", () => {
 	expect(parseAbsoluteUrl("https://nat.gg:8443/test?param=value1&tag=one&tag=two#result")).toEqual({
@@ -59,4 +63,35 @@ test("normalizes valid list indexes for variable reference matching", () => {
 	expect(createRuntimeOutputFieldReference("node.query_parameters", "list", "name")).toBe(
 		"node.query_parameters[0].name",
 	);
+});
+
+test("distinguishes known, possible, and invalid nested variable references", () => {
+	const variables = [
+		{ name: "items", type: "list" as const, value: undefined },
+		{ name: "profile", type: "object" as const, value: { name: "BaudBound" } },
+		{ name: "profile.name", type: "string" as const, value: "BaudBound" },
+		{ name: "message", type: "string" as const, value: "hello" },
+	];
+
+	expect(getVariableReferenceStatus("items", variables)).toBe("known");
+	expect(getVariableReferenceStatus("items[4].name", variables)).toBe("possible");
+	expect(getVariableReferenceStatus("profile.name", variables)).toBe("known");
+	expect(getVariableReferenceStatus("profile.repository.url", variables)).toBe("possible");
+	expect(getVariableReferenceStatus("profile.name.length", variables)).toBe("invalid");
+	expect(getVariableReferenceStatus("message.value", variables)).toBe("invalid");
+	expect(getVariableReferenceStatus("missing.value", variables)).toBe("invalid");
+});
+
+test("uses available list and object values to confirm nested references", () => {
+	const variables = [
+		{
+			name: "items",
+			type: "list" as const,
+			value: [{ details: { enabled: true } }],
+		},
+	];
+
+	expect(getVariableReferenceStatus("items[0].details.enabled", variables)).toBe("known");
+	expect(getVariableReferenceStatus("items[1].details.enabled", variables)).toBe("possible");
+	expect(getVariableReferenceStatus("items.name", variables)).toBe("invalid");
 });
