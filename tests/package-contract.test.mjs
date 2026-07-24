@@ -851,7 +851,7 @@ test("loop control bodies do not require return edges", () => {
 	assert.match(forEachSource, /validateLoopBodyDoesNotReturn\(node\.id,\s*context\.edges,\s*"loop"\)/);
 	assert.match(breakSource, /validateLoopControlPlacement/);
 	assert.match(continueSource, /validateLoopControlPlacement/);
-	assert.match(inspectorSource, /do not connect it\s+back to the Repeat input/);
+	assert.match(inspectorSource, /do not connect it\s+back\s+to the Repeat input/);
 	assert.match(helpSource, /body branch should end naturally/);
 });
 
