@@ -56,28 +56,16 @@ function DialogContent({
 					className,
 				)}
 				onFocusOutside={(event) => {
-					if (isComboboxOutsideEvent(event)) {
-						event.preventDefault();
-						return;
-					}
-
 					onFocusOutside?.(event);
+					event.preventDefault();
 				}}
 				onInteractOutside={(event) => {
-					if (isComboboxOutsideEvent(event)) {
-						event.preventDefault();
-						return;
-					}
-
 					onInteractOutside?.(event);
+					event.preventDefault();
 				}}
 				onPointerDownOutside={(event) => {
-					if (isComboboxOutsideEvent(event)) {
-						event.preventDefault();
-						return;
-					}
-
 					onPointerDownOutside?.(event);
+					event.preventDefault();
 				}}
 				{...props}
 			>
@@ -92,13 +80,6 @@ function DialogContent({
 				)}
 			</DialogPrimitive.Content>
 		</DialogPortal>
-	);
-}
-
-function isComboboxOutsideEvent(event: { target: EventTarget | null }) {
-	return (
-		event.target instanceof Element &&
-		Boolean(event.target.closest("[data-slot='combobox-content'], [data-slot='select-content']"))
 	);
 }
 
