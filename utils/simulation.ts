@@ -42,6 +42,7 @@ const UNSAFE_REGEX_PATTERN =
 
 type SimulationFrame =
 	| {
+			edgeId: string;
 			kind: "edge";
 			handle: string;
 			sourceNodeId: string;
@@ -225,10 +226,15 @@ async function processSimulationFrame(context: SimulationContext, frame: Simulat
 	}
 
 	if (frame.kind === "edge") {
-		await pushStep(context, {
-			level: "debug",
-			message: `[Simulation] Following "${frame.handle}" from ${frame.sourceNodeId} to ${frame.targetNodeId}.`,
-		});
+		await pushStep(
+			context,
+			{
+				level: "debug",
+				message: `[Simulation] Following "${frame.handle}" from ${frame.sourceNodeId} to ${frame.targetNodeId}.`,
+			},
+			[],
+			[frame.edgeId],
+		);
 		frames.push({ kind: "node", nodeId: frame.targetNodeId, stopAtNodeId: frame.stopAtNodeId });
 		return;
 	}
@@ -559,6 +565,7 @@ async function enqueueFollowFrames(
 
 	for (const edge of [...outgoingEdges].reverse()) {
 		frames.push({
+			edgeId: edge.id,
 			kind: "edge",
 			sourceNodeId: node.id,
 			targetNodeId: edge.target,
@@ -1330,12 +1337,16 @@ async function pushStep(
 	context: SimulationContext,
 	trace: SimulationTraceEntry,
 	sideEffects: SimulationSideEffect[] = [],
+	traversedEdgeIds: string[] = [],
 ) {
 	if (trace.level === "error") {
 		context.failed = true;
 	}
 
-	return emitStep(context, createTraceStep(context, truncateTrace(redactTrace(context, trace)), sideEffects));
+	return emitStep(
+		context,
+		createTraceStep(context, truncateTrace(redactTrace(context, trace)), sideEffects, traversedEdgeIds),
+	);
 }
 
 async function pushOutputLog(context: SimulationContext, log: LogEntry) {
@@ -1343,6 +1354,7 @@ async function pushOutputLog(context: SimulationContext, log: LogEntry) {
 		outputLogs: [truncateLog(redactLog(context, log))],
 		sideEffects: [],
 		traces: [],
+		traversedEdgeIds: [],
 		variables: createVariableSnapshot(context),
 	});
 }
@@ -1409,11 +1421,13 @@ function createTraceStep(
 	context: SimulationContext,
 	trace: SimulationTraceEntry,
 	sideEffects: SimulationSideEffect[] = [],
+	traversedEdgeIds: string[] = [],
 ): SimulationStep {
 	return {
 		outputLogs: [],
 		sideEffects,
 		traces: [trace],
+		traversedEdgeIds,
 		variables: createVariableSnapshot(context),
 	};
 }

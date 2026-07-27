@@ -49,11 +49,14 @@ export function createHeaderRow(name = "", value = ""): HeaderRow {
 	};
 }
 
-export function createSwitchOutputPorts(cases: SwitchCaseRow[]) {
-	return cases.map((switchCase, index) => ({
-		id: `case-${switchCase.id}`,
-		label: switchCase.name.trim() || `case ${index + 1}`,
-	}));
+export function createSwitchOutputPorts(cases: SwitchCaseRow[], defaultOutput = "default") {
+	return [
+		...cases.map((switchCase, index) => ({
+			id: `case-${switchCase.id}`,
+			label: switchCase.name.trim() || `case ${index + 1}`,
+		})),
+		{ id: defaultOutput, label: "default" },
+	];
 }
 
 export function isConditionRow(value: JsonValue): value is ConditionRow {

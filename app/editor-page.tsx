@@ -211,6 +211,7 @@ export function EditorPage({
 	const [simulationStatus, setSimulationStatus] = useState<SimulationRunStatus>("idle");
 	const [activeScheduleTriggerId, setActiveScheduleTriggerId] = useState<string | null>(null);
 	const [simulationLogs, setSimulationLogs] = useState<SimulationTraceEntry[]>([]);
+	const [simulationEdgeIds, setSimulationEdgeIds] = useState<ReadonlySet<string>>(() => new Set());
 	const [simulationVariables, setSimulationVariables] = useState<SimulationVariableSnapshot[]>([]);
 	const [simulationMessageBox, setSimulationMessageBox] = useState<SimulationMessageBoxState>(null);
 	const [systemLogs, setSystemLogs] = useState<LogEntry[]>(() =>
@@ -401,6 +402,7 @@ export function EditorPage({
 			);
 			setSelectedNodeId(null);
 			setSelectedEdgeId(null);
+			setSimulationEdgeIds(new Set());
 		},
 		[abortSimulationLifecycle, setEdges, setNodes],
 	);
@@ -461,6 +463,7 @@ export function EditorPage({
 			return { signature: null, status: "unverified" };
 		});
 		setSimulationStatus("idle");
+		setSimulationEdgeIds(new Set());
 		setSimulationVariables([]);
 		abortSimulationLifecycle("graph changed");
 	}, [abortSimulationLifecycle, verificationSignature]);
@@ -583,6 +586,15 @@ export function EditorPage({
 			if (step.traces.length > 0) {
 				appendSimulationLogs(step.traces);
 			}
+			if (step.traversedEdgeIds.length > 0) {
+				setSimulationEdgeIds((currentEdgeIds) => {
+					const nextEdgeIds = new Set(currentEdgeIds);
+					for (const edgeId of step.traversedEdgeIds) {
+						nextEdgeIds.add(edgeId);
+					}
+					return nextEdgeIds;
+				});
+			}
 			setSimulationVariables(step.variables);
 			return sideEffectResults;
 		},
@@ -603,6 +615,7 @@ export function EditorPage({
 			runId: number;
 			triggerNodeId: string;
 		}) => {
+			setSimulationEdgeIds(new Set());
 			const secretProblems = getSecretSimulationProblems(secretDeclarations, simulationSecretValues);
 			if (secretProblems.length > 0) {
 				setSimulationStatus("failed");
@@ -1242,6 +1255,7 @@ export function EditorPage({
 					<FlowCanvas
 						nodes={nodes}
 						edges={edges}
+						simulatedEdgeIds={simulationEdgeIds}
 						selectedEdgeId={selectedEdgeId}
 						onNodesChange={onNodesChange}
 						onEdgesChange={handleEdgesChange}

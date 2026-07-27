@@ -65,7 +65,7 @@ export type NodePorts = {
 
 export type NodePortPolicy =
 	| { inputs: string[]; kind: "fixed"; outputs: string[] }
-	| { configKey: string; kind: "switch-cases"; outputPrefix: string };
+	| { configKey: string; defaultOutput: string; kind: "switch-cases"; outputPrefix: string };
 
 export type NodePermissionPathRule = {
 	access: "read" | "write";

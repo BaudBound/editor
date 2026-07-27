@@ -12,6 +12,6 @@ export const switchNode = defineNode({
 	icon: Hash,
 	kind: "control",
 	label: "Switch",
-	portPolicy: { kind: "switch-cases", configKey: "cases", outputPrefix: "case-" },
+	portPolicy: { kind: "switch-cases", configKey: "cases", outputPrefix: "case-", defaultOutput: "default" },
 	risk: "low",
 });
