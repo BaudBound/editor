@@ -34,6 +34,7 @@ export type SimulationStep = {
 	outputLogs: LogEntry[];
 	sideEffects: SimulationSideEffect[];
 	traces: SimulationTraceEntry[];
+	traversedEdgeIds: string[];
 	variables: SimulationVariableSnapshot[];
 };
 

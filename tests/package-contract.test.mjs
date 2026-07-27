@@ -310,6 +310,7 @@ test("generated runner port contract covers every editor node", () => {
 	assert.deepEqual(contract.nodes["control.switch"], {
 		kind: "switch_cases",
 		config_key: "cases",
+		default_output: "default",
 		input: "input",
 		output_prefix: "case-",
 	});

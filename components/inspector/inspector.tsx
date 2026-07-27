@@ -13,7 +13,7 @@ import {
 	combinatorOptions,
 	comparisonOperatorOptions,
 	ifElseComparisonOperatorOptions,
-	isBooleanConditionOperator,
+	isUnaryConditionOperator,
 	playSoundSourceOptions,
 	type SelectOption,
 	textTransformOperationOptions,
@@ -538,7 +538,7 @@ function IfElseConfigPanel({
 											updateCondition(
 												conditions,
 												condition.id,
-												isBooleanConditionOperator(value) ? { operator: value, right: "" } : { operator: value },
+												isUnaryConditionOperator(value) ? { operator: value, right: "" } : { operator: value },
 												onChange,
 											)
 										}
@@ -547,7 +547,7 @@ function IfElseConfigPanel({
 										checked={condition.invert === true}
 										onChange={(checked) => updateCondition(conditions, condition.id, { invert: checked }, onChange)}
 									/>
-									{!isBooleanConditionOperator(condition.operator) && (
+									{!isUnaryConditionOperator(condition.operator) && (
 										<TextInput
 											label="Target"
 											value={condition.right}
@@ -1361,7 +1361,7 @@ function FloatingConditionCard({ condition, drag }: { condition: ConditionRow; d
 			</div>
 			<GhostField label="Value" value={condition.left} />
 			<GhostField label="Expression" value={condition.operator} />
-			{!isBooleanConditionOperator(condition.operator) && <GhostField label="Target" value={condition.right} />}
+			{!isUnaryConditionOperator(condition.operator) && <GhostField label="Target" value={condition.right} />}
 		</FloatingReorderCard>
 	);
 }

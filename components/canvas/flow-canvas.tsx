@@ -50,6 +50,7 @@ export type EditorFlowNode = ScriptFlowNode | CommentFlowNode;
 type FlowCanvasProps = {
 	nodes: EditorFlowNode[];
 	edges: Edge[];
+	simulatedEdgeIds: ReadonlySet<string>;
 	selectedEdgeId: string | null;
 	onNodesChange: OnNodesChange<EditorFlowNode>;
 	onEdgesChange: OnEdgesChange<Edge>;
@@ -114,6 +115,7 @@ export function FlowCanvas({
 	showDevelopmentNodeSpawner,
 	onViewportCenterChange,
 	selectedEdgeId,
+	simulatedEdgeIds,
 	targetRuntimes,
 }: FlowCanvasProps) {
 	return (
@@ -144,6 +146,7 @@ export function FlowCanvas({
 				showDevelopmentNodeSpawner={showDevelopmentNodeSpawner}
 				onViewportCenterChange={onViewportCenterChange}
 				selectedEdgeId={selectedEdgeId}
+				simulatedEdgeIds={simulatedEdgeIds}
 				targetRuntimes={targetRuntimes}
 			/>
 		</ReactFlowProvider>
@@ -154,6 +157,7 @@ function FlowCanvasContent({
 	nodes,
 	edges,
 	selectedEdgeId,
+	simulatedEdgeIds,
 	targetRuntimes,
 	onNodesChange,
 	onEdgesChange,
@@ -396,25 +400,32 @@ function FlowCanvasContent({
 
 		return edges.map((edge) => {
 			const selected = edge.selected || edge.id === selectedEdgeId;
+			const simulated = simulatedEdgeIds.has(edge.id);
 			const groupSize = groupSizes.get(`${edge.source}\u0000${edge.sourceHandle ?? ""}`) ?? 0;
 			const executionOrder = getEdgeExecutionOrder(edge);
 
 			return {
 				...edge,
-				className: selected ? "baud-edge-selected" : undefined,
+				className:
+					[edge.className, simulated ? "baud-edge-simulated" : "", selected ? "baud-edge-selected" : ""]
+						.filter(Boolean)
+						.join(" ") || undefined,
 				label: groupSize > 1 && executionOrder !== null ? String(executionOrder + 1) : undefined,
 				labelBgBorderRadius: 4,
 				labelBgPadding: [5, 3] as [number, number],
-				labelBgStyle: { fill: selected ? "#e62d3e" : "#182033", fillOpacity: 1 },
+				labelBgStyle: {
+					fill: selected ? edgeColors.selected : simulated ? "#176b4b" : "#182033",
+					fillOpacity: 1,
+				},
 				labelStyle: { fill: "#ffffff", fontSize: 11, fontWeight: 700 },
 				type: toReactFlowEdgeType(edgeStyle),
 				style: {
-					stroke: selected ? edgeColors.selected : edgeColors.default,
-					strokeWidth: selected ? 4 : 2,
+					stroke: selected ? edgeColors.selected : simulated ? edgeColors.simulated : edgeColors.default,
+					strokeWidth: selected || simulated ? 4 : 2,
 				},
 			};
 		});
-	}, [edgeStyle, edges, selectedEdgeId]);
+	}, [edgeStyle, edges, selectedEdgeId, simulatedEdgeIds]);
 	const currentDefaultEdgeOptions = useMemo(() => createDefaultEdgeOptions(edgeStyle), [edgeStyle]);
 
 	return (

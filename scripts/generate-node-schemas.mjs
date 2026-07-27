@@ -394,6 +394,7 @@ function readPortPolicy(initializer, actionType) {
 		return {
 			kind: "switch_cases",
 			config_key: getRequiredStringProperty(initializer, "configKey", actionType),
+			default_output: getRequiredStringProperty(initializer, "defaultOutput", actionType),
 			input: "input",
 			output_prefix: getRequiredStringProperty(initializer, "outputPrefix", actionType),
 		};

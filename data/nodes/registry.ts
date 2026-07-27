@@ -451,7 +451,10 @@ export function getNodePorts(actionType: ActionType, config?: Record<string, Jso
 	if (definition?.portPolicy?.kind === "switch-cases") {
 		return {
 			inputs: [defaultInputPort],
-			outputs: createSwitchOutputPorts(getSwitchCaseRowsFromValue(config?.[definition.portPolicy.configKey])),
+			outputs: createSwitchOutputPorts(
+				getSwitchCaseRowsFromValue(config?.[definition.portPolicy.configKey]),
+				definition.portPolicy.defaultOutput,
+			),
 		};
 	}
 

@@ -16,6 +16,7 @@ export const editorEdgeZIndex = 10;
 export const edgeColors = {
 	default: "#53627d",
 	selected: "#e62d3e",
+	simulated: "#2ed98f",
 } as const;
 
 export function createDefaultEdgeOptions(edgeStyle: EditorEdgeStyle): DefaultEdgeOptions {

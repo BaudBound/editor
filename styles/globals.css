@@ -117,6 +117,12 @@ textarea,
 	stroke: #d8deec !important;
 }
 
+.react-flow__edge.baud-edge-simulated .react-flow__edge-path {
+	filter: drop-shadow(0 0 6px rgb(46 217 143 / 65%));
+	stroke: #2ed98f !important;
+	stroke-width: 4 !important;
+}
+
 .react-flow__edge.selected .react-flow__edge-path,
 .react-flow__edge.baud-edge-selected .react-flow__edge-path,
 .react-flow__edge:focus .react-flow__edge-path,

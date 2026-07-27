@@ -195,6 +195,7 @@ test("persistent variable simulation carries changes into the next run", async (
 	await page.getByRole("button", { name: "Trigger", exact: true }).click();
 	const counterValue = page.getByText("{{counter}}", { exact: true }).locator("../..").locator("pre");
 	await expect(counterValue).toHaveText("1");
+	await expect(page.locator(".react-flow__edge.baud-edge-simulated")).toHaveCount(1);
 	await page.getByRole("button", { name: "Trigger", exact: true }).click();
 	await expect(counterValue).toHaveText("2");
 });

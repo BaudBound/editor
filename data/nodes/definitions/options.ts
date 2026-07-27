@@ -76,8 +76,12 @@ export const ifElseComparisonOperatorOptions: SelectOption[] = [
 	...booleanConditionOperatorOptions,
 ];
 
-export function isBooleanConditionOperator(operator: string) {
-	return booleanConditionOperatorOptions.some((option) => option.value === operator);
+export function isUnaryConditionOperator(operator: string) {
+	return (
+		operator === "is_empty" ||
+		operator === "is_null" ||
+		booleanConditionOperatorOptions.some((option) => option.value === operator)
+	);
 }
 
 export const combinatorOptions: SelectOption[] = [
