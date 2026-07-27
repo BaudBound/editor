@@ -29,9 +29,9 @@ export const webhookResponseNode = defineNode({
 	],
 	defaultConfig: () => ({
 		statusCode: "200",
-		contentType: "application/json",
-		headers: [createHeaderRow("Cache-Control", "no-store")],
-		body: '{ "ok": true }',
+		contentType: "",
+		headers: [createHeaderRow()],
+		body: "",
 	}),
 	description: "Send the HTTP response for a waiting webhook trigger.",
 	fallible: true,

@@ -260,39 +260,39 @@ test("history restores dynamic switch rows and their edited values", async ({ pa
 	await page.getByRole("button", { name: /^Switch/ }).click();
 	const switchNode = page.locator(".react-flow__node").filter({ hasText: "Switch" }).first();
 	const cases = page.getByRole("list", { name: "Switch cases" }).locator("li");
-	await expect(cases).toHaveCount(2);
+	await expect(cases).toHaveCount(1);
 	await expect(switchNode).toContainText("default");
 
 	await page.getByRole("button", { name: "Add switch case" }).click();
-	await expect(cases).toHaveCount(3);
+	await expect(cases).toHaveCount(2);
 	await page.keyboard.press("Control+z");
 	await switchNode.dispatchEvent("click", { bubbles: true });
-	await expect(cases).toHaveCount(2);
+	await expect(cases).toHaveCount(1);
 	await page.keyboard.press("Control+y");
 	await switchNode.dispatchEvent("click", { bubbles: true });
-	await expect(cases).toHaveCount(3);
+	await expect(cases).toHaveCount(2);
 
-	const thirdName = cases.nth(2).getByRole("textbox", { name: "Name" });
-	const originalName = await thirdName.inputValue();
-	await thirdName.fill("fallback");
-	await thirdName.evaluate((element) => element.blur());
+	const secondName = cases.nth(1).getByRole("textbox", { name: "Name" });
+	const originalName = await secondName.inputValue();
+	await secondName.fill("fallback");
+	await secondName.evaluate((element) => element.blur());
 	await page.waitForTimeout(350);
 	await page.keyboard.press("Control+z");
 	await switchNode.dispatchEvent("click", { bubbles: true });
-	await expect(cases.nth(2).getByRole("textbox", { name: "Name" })).toHaveValue(originalName);
+	await expect(cases.nth(1).getByRole("textbox", { name: "Name" })).toHaveValue(originalName);
 	await page.keyboard.press("Control+y");
 	await switchNode.dispatchEvent("click", { bubbles: true });
-	await expect(cases.nth(2).getByRole("textbox", { name: "Name" })).toHaveValue("fallback");
+	await expect(cases.nth(1).getByRole("textbox", { name: "Name" })).toHaveValue("fallback");
 
-	await cases.nth(2).getByRole("button", { name: "Remove switch case" }).click();
-	await expect(cases).toHaveCount(2);
+	await cases.nth(1).getByRole("button", { name: "Remove switch case" }).click();
+	await expect(cases).toHaveCount(1);
 	await page.keyboard.press("Control+z");
 	await switchNode.dispatchEvent("click", { bubbles: true });
-	await expect(cases).toHaveCount(3);
-	await expect(cases.nth(2).getByRole("textbox", { name: "Name" })).toHaveValue("fallback");
+	await expect(cases).toHaveCount(2);
+	await expect(cases.nth(1).getByRole("textbox", { name: "Name" })).toHaveValue("fallback");
 	await page.keyboard.press("Control+y");
 	await switchNode.dispatchEvent("click", { bubbles: true });
-	await expect(cases).toHaveCount(2);
+	await expect(cases).toHaveCount(1);
 });
 
 test("history restores comment position, size, color, and deletion", async ({ page }) => {

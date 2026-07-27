@@ -4,6 +4,7 @@ import type { JsonValue } from "../../lib/types";
 
 const variables: Record<string, JsonValue> = {
 	paddingLength: 3,
+	items: ["one", "two"],
 };
 
 const resolveTemplate = (value: string): JsonValue => {
@@ -11,114 +12,133 @@ const resolveTemplate = (value: string): JsonValue => {
 	return reference ? (variables[reference[1]] ?? value) : value;
 };
 
-const parseJsonValue = (value: string): JsonValue | undefined => {
-	try {
-		return JSON.parse(value) as JsonValue;
-	} catch {
-		return undefined;
-	}
-};
+function pipeline(input: JsonValue, operations: JsonValue[]) {
+	return { input, operations } as Record<string, JsonValue>;
+}
 
-test("editor executes every text transform operation", () => {
-	const cases: Array<{
-		config: Record<string, JsonValue>;
-		expectedItems?: JsonValue[];
-		expectedText: string;
-	}> = [
-		{ config: { operation: "template", template: "Hello Ada" }, expectedText: "Hello Ada" },
-		{ config: { input: "  text \n", operation: "trim" }, expectedText: "text" },
-		{ config: { input: "BaudBound", operation: "uppercase" }, expectedText: "BAUDBOUND" },
-		{ config: { input: "BaudBound", operation: "lowercase" }, expectedText: "baudbound" },
-		{ config: { input: "hELLO WORLD", operation: "sentence_case" }, expectedText: "Hello world" },
-		{ config: { input: "hELLO   wORLD", operation: "capitalize_words" }, expectedText: "Hello   World" },
-		{
-			config: { input: "one one", operation: "replace", replacement: "two", search: "one" },
-			expectedText: "two two",
-		},
-		{
-			config: { input: "a1 b22", operation: "regex_replace", replacement: "#", search: "\\d+" },
-			expectedText: "a# b#",
-		},
-		{
-			config: { delimiter: ",", input: "one,two,three", operation: "split" },
-			expectedItems: ["one", "two", "three"],
-			expectedText: "",
-		},
-		{
-			config: { delimiter: "|", items: '["one",2,true,{"ok":true}]', operation: "join" },
-			expectedItems: ["one", 2, true, { ok: true }],
-			expectedText: 'one|2|true|{"ok":true}',
-		},
-		{
-			config: { input: "A😀BC", length: "2", operation: "substring", start: "1" },
-			expectedText: "😀B",
-		},
-		{
-			config: { input: "7", operation: "pad_start", pad: "0", targetLength: "{{paddingLength}}" },
-			expectedText: "007",
-		},
-		{
-			config: { input: "7", operation: "pad_end", pad: "0", targetLength: "{{paddingLength}}" },
-			expectedText: "700",
-		},
-		{ config: { input: "a b&!'()*~", operation: "url_encode" }, expectedText: "a%20b%26!'()*~" },
-		{ config: { input: "a%20b%26!'()*~", operation: "url_decode" }, expectedText: "a b&!'()*~" },
-		{ config: { input: "BaudBound ✓", operation: "base64_encode" }, expectedText: "QmF1ZEJvdW5kIOKckw==" },
-		{ config: { input: "QmF1ZEJvdW5kIOKckw==", operation: "base64_decode" }, expectedText: "BaudBound ✓" },
-		{ config: { input: 'line\n"quoted"', operation: "json_escape" }, expectedText: '"line\\n\\"quoted\\""' },
-		{ config: { input: '{"ok":true}', operation: "json_unescape" }, expectedText: '{"ok":true}' },
+test("editor runs text operations sequentially", () => {
+	const result = executeTextTransform({
+		config: pipeline("  hello WORLD  ", [
+			{ id: "trim", operation: "trim" },
+			{ id: "case", operation: "sentence_case" },
+			{ id: "replace", operation: "replace", search: "world", replacement: "BaudBound" },
+		]),
+		resolveTemplate,
+	});
+
+	expect(result).toEqual({
+		ok: true,
+		output: { items: [], text: "Hello BaudBound" },
+	});
+});
+
+test("editor passes list output between split and join operations", () => {
+	const result = executeTextTransform({
+		config: pipeline("one,two,three", [
+			{ id: "split", operation: "split", delimiter: "," },
+			{ id: "join", operation: "join", delimiter: " | " },
+		]),
+		resolveTemplate,
+	});
+
+	expect(result).toEqual({
+		ok: true,
+		output: { items: [], text: "one | two | three" },
+	});
+});
+
+test("editor returns list output when split is the final operation", () => {
+	const result = executeTextTransform({
+		config: pipeline("one,two", [{ id: "split", operation: "split", delimiter: "," }]),
+		resolveTemplate,
+	});
+
+	expect(result).toEqual({
+		ok: true,
+		output: { items: ["one", "two"], text: "" },
+	});
+});
+
+test("editor rejects incompatible pipeline values", () => {
+	const result = executeTextTransform({
+		config: pipeline("text", [
+			{ id: "split", operation: "split", delimiter: "," },
+			{ id: "trim", operation: "trim" },
+		]),
+		resolveTemplate,
+	});
+	expect(result.ok).toBe(false);
+});
+
+test("editor rejects non-portable and empty operation values", () => {
+	const cases: JsonValue[][] = [
+		[{ id: "replace", operation: "replace", search: "", replacement: "x" }],
+		[{ id: "split", operation: "split", delimiter: "" }],
+		[{ id: "pad", operation: "pad_start", targetLength: "3", pad: "" }],
+		[{ id: "lookahead", operation: "regex_replace", search: "(?=t)", replacement: "x" }],
+		[{ id: "whole", operation: "regex_replace", search: "(t)", replacement: "$0" }],
+		[{ id: "unsafe", operation: "substring", start: "9007199254740992" }],
+		[{ id: "unknown", operation: "not_supported" }],
 	];
 
-	for (const { config, expectedItems = [], expectedText } of cases) {
-		const result = executeTextTransform({ config, parseJsonValue, resolveTemplate });
-		expect(result, `operation ${String(config.operation)} should succeed`).toEqual({
-			ok: true,
-			output: { items: expectedItems, text: expectedText },
+	for (const operations of cases) {
+		const result = executeTextTransform({
+			config: pipeline("text", operations),
+			resolveTemplate,
 		});
+		expect(result.ok, JSON.stringify(operations)).toBe(false);
 	}
 });
 
-test("editor rejects malformed text transform inputs", () => {
-	const cases: Array<Record<string, JsonValue>> = [
-		{ input: "text", operation: "regex_replace", replacement: "", search: "[" },
-		{ delimiter: ",", items: "{}", operation: "join" },
-		{ input: "%%%", operation: "base64_decode" },
-		{ input: "YQ", operation: "base64_decode" },
-		{ input: "Y Q==", operation: "base64_decode" },
-		{ input: "/w==", operation: "base64_decode" },
-		{ input: "%ZZ", operation: "url_decode" },
-		{ input: "not-json", operation: "json_unescape" },
-		{ input: "text", operation: "unsupported" },
-	];
+test("editor trims safe integer fields and supports numbered regex captures", () => {
+	expect(
+		executeTextTransform({
+			config: pipeline("abcd", [{ id: "substring", operation: "substring", start: " 1 ", length: " 2 " }]),
+			resolveTemplate,
+		}),
+	).toEqual({ ok: true, output: { items: [], text: "bc" } });
 
-	for (const config of cases) {
-		const result = executeTextTransform({ config, parseJsonValue, resolveTemplate });
-		expect(result.ok, `operation ${String(config.operation)} should fail`).toBe(false);
-	}
+	expect(
+		executeTextTransform({
+			config: pipeline("first:last", [
+				{
+					id: "regex",
+					operation: "regex_replace",
+					search: "([^:]+):([^:]+)",
+					replacement: "$2, $1",
+				},
+			]),
+			resolveTemplate,
+		}),
+	).toEqual({ ok: true, output: { items: [], text: "last, first" } });
 });
 
-test("text transform export omits fields unused by the selected operation", () => {
-	const sanitizeConfig = formatTextNode.sanitizeConfig;
-	expect(sanitizeConfig).toBeDefined();
-
-	const config = sanitizeConfig?.({
+test("text transform export retains only ordered operation fields", () => {
+	const config = formatTextNode.sanitizeConfig?.({
 		customName: "Normalize title",
-		delimiter: ",",
 		input: "{{test}}",
-		items: '["one","two"]',
-		length: "",
-		operation: "sentence_case",
-		pad: " ",
-		replacement: "",
-		search: "",
-		start: "0",
-		targetLength: "10",
-		template: "{{test}}",
+		operations: [
+			{
+				id: "trim",
+				operation: "trim",
+				search: "unused",
+			},
+			{
+				id: "replace",
+				operation: "replace",
+				search: "old",
+				replacement: "new",
+				delimiter: "unused",
+			},
+		],
 	});
 
 	expect(config).toEqual({
 		customName: "Normalize title",
 		input: "{{test}}",
-		operation: "sentence_case",
+		operations: [
+			{ id: "trim", operation: "trim" },
+			{ id: "replace", operation: "replace", replacement: "new", search: "old" },
+		],
 	});
 });

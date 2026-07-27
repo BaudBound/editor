@@ -21,7 +21,7 @@ export const keyboardNode = defineNode({
 		},
 		{ key: "key", label: "Key", type: "text" },
 	],
-	defaultConfig: () => ({ inputAction: "press", key: "Enter" }),
+	defaultConfig: () => ({ inputAction: "press", key: "" }),
 	description: "Press, hold, or release a Windows key or key chord.",
 	desktopOnly: true,
 	fallible: true,

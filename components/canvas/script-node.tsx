@@ -1,4 +1,5 @@
 import { Handle, type Node, type NodeProps, Position } from "@xyflow/react";
+import { createContext, useContext } from "react";
 import { kindAccentClassName } from "@/data/editor/risk";
 import { sanitizeNodeConfig } from "@/data/nodes/registry";
 import type { JsonValue, ScriptNodeData } from "@/lib/types";
@@ -6,11 +7,14 @@ import { RiskBadge } from "../shell/risk-badge";
 
 type ScriptFlowNode = Node<ScriptNodeData, "scriptNode">;
 
+export const ScriptNodeSimulationContext = createContext<ReadonlySet<string>>(new Set());
+
 const namedHeaderHeight = 58;
 const outputHandleSpacing = 30;
 const baseBodyHeight = 62;
 
 export function ScriptNode({ data, id, selected }: NodeProps<ScriptFlowNode>) {
+	const simulated = useContext(ScriptNodeSimulationContext).has(id);
 	const customName = typeof data.config.customName === "string" ? data.config.customName.trim() : "";
 	const subtitle = customName || id;
 	const configEntries = Object.entries(sanitizeNodeConfig(data.actionType, data.config)).filter(
@@ -21,8 +25,12 @@ export function ScriptNode({ data, id, selected }: NodeProps<ScriptFlowNode>) {
 
 	return (
 		<div
-			className={`nokey relative w-64 rounded border bg-baud-node shadow-[0_14px_40px_rgba(0,0,0,0.24)] ${
-				selected ? "border-baud-red ring-2 ring-baud-red/35" : "border-baud-border"
+			className={`baud-script-node nokey relative w-64 rounded border bg-baud-node shadow-[0_14px_40px_rgba(0,0,0,0.24)] ${
+				simulated
+					? "border-[#2ed98f] ring-2 ring-[#2ed98f]/35 shadow-[0_0_12px_rgba(46,217,143,0.28)]"
+					: selected
+						? "border-baud-red ring-2 ring-baud-red/35"
+						: "border-baud-border"
 			}`}
 		>
 			<div
@@ -116,6 +124,14 @@ function getOutputHandleClassName(outputId: string) {
 
 function formatConfigPreview(value: JsonValue) {
 	if (Array.isArray(value)) {
+		const operationNames = value.map((item) =>
+			typeof item === "object" && item !== null && !Array.isArray(item) && typeof item.operation === "string"
+				? item.operation
+				: undefined,
+		);
+		if (operationNames.every((operation) => operation !== undefined)) {
+			return operationNames.join(" -> ");
+		}
 		return `${value.length} item${value.length === 1 ? "" : "s"}`;
 	}
 

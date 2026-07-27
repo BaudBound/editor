@@ -6,7 +6,7 @@ export const switchNode = defineNode({
 	actionType: "control.switch",
 	capabilities: ["runtime.switch"],
 	controlType: "switch",
-	defaultConfig: () => ({ value: "{{status}}", cases: [createSwitchCaseRow("ok"), createSwitchCaseRow("warning")] }),
+	defaultConfig: () => ({ value: "", cases: [createSwitchCaseRow()] }),
 	description: "Match one value against cases.",
 	group: "control",
 	icon: Hash,

@@ -7,7 +7,7 @@ export const hotkeyTriggerNode = defineNode({
 	actionType: "trigger.hotkey",
 	capabilities: ["trigger.hotkey"],
 	configFields: [{ key: "key", label: "Key", type: "text" }],
-	defaultConfig: () => ({ key: "Ctrl+Alt+B" }),
+	defaultConfig: () => ({ key: "" }),
 	description: "Start from a desktop hotkey.",
 	desktopOnly: true,
 	group: "triggers",

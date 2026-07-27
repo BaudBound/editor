@@ -13,7 +13,7 @@ export const forEachNode = defineNode({
 		{ key: "indexVariable", label: "Index variable", type: "text" },
 	],
 	controlType: "for_each",
-	defaultConfig: () => ({ items: '["one", "two", "three"]', itemVariable: "item", indexVariable: "index" }),
+	defaultConfig: () => ({ items: "", itemVariable: "", indexVariable: "" }),
 	description: "Loop through every item in a list.",
 	group: "control",
 	icon: Repeat2,

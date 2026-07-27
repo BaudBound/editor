@@ -213,7 +213,7 @@ function fromStoredNode(node: StoredScriptNode): Node<ScriptNodeData> {
 					: definition.label,
 			outputs: ports.outputs,
 			risk: definition.risk as RiskLevel,
-			runtimeOutputs: getRuntimeDataOutputs(node.actionType),
+			runtimeOutputs: getRuntimeDataOutputs(node.actionType, node.config),
 		},
 	};
 }

@@ -26,6 +26,7 @@ export type ActionType =
 	| "control.continue_loop"
 	| "runtime.set_variable"
 	| "action.calculate"
+	| "action.value.convert"
 	| "action.text.format"
 	| "action.url.parse"
 	| "action.log"

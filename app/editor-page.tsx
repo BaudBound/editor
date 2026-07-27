@@ -38,7 +38,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { defaultEditorEdgeStyle, type EditorEdgeStyle, toReactFlowEdgeType } from "@/data/editor/flow-canvas";
 import { createSwitchOutputPorts, getSwitchCaseRowsFromValue } from "@/data/nodes/definitions/rows";
 import { createDevelopmentEditorNodes, isDevelopmentGraphEnabled } from "@/data/nodes/development-graph";
-import { createNodeFromPaletteItem, getFlatPaletteItems } from "@/data/nodes/registry";
+import { createNodeFromPaletteItem, getFlatPaletteItems, getRuntimeDataOutputs } from "@/data/nodes/registry";
 import { createSimulationSecretValues, getSecretSimulationProblems } from "@/data/project/secrets";
 import { getProjectHistoryCoalesceKey } from "@/data/projects/history";
 import type { EditorProject } from "@/data/projects/model";
@@ -212,6 +212,7 @@ export function EditorPage({
 	const [activeScheduleTriggerId, setActiveScheduleTriggerId] = useState<string | null>(null);
 	const [simulationLogs, setSimulationLogs] = useState<SimulationTraceEntry[]>([]);
 	const [simulationEdgeIds, setSimulationEdgeIds] = useState<ReadonlySet<string>>(() => new Set());
+	const [simulationNodeIds, setSimulationNodeIds] = useState<ReadonlySet<string>>(() => new Set());
 	const [simulationVariables, setSimulationVariables] = useState<SimulationVariableSnapshot[]>([]);
 	const [simulationMessageBox, setSimulationMessageBox] = useState<SimulationMessageBoxState>(null);
 	const [systemLogs, setSystemLogs] = useState<LogEntry[]>(() =>
@@ -403,6 +404,7 @@ export function EditorPage({
 			setSelectedNodeId(null);
 			setSelectedEdgeId(null);
 			setSimulationEdgeIds(new Set());
+			setSimulationNodeIds(new Set());
 		},
 		[abortSimulationLifecycle, setEdges, setNodes],
 	);
@@ -464,6 +466,7 @@ export function EditorPage({
 		});
 		setSimulationStatus("idle");
 		setSimulationEdgeIds(new Set());
+		setSimulationNodeIds(new Set());
 		setSimulationVariables([]);
 		abortSimulationLifecycle("graph changed");
 	}, [abortSimulationLifecycle, verificationSignature]);
@@ -594,11 +597,22 @@ export function EditorPage({
 					}
 					return nextEdgeIds;
 				});
+				setSimulationNodeIds((currentNodeIds) => {
+					const nextNodeIds = new Set(currentNodeIds);
+					for (const edgeId of step.traversedEdgeIds) {
+						const traversedEdge = edges.find((edge) => edge.id === edgeId);
+						if (traversedEdge) {
+							nextNodeIds.add(traversedEdge.source);
+							nextNodeIds.add(traversedEdge.target);
+						}
+					}
+					return nextNodeIds;
+				});
 			}
 			setSimulationVariables(step.variables);
 			return sideEffectResults;
 		},
-		[appendOutputLogs, appendSimulationLogs, assets, showSimulationMessageBox],
+		[appendOutputLogs, appendSimulationLogs, assets, edges, showSimulationMessageBox],
 	);
 
 	const runSimulationTrigger = useCallback(
@@ -616,6 +630,7 @@ export function EditorPage({
 			triggerNodeId: string;
 		}) => {
 			setSimulationEdgeIds(new Set());
+			setSimulationNodeIds(new Set());
 			const secretProblems = getSecretSimulationProblems(secretDeclarations, simulationSecretValues);
 			if (secretProblems.length > 0) {
 				setSimulationStatus("failed");
@@ -624,6 +639,7 @@ export function EditorPage({
 				return;
 			}
 			setSimulationStatus("running");
+			setSimulationNodeIds(new Set([triggerNodeId]));
 
 			try {
 				const run = await createSimulationRun({
@@ -1055,15 +1071,18 @@ export function EditorPage({
 				const outputs =
 					node.data.actionType === "control.switch" && nextSwitchOutputs ? nextSwitchOutputs : node.data.outputs;
 
+				const config = {
+					...node.data.config,
+					[key]: value,
+				};
+
 				return {
 					...node,
 					data: {
 						...node.data,
-						config: {
-							...node.data.config,
-							[key]: value,
-						},
+						config,
 						outputs,
+						runtimeOutputs: getRuntimeDataOutputs(node.data.actionType, config),
 					},
 				};
 			}),
@@ -1256,6 +1275,7 @@ export function EditorPage({
 						nodes={nodes}
 						edges={edges}
 						simulatedEdgeIds={simulationEdgeIds}
+						simulatedNodeIds={simulationNodeIds}
 						selectedEdgeId={selectedEdgeId}
 						onNodesChange={onNodesChange}
 						onEdgesChange={handleEdgesChange}

@@ -26,7 +26,7 @@ export const processStatusNode = defineNode({
 			numericWhen: { key: "matchMode", equals: "pid" },
 		},
 	],
-	defaultConfig: () => ({ matchMode: "process_name", target: "app.exe" }),
+	defaultConfig: () => ({ matchMode: "process_name", target: "" }),
 	description: "Read process status and state.",
 	fallible: true,
 	group: "actions",

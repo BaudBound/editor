@@ -250,10 +250,18 @@ function createConfigSchema(definition) {
 		}
 
 		const field = fieldsByKey.get(key);
-		properties[key] = field ? createConfigFieldSchema(field) : { $ref: jsonValueRef };
+		properties[key] =
+			definition.actionType === "action.text.format" && key === "operations"
+				? createTextTransformOperationsSchema()
+				: field
+					? createConfigFieldSchema(field)
+					: { $ref: jsonValueRef };
 		if (field && field.required !== false) {
 			required.push(key);
 		}
+	}
+	if (definition.actionType === "action.text.format") {
+		required.push("operations");
 	}
 
 	return {
@@ -261,6 +269,69 @@ function createConfigSchema(definition) {
 		additionalProperties: false,
 		...(required.length > 0 ? { required: required.sort() } : {}),
 		properties,
+	};
+}
+
+function createTextTransformOperationsSchema() {
+	return {
+		type: "array",
+		minItems: 1,
+		maxItems: 100,
+		items: {
+			type: "object",
+			additionalProperties: false,
+			required: ["id", "operation"],
+			properties: {
+				id: { type: "string", minLength: 1 },
+				operation: {
+					type: "string",
+					enum: [
+						"template",
+						"trim",
+						"uppercase",
+						"lowercase",
+						"sentence_case",
+						"capitalize_words",
+						"replace",
+						"regex_replace",
+						"split",
+						"join",
+						"substring",
+						"pad_start",
+						"pad_end",
+						"url_encode",
+						"url_decode",
+						"base64_encode",
+						"base64_decode",
+						"json_escape",
+						"json_unescape",
+					],
+				},
+				template: { type: "string" },
+				search: { type: "string" },
+				replacement: { type: "string" },
+				delimiter: { type: "string" },
+				start: {
+					anyOf: [
+						{ type: "integer", minimum: 0 },
+						{ type: "string", minLength: 1 },
+					],
+				},
+				length: {
+					anyOf: [
+						{ type: "integer", minimum: 0 },
+						{ type: "string", minLength: 1 },
+					],
+				},
+				targetLength: {
+					anyOf: [
+						{ type: "integer", minimum: 0 },
+						{ type: "string", minLength: 1 },
+					],
+				},
+				pad: { type: "string" },
+			},
+		},
 	};
 }
 

@@ -22,7 +22,7 @@ export const scheduleTriggerNode = defineNode({
 		},
 		{ key: "unit", label: "Unit", type: "select", options: timeUnitOptions },
 	],
-	defaultConfig: () => ({ every: "5", unit: "minutes" }),
+	defaultConfig: () => ({ every: "", unit: "minutes" }),
 	description: "Run on a time schedule.",
 	group: "triggers",
 	icon: Clock,

@@ -49,8 +49,8 @@ export const colorMatchNode = defineNode({
 	],
 	controlType: "color_match",
 	defaultConfig: () => ({
-		actualColor: "#000000",
-		expectedColor: "#000000",
+		actualColor: "",
+		expectedColor: "",
 		comparisonMode: "per_channel",
 		tolerancePercent: "0",
 	}),

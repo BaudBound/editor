@@ -36,7 +36,7 @@ export const moveMouseNode = defineNode({
 		},
 		{ key: "relative", label: "Relative move", type: "switch" },
 	],
-	defaultConfig: () => ({ x: "100", y: "100", relative: false }),
+	defaultConfig: () => ({ x: "", y: "", relative: false }),
 	description: "Move to a signed virtual-desktop coordinate or by a signed relative offset.",
 	desktopOnly: true,
 	fallible: true,

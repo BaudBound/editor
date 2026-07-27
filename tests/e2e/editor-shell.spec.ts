@@ -114,6 +114,19 @@ test("project settings target runtimes can be selected together", async ({ page 
 	await expect(page.getByText("not verified", { exact: true })).toBeVisible();
 });
 
+test("If / Else unary conditions hide the target field", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "If / Else" }).click();
+	await page.getByRole("button", { name: "Expression" }).click();
+	await page.getByRole("option", { name: "Is numeric" }).click();
+	await expect(page.getByRole("textbox", { name: "Target" })).toHaveCount(0);
+
+	await page.getByRole("button", { name: "Expression" }).click();
+	await page.getByRole("option", { name: "has key" }).click();
+	await expect(page.getByRole("textbox", { name: "Target" })).toBeVisible();
+});
+
 test("text transform accepts a default variable with inactive optional numeric fields", async ({ page }) => {
 	await openEditor(page);
 
@@ -126,14 +139,20 @@ test("text transform accepts a default variable with inactive optional numeric f
 
 	await page.getByRole("button", { name: "Data & Variables" }).click();
 	await page.getByRole("button", { name: "Text Transform" }).click();
-	await page.getByRole("button", { name: "Operation", exact: true }).click();
+	const operationList = page.getByRole("list", { name: "Text transform operations" });
+	const firstOperation = operationList.getByRole("listitem").first();
+	await firstOperation.getByRole("button", { name: "Operation", exact: true }).click();
 	await page.getByRole("option", { name: "Uppercase" }).click();
 	await page.getByRole("textbox", { name: "Input" }).fill("{{test}}");
 	const transformNode = page.locator(".react-flow__node").filter({ hasText: "Text Transform" });
 	await expect(transformNode).toContainText("uppercase");
-	await page.getByRole("button", { name: "Operation", exact: true }).click();
-	await page.getByRole("option", { name: "Lowercase" }).click();
-	await expect(transformNode).toContainText("lowercase");
+	await page.getByRole("button", { name: "Add operation" }).click();
+	const secondOperation = operationList.getByRole("listitem").nth(1);
+	await secondOperation.getByRole("button", { name: "Operation", exact: true }).click();
+	await page.getByRole("option", { name: "Replace text", exact: true }).click();
+	await secondOperation.getByRole("textbox", { name: "Search" }).fill("DATA");
+	await secondOperation.getByRole("textbox", { name: "Replacement" }).fill("VALUE");
+	await expect(transformNode).toContainText("uppercase -> replace");
 	await page.getByRole("button", { name: "Verify script" }).click();
 
 	await expect(page.getByRole("heading", { name: "Verification" })).toBeVisible();
@@ -193,9 +212,11 @@ test("persistent variable simulation carries changes into the next run", async (
 	await page.getByRole("button", { name: "Simulation speed" }).click();
 	await page.getByRole("option", { name: "Instant" }).click();
 	await page.getByRole("button", { name: "Trigger", exact: true }).click();
-	const counterValue = page.getByText("{{counter}}", { exact: true }).locator("../..").locator("pre");
+	const counterValue = page.locator('[data-variable-name="counter"] pre');
 	await expect(counterValue).toHaveText("1");
 	await expect(page.locator(".react-flow__edge.baud-edge-simulated")).toHaveCount(1);
+	await expect(manualNode.locator(".baud-script-node")).toHaveCSS("border-color", "rgb(46, 217, 143)");
+	await expect(variableNode.locator(".baud-script-node")).toHaveCSS("border-color", "rgb(46, 217, 143)");
 	await page.getByRole("button", { name: "Trigger", exact: true }).click();
 	await expect(counterValue).toHaveText("2");
 });
@@ -371,7 +392,7 @@ test("Windows key reference buttons build a key expression", async ({ page }) =>
 	await page.getByRole("textbox", { name: "Search blocks" }).fill("Hotkey");
 	await page.getByRole("button", { name: /Hotkey medium/ }).click();
 	const keyInput = page.getByRole("textbox", { name: "Key" });
-	await keyInput.fill("");
+	await expect(keyInput).toHaveValue("");
 
 	const keyReference = page.locator("details").filter({ hasText: "Supported key reference" });
 	await keyReference.getByText("Supported key reference", { exact: true }).click();
@@ -390,8 +411,11 @@ test("Color Match fields combine a manual input with an anchored color picker", 
 	const actualColor = page.getByRole("textbox", { name: "Actual color" });
 	const colorSwatch = page.getByRole("button", { name: "Open actual color color picker" });
 
-	await expect(actualColor).toHaveValue("#000000");
-	await expect(colorSwatch).toHaveCSS("background-color", "rgb(0, 0, 0)");
+	await expect(actualColor).toHaveValue("");
+	await expect(colorSwatch).toHaveCSS(
+		"background-image",
+		"repeating-conic-gradient(rgba(114, 125, 149, 0.45) 0deg, rgba(114, 125, 149, 0.45) 25%, rgb(23, 27, 39) 0deg, rgb(23, 27, 39) 50%)",
+	);
 	const swatchBounds = await colorSwatch.boundingBox();
 	const inputBounds = await actualColor.boundingBox();
 	if (!swatchBounds || !inputBounds) throw new Error("Color Match input group is not visible.");
@@ -407,7 +431,7 @@ test("Color Match fields combine a manual input with an anchored color picker", 
 	await selection.click({
 		position: { x: selectionBounds.width * 0.75, y: selectionBounds.height * 0.25 },
 	});
-	await expect(actualColor).not.toHaveValue("#000000");
+	await expect(actualColor).not.toHaveValue("");
 
 	await actualColor.fill("rgb(1, 2, 3)");
 	await expect(colorSwatch).toHaveCSS("background-color", "rgb(1, 2, 3)");

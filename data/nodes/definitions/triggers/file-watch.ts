@@ -15,7 +15,7 @@ export const fileWatchTriggerNode = defineNode({
 			help: "Applies when Path is a directory.",
 		},
 	],
-	defaultConfig: () => ({ path: "/path/to/watch", recursive: false }),
+	defaultConfig: () => ({ path: "", recursive: false }),
 	description: "Start when a file changes.",
 	group: "triggers",
 	icon: FileText,

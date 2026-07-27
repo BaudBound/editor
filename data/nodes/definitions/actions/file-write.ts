@@ -12,7 +12,7 @@ export const writeFileNode = defineNode({
 		{ key: "path", label: "Path", type: "text", usesVariables: true },
 		{ key: "content", label: "Content", type: "textarea", usesVariables: true },
 	],
-	defaultConfig: () => ({ mode: "overwrite", path: "./output.txt", content: "Hello from BaudBound" }),
+	defaultConfig: () => ({ mode: "overwrite", path: "", content: "" }),
 	description: "Write to a file path.",
 	fallible: true,
 	group: "actions",

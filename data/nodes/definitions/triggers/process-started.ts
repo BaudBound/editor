@@ -15,7 +15,7 @@ export const processStartedTriggerNode = defineNode({
 			help: "Process name, executable path, or window title depending on Match by.",
 		},
 	],
-	defaultConfig: () => ({ matchMode: "process_name", target: "app.exe" }),
+	defaultConfig: () => ({ matchMode: "process_name", target: "" }),
 	description: "Start when a configured app or process starts.",
 	group: "triggers",
 	icon: AppWindow,

@@ -41,9 +41,9 @@ export const httpRequestNode = defineNode({
 	],
 	defaultConfig: () => ({
 		method: "GET",
-		url: "https://example.com",
-		headers: [createHeaderRow("Accept", "application/json"), createHeaderRow("Content-Type", "application/json")],
-		userAgent: "BaudBound/{{manifest_name}}",
+		url: "",
+		headers: [createHeaderRow()],
+		userAgent: "",
 		timeoutSeconds: "30",
 		bodyFormat: "json",
 		body: "",

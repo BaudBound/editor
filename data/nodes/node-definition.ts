@@ -148,6 +148,7 @@ export type NodeDefinition = {
 	portPolicy?: NodePortPolicy;
 	deriveCapabilities?: (config: Record<string, JsonValue>) => CapabilitySummary["name"][];
 	derivePermissions?: (config: Record<string, JsonValue>) => PermissionSummary[];
+	deriveRuntimeOutputs?: (config: Record<string, JsonValue>) => RuntimeDataOutput[];
 	risk: RiskLevel;
 	runtimeOutputs?: RuntimeDataOutput[];
 	runnerType?: string;

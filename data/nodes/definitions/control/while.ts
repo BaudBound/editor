@@ -7,7 +7,7 @@ export const whileNode = defineNode({
 	actionType: "control.while",
 	capabilities: ["runtime.while"],
 	controlType: "while",
-	defaultConfig: () => ({ conditions: [createConditionRow("{{status}}", "running")] }),
+	defaultConfig: () => ({ conditions: [createConditionRow()] }),
 	description: "Repeat a branch while conditions pass.",
 	group: "control",
 	icon: RotateCw,

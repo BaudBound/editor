@@ -6,7 +6,7 @@ export const serialWriteNode = defineNode({
 	actionType: "action.serial.write",
 	capabilities: ["action.serial"],
 	configFields: [],
-	defaultConfig: () => ({ deviceId: "serial-device", data: "ping", lineEnding: "none" }),
+	defaultConfig: () => ({ deviceId: "", data: "", lineEnding: "none" }),
 	description: "Write data to a configured serial device.",
 	fallible: true,
 	group: "actions",

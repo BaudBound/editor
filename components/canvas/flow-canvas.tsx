@@ -42,7 +42,7 @@ import {
 import { isEditableShortcutTarget } from "@/utils/editor-shortcuts";
 import { CanvasContextMenu, type CanvasContextMenuState } from "./canvas-context-menu";
 import { CommentCard, type CommentFlowNode, CommentNodeActionsContext, isCommentFlowNode } from "./comment-card";
-import { ScriptNode } from "./script-node";
+import { ScriptNode, ScriptNodeSimulationContext } from "./script-node";
 
 export type ScriptFlowNode = Node<ScriptNodeData, "scriptNode">;
 export type EditorFlowNode = ScriptFlowNode | CommentFlowNode;
@@ -51,6 +51,7 @@ type FlowCanvasProps = {
 	nodes: EditorFlowNode[];
 	edges: Edge[];
 	simulatedEdgeIds: ReadonlySet<string>;
+	simulatedNodeIds: ReadonlySet<string>;
 	selectedEdgeId: string | null;
 	onNodesChange: OnNodesChange<EditorFlowNode>;
 	onEdgesChange: OnEdgesChange<Edge>;
@@ -116,40 +117,44 @@ export function FlowCanvas({
 	onViewportCenterChange,
 	selectedEdgeId,
 	simulatedEdgeIds,
+	simulatedNodeIds,
 	targetRuntimes,
 }: FlowCanvasProps) {
 	return (
-		<ReactFlowProvider>
-			<FlowCanvasContent
-				canPaste={canPaste}
-				edges={edges}
-				nodes={nodes}
-				onCreateComment={onCreateComment}
-				onCopyNode={onCopyNode}
-				onDeleteComment={onDeleteComment}
-				onDeleteEdge={onDeleteEdge}
-				onDeleteNode={onDeleteNode}
-				onDuplicateNode={onDuplicateNode}
-				onDropPaletteNode={onDropPaletteNode}
-				edgeStyle={edgeStyle}
-				onEdgeStyleChange={onEdgeStyleChange}
-				onEdgesChange={onEdgesChange}
-				onEdgesCommit={onEdgesCommit}
-				onEdgesDelete={onEdgesDelete}
-				onNodesChange={onNodesChange}
-				onNodesDelete={onNodesDelete}
-				onPaste={onPaste}
-				onSpawnDevelopmentNodes={onSpawnDevelopmentNodes}
-				onSelectEdge={onSelectEdge}
-				onSelectNode={onSelectNode}
-				onUpdateComment={onUpdateComment}
-				showDevelopmentNodeSpawner={showDevelopmentNodeSpawner}
-				onViewportCenterChange={onViewportCenterChange}
-				selectedEdgeId={selectedEdgeId}
-				simulatedEdgeIds={simulatedEdgeIds}
-				targetRuntimes={targetRuntimes}
-			/>
-		</ReactFlowProvider>
+		<ScriptNodeSimulationContext.Provider value={simulatedNodeIds}>
+			<ReactFlowProvider>
+				<FlowCanvasContent
+					canPaste={canPaste}
+					edges={edges}
+					nodes={nodes}
+					onCreateComment={onCreateComment}
+					onCopyNode={onCopyNode}
+					onDeleteComment={onDeleteComment}
+					onDeleteEdge={onDeleteEdge}
+					onDeleteNode={onDeleteNode}
+					onDuplicateNode={onDuplicateNode}
+					onDropPaletteNode={onDropPaletteNode}
+					edgeStyle={edgeStyle}
+					onEdgeStyleChange={onEdgeStyleChange}
+					onEdgesChange={onEdgesChange}
+					onEdgesCommit={onEdgesCommit}
+					onEdgesDelete={onEdgesDelete}
+					onNodesChange={onNodesChange}
+					onNodesDelete={onNodesDelete}
+					onPaste={onPaste}
+					onSpawnDevelopmentNodes={onSpawnDevelopmentNodes}
+					onSelectEdge={onSelectEdge}
+					onSelectNode={onSelectNode}
+					onUpdateComment={onUpdateComment}
+					showDevelopmentNodeSpawner={showDevelopmentNodeSpawner}
+					onViewportCenterChange={onViewportCenterChange}
+					selectedEdgeId={selectedEdgeId}
+					simulatedEdgeIds={simulatedEdgeIds}
+					simulatedNodeIds={simulatedNodeIds}
+					targetRuntimes={targetRuntimes}
+				/>
+			</ReactFlowProvider>
+		</ScriptNodeSimulationContext.Provider>
 	);
 }
 

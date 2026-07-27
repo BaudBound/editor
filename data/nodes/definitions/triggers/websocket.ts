@@ -13,7 +13,7 @@ export const websocketTriggerNode = defineNode({
 			help: "Runner-side WebSocket path, for example /events/messages. The runner decides host and port.",
 		},
 	],
-	defaultConfig: () => ({ path: "/events/messages" }),
+	defaultConfig: () => ({ path: "" }),
 	description: "Start when a WebSocket message is received.",
 	group: "triggers",
 	icon: Radio,

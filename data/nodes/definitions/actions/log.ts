@@ -12,7 +12,7 @@ export const logNode = defineNode({
 	],
 	defaultConfig: () => ({
 		level: "info",
-		message: "Log message",
+		message: "",
 	}),
 	description: "Write a runner log message.",
 	group: "actions",

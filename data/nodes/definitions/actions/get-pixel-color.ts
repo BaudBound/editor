@@ -35,7 +35,7 @@ export const getPixelColorNode = defineNode({
 			},
 		},
 	],
-	defaultConfig: () => ({ x: "100", y: "100" }),
+	defaultConfig: () => ({ x: "", y: "" }),
 	description: "Read a Windows virtual-desktop pixel at a signed X/Y coordinate.",
 	desktopOnly: true,
 	fallible: true,

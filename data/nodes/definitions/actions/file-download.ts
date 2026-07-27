@@ -14,8 +14,8 @@ export const downloadFileNode = defineNode({
 		{ key: "overwrite", label: "Overwrite", type: "select", options: fileOverwriteOptions },
 	],
 	defaultConfig: () => ({
-		url: "https://example.com/file.txt",
-		destinationPath: "./downloads/file.txt",
+		url: "",
+		destinationPath: "",
 		overwrite: "false",
 	}),
 	description: "Download a URL to a file path.",

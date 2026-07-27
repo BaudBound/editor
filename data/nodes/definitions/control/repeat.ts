@@ -23,7 +23,7 @@ export const repeatNode = defineNode({
 		},
 	],
 	controlType: "repeat",
-	defaultConfig: () => ({ count: "3" }),
+	defaultConfig: () => ({ count: "" }),
 	description: "Repeat a block of steps.",
 	group: "control",
 	icon: Repeat2,
