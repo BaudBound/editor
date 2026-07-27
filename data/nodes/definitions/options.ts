@@ -71,16 +71,46 @@ export const booleanConditionOperatorOptions: SelectOption[] = [
 	{ label: "Is False", value: "is_false" },
 ];
 
+export const ifElseAdditionalConditionOperatorOptions: SelectOption[] = [
+	{ label: "equals ignoring case", value: "equals_ignore_case" },
+	{ label: "contains ignoring case", value: "contains_ignore_case" },
+	{ label: "does not contain", value: "does_not_contain" },
+	{ label: "has key", value: "has_key" },
+	{ label: "contains item", value: "contains_item" },
+	{ label: "length equals", value: "length_equals" },
+	{ label: "length greater than", value: "length_greater_than" },
+	{ label: "length less than", value: "length_less_than" },
+	{ label: "Is numeric", value: "is_numeric" },
+	{ label: "Is text", value: "is_text" },
+	{ label: "Is boolean", value: "is_boolean" },
+	{ label: "Is list", value: "is_list" },
+	{ label: "Is object", value: "is_object" },
+	{ label: "Is defined", value: "is_defined" },
+	{ label: "Is missing", value: "is_missing" },
+	{ label: "Is not empty", value: "is_not_empty" },
+];
+
 export const ifElseComparisonOperatorOptions: SelectOption[] = [
 	...comparisonOperatorOptions,
 	...booleanConditionOperatorOptions,
+	...ifElseAdditionalConditionOperatorOptions,
 ];
 
 export function isUnaryConditionOperator(operator: string) {
 	return (
 		operator === "is_empty" ||
 		operator === "is_null" ||
-		booleanConditionOperatorOptions.some((option) => option.value === operator)
+		booleanConditionOperatorOptions.some((option) => option.value === operator) ||
+		[
+			"is_numeric",
+			"is_text",
+			"is_boolean",
+			"is_list",
+			"is_object",
+			"is_defined",
+			"is_missing",
+			"is_not_empty",
+		].includes(operator)
 	);
 }
 

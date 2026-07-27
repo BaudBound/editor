@@ -25,7 +25,7 @@ export const shellCommandNode = defineNode({
 			},
 		},
 	],
-	defaultConfig: () => ({ command: "echo blocked-by-default", timeoutSeconds: "300" }),
+	defaultConfig: () => ({ command: "", timeoutSeconds: "300" }),
 	description: "Run a command string through the operating system shell and capture its result and output.",
 	fallible: true,
 	group: "actions",

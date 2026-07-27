@@ -25,7 +25,7 @@ export const windowFocusNode = defineNode({
 			numericWhen: { key: "matchMode", equals: "pid" },
 		},
 	],
-	defaultConfig: () => ({ matchMode: "window_title", target: "Untitled" }),
+	defaultConfig: () => ({ matchMode: "window_title", target: "" }),
 	description: "Focus a target window.",
 	desktopOnly: true,
 	fallible: true,

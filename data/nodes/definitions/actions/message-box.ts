@@ -16,7 +16,7 @@ export const messageBoxNode = defineNode({
 		{ key: "title", label: "Title", type: "text", usesVariables: true },
 		{ key: "message", label: "Message", type: "textarea", usesVariables: true },
 	],
-	defaultConfig: () => ({ type: "info", buttons: "ok", title: "BaudBound", message: "Script says hello." }),
+	defaultConfig: () => ({ type: "info", buttons: "ok", title: "", message: "" }),
 	description: "Show an operating-system message box.",
 	desktopOnly: true,
 	fallible: true,

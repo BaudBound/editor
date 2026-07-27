@@ -9,7 +9,7 @@ export const parseUrlNode = defineNode({
 	actionType: "action.url.parse",
 	capabilities: ["action.text"],
 	configFields: [{ key: "url", label: "URL", type: "textarea", usesVariables: true }],
-	defaultConfig: () => ({ url: "https://example.com/path?param=value" }),
+	defaultConfig: () => ({ url: "" }),
 	description: "Parse a standard or custom absolute URL into its individual components.",
 	fallible: true,
 	group: "actions",

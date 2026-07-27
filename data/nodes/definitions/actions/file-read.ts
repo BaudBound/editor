@@ -11,7 +11,7 @@ export const readFileNode = defineNode({
 		{ key: "path", label: "Path", type: "text", usesVariables: true },
 		{ key: "encoding", label: "Encoding", type: "select", options: [{ value: "utf-8", label: "UTF-8" }] },
 	],
-	defaultConfig: () => ({ path: "./input.txt", encoding: "utf-8" }),
+	defaultConfig: () => ({ path: "", encoding: "utf-8" }),
 	description: "Read file content into runtime data.",
 	fallible: true,
 	group: "actions",

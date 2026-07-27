@@ -1,6 +1,7 @@
 "use client";
 
 import {
+	ArrowRightLeft,
 	BookOpenText,
 	Calculator,
 	Database,
@@ -12,6 +13,7 @@ import {
 	MousePointer2,
 	PackageCheck,
 	StickyNote,
+	TextCursorInput,
 	Variable,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -169,13 +171,23 @@ const conditionComparisonRows = [
 	{ label: "Greater than / at least", description: "Numeric comparison against the Target value." },
 	{ label: "Less than / at most", description: "Numeric comparison against the Target value." },
 	{ label: "Contains", description: "Passes when Value text contains the Target text." },
+	{ label: "Equals ignoring case", description: "Passes when Value and Target text match without letter case." },
+	{ label: "Contains ignoring case", description: "Checks for Target text without letter case." },
+	{ label: "Does not contain", description: "Passes when Value text does not contain the Target text." },
 	{ label: "Starts with", description: "Passes when Value text starts with the Target text." },
 	{ label: "Ends with", description: "Passes when Value text ends with the Target text." },
 	{ label: "Regex match", description: "Passes when Value matches the selected safe regex pattern." },
-	{ label: "Is empty", description: "Passes when Value is empty text." },
-	{ label: "Is null", description: "Passes when Value is null or the text null." },
+	{ label: "Has key", description: "Passes when an object contains a key named by Target." },
+	{ label: "Contains item", description: "Passes when a list contains an item equal to Target." },
+	{ label: "Length comparisons", description: "Compare string characters, list items, or object keys with Target." },
+	{ label: "Is empty", description: "Passes for empty text, lists, objects, and null." },
+	{ label: "Is not empty", description: "Passes when Value is not empty." },
+	{ label: "Is null", description: "Passes only when Value is null." },
 	{ label: "Is True", description: "If / Else only. Passes when Value is the boolean true." },
 	{ label: "Is False", description: "If / Else only. Passes when Value is the boolean false." },
+	{ label: "Type checks", description: "If / Else can check for numeric, text, boolean, list, or object values." },
+	{ label: "Is defined", description: "Passes when a variable reference exists, even when its value is null." },
+	{ label: "Is missing", description: "Passes when a variable reference does not exist." },
 ];
 
 const nodeBehaviorRows = [
@@ -491,12 +503,31 @@ function ExpressionsSection() {
 			</div>
 
 			<div className="space-y-3">
+				<SectionTitle icon={ArrowRightLeft} title="Convert Value" />
+				<InfoCard>
+					Convert Value changes a value to text, number, integer, boolean, list, or object. Integer conversion accepts
+					only whole safe numbers. Boolean conversion accepts true or false. List and object conversion accepts an
+					existing matching value or valid JSON text. Invalid conversions continue through the failed output with
+					structured error data.
+				</InfoCard>
+			</div>
+
+			<div className="space-y-3">
+				<SectionTitle icon={TextCursorInput} title="Text Transform Pipeline" />
+				<InfoCard>
+					Text Transform runs its operation list from top to bottom. Each operation receives the previous result. Split
+					changes text into a list, and Join changes a list back into text. Drag operation cards to change their order.
+					Invalid operation settings continue through the failed output with structured error data.
+				</InfoCard>
+			</div>
+
+			<div className="space-y-3">
 				<SectionTitle icon={Calculator} title="If / Else Comparisons" />
 				<InfoCard>
 					If / Else and While do not use typed expression syntax. Each condition row has a Value field and a comparison
-					dropdown. Comparisons against another value also show a Target field. Is True and Is False are available on If
-					/ Else and accept only real boolean values. Enable Invert condition on a row to flip that row result before it
-					is combined with AND or OR.
+					dropdown. Comparisons against another value also show a Target field. If / Else provides additional type,
+					presence, collection, and case insensitive text checks. Checks that inspect Value directly hide Target. Enable
+					Invert condition on a row to flip that row result before it is combined with AND or OR.
 				</InfoCard>
 				<DocTable
 					columns={["Dropdown option", "Description"]}
@@ -514,7 +545,8 @@ function VariablesSection() {
 				<SectionTitle icon={Database} title="Variable Operations" />
 				<InfoCard>
 					Variable Operation creates or edits user-writable variables. Built-in variables and node output references are
-					read-only, and variable names cannot start with <Code>{"manifest_"}</Code> or <Code>{"system_"}</Code>.
+					read-only, and variable names cannot start with <Code>{"manifest_"}</Code> or <Code>{"system_"}</Code>. A
+					failed operation follows the failed output and leaves the variable unchanged.
 				</InfoCard>
 				<DocTable
 					columns={["Operation", "What it does"]}

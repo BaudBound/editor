@@ -69,6 +69,56 @@ test("editor condition equality follows the shared Rust parity matrix", async ()
 	}
 });
 
+test("editor supports the complete If / Else condition operator set", async () => {
+	const { compareConditionValues } = await loadConditionComparison();
+	const cases = [
+		["BaudBound", "equals_ignore_case", "baudbound", true],
+		["BaudBound", "contains_ignore_case", "BOUN", true],
+		["BaudBound", "does_not_contain", "Runner", true],
+		["42.5", "is_numeric", null, true],
+		["42px", "is_numeric", null, false],
+		["text", "is_text", null, true],
+		[true, "is_boolean", null, true],
+		[[1, 2], "is_list", null, true],
+		[{ name: "BaudBound" }, "is_object", null, true],
+		["value", "is_not_empty", null, true],
+		[[], "is_not_empty", null, false],
+		[{ name: "BaudBound" }, "has_key", "name", true],
+		[{}, "has_key", "toString", false],
+		[[1, 2], "contains_item", "2", true],
+		["åäö", "length_equals", 3, true],
+		[[1, 2, 3], "length_greater_than", 2, true],
+		[{ first: 1 }, "length_less_than", 2, true],
+	];
+
+	for (const [left, operator, right, expected] of cases) {
+		assert.equal(compareConditionValues(left, operator, right), expected, operator);
+	}
+
+	const optionsSource = read(join(appRoot, "data", "nodes", "definitions", "options.ts"));
+	for (const operator of [
+		"equals_ignore_case",
+		"contains_ignore_case",
+		"does_not_contain",
+		"has_key",
+		"contains_item",
+		"length_equals",
+		"length_greater_than",
+		"length_less_than",
+		"is_numeric",
+		"is_text",
+		"is_boolean",
+		"is_list",
+		"is_object",
+		"is_defined",
+		"is_missing",
+		"is_not_empty",
+	]) {
+		assert.match(optionsSource, new RegExp(`value: "${operator}"`), operator);
+	}
+	assert.doesNotMatch(optionsSource, /value: "is_integer"/);
+});
+
 test("editor color matching rejects malformed inputs without coercion", async () => {
 	const { evaluateColorMatch } = await loadColorMatcher();
 	const invalidCases = [
@@ -264,7 +314,7 @@ test("every generated numeric field passes the editor boundary matrix", async ()
 		}
 	}
 
-	assert.equal(testedFields, 22, "the numeric matrix must cover every currently declared field");
+	assert.equal(testedFields, 19, "the numeric matrix must cover every currently declared root config field");
 });
 
 test("generated runner capability contract covers every editor node", () => {

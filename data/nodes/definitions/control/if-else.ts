@@ -7,7 +7,7 @@ export const ifElseNode = defineNode({
 	actionType: "control.if",
 	capabilities: ["runtime.if"],
 	controlType: "if",
-	defaultConfig: () => ({ conditions: [createConditionRow("{{n-mr3zyt6f-12.status_code}}", "200")] }),
+	defaultConfig: () => ({ conditions: [createConditionRow()] }),
 	description: "Branch execution by condition.",
 	group: "control",
 	icon: GitBranch,

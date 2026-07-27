@@ -8,7 +8,7 @@ export const serialInputTriggerNode = defineNode({
 	capabilities: ["trigger.serial_input"],
 	configFields: [{ key: "deviceId", label: "Device id", type: "text" }],
 	defaultConfig: () => ({
-		deviceId: "serial-device",
+		deviceId: "",
 	}),
 	description: "Start when a serial device outputs data.",
 	group: "triggers",

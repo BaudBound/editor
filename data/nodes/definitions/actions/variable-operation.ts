@@ -24,13 +24,14 @@ export const variableOperationNode = defineNode({
 	],
 	defaultConfig: () => ({
 		operation: "set",
-		name: "status",
+		name: "",
 		scope: "runtime",
 		valueType: "string",
-		value: "ok",
+		value: "",
 		fieldPath: "",
 	}),
 	description: "Set, increment, append, clear, or edit variable values.",
+	fallible: true,
 	deriveCapabilities: (config) =>
 		configString(config.scope) === "runtime"
 			? ["runtime.variables"]
@@ -82,6 +83,23 @@ export const variableOperationNode = defineNode({
 		return errors.filter(Boolean);
 	},
 	simulation: {
+		createOutput: ({ api, context, node }) => {
+			try {
+				applyVariableOperation(node.data.config, context, api);
+				return { failed: false, outputData: {} as Record<string, JsonValue> };
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "Variable operation failed.";
+				return {
+					failed: true,
+					outputData: {
+						error: api.createError(message, "VARIABLE_OPERATION_FAILED", "validation", {
+							operation: api.getConfigString(node, "operation"),
+							variable: api.getConfigString(node, "name"),
+						}),
+					},
+				};
+			}
+		},
 		afterExecute: ({ api, context, failed, node }) => {
 			if (failed) {
 				return [];
@@ -104,10 +122,12 @@ export const variableOperationNode = defineNode({
 				},
 			];
 		},
-		describe: ({ api, node }) => [
+		describe: ({ api, failed, node }) => [
 			{
-				level: "info",
-				message: `[Simulation] Variable Operation (${node.id}) succeeded. Preparing to ${api.getConfigString(node, "operation").replaceAll("_", " ")} ${api.getConfigString(node, "name")}.`,
+				level: failed ? "error" : "info",
+				message: failed
+					? `[Simulation] Variable Operation (${node.id}) failed.`
+					: `[Simulation] Variable Operation (${node.id}) succeeded. Preparing to ${api.getConfigString(node, "operation").replaceAll("_", " ")} ${api.getConfigString(node, "name")}.`,
 			},
 		],
 	},
@@ -135,9 +155,11 @@ function applyVariableOperation(
 	const currentValue = variables[name];
 
 	if (operation === "increment") {
-		const amount = Number(api.resolveTemplate(configString(config.value), context));
-		const currentNumber = typeof currentValue === "number" ? currentValue : Number(currentValue);
-		const value = (Number.isFinite(currentNumber) ? currentNumber : 0) + (Number.isFinite(amount) ? amount : 0);
+		const amount = parseFiniteNumber(api.resolveTemplate(configString(config.value), context), "Increment value");
+		const currentNumber =
+			currentValue === undefined ? 0 : parseFiniteNumber(currentValue, `Existing variable "${name}"`);
+		const value = currentNumber + amount;
+		if (!Number.isFinite(value)) throw new Error(`Incrementing variable "${name}" produced a non-finite number.`);
 
 		return {
 			value,
@@ -147,7 +169,10 @@ function applyVariableOperation(
 
 	if (operation === "append_list") {
 		const item = api.resolveJsonCompatibleInput(configString(config.value), context);
-		const value = [...(Array.isArray(currentValue) ? currentValue : []), item];
+		if (currentValue !== undefined && !Array.isArray(currentValue)) {
+			throw new Error(`Appending requires existing variable "${name}" to be a list.`);
+		}
+		const value = [...(currentValue ?? []), item];
 
 		return {
 			value,
@@ -158,6 +183,12 @@ function applyVariableOperation(
 	if (operation === "set_object_field") {
 		const fieldPath = configString(config.fieldPath).trim();
 		const fieldValue = api.resolveJsonCompatibleInput(configString(config.value), context);
+		if (
+			currentValue !== undefined &&
+			(!currentValue || typeof currentValue !== "object" || Array.isArray(currentValue))
+		) {
+			throw new Error(`Setting an object field requires existing variable "${name}" to be an object.`);
+		}
 		const value = setObjectPathValue(currentValue, fieldPath, fieldValue);
 
 		return {
@@ -198,20 +229,37 @@ function resolveVariableInput(
 	}
 
 	if (type === "number") {
-		const numberValue = Number(resolved);
-		return Number.isFinite(numberValue) ? numberValue : resolved;
+		return parseFiniteNumber(resolved, "Variable value");
 	}
 
 	if (type === "boolean") {
-		return resolved.trim() === "true" ? true : resolved.trim() === "false" ? false : resolved;
+		if (resolved.trim().toLowerCase() === "true") return true;
+		if (resolved.trim().toLowerCase() === "false") return false;
+		throw new Error("Variable value must be true or false.");
 	}
 
 	if (type === "list" || type === "object" || type === "duration" || type === "datetime" || type === "http_response") {
-		return api.parseJsonValue(resolved) ?? resolved;
+		const parsed = api.parseJsonValue(resolved);
+		if (parsed === undefined) throw new Error(`Variable value must be valid JSON for type "${type}".`);
+		if (type === "list" && !Array.isArray(parsed)) throw new Error("Variable value must be a JSON list.");
+		if (type !== "list" && (!parsed || typeof parsed !== "object" || Array.isArray(parsed))) {
+			throw new Error(`Variable value must be a JSON object for type "${type}".`);
+		}
+		return parsed;
 	}
 
 	return resolved;
 }
+
+function parseFiniteNumber(value: JsonValue | undefined, label: string) {
+	const normalized = typeof value === "string" ? value.trim() : "";
+	const parsed =
+		typeof value === "number" ? value : decimalNumberPattern.test(normalized) ? Number(normalized) : Number.NaN;
+	if (!Number.isFinite(parsed)) throw new Error(`${label} must be a finite number.`);
+	return parsed;
+}
+
+const decimalNumberPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 
 function setObjectPathValue(currentValue: JsonValue | undefined, path: string, value: JsonValue): JsonValue {
 	const root =
@@ -258,9 +306,22 @@ function setPathContainerValue(
 }
 
 function parseObjectPath(path: string): Array<string | number> {
-	return [...path.matchAll(/[A-Za-z_][A-Za-z0-9_]*|\[(0|[1-9][0-9]*)\]/g)].map((match) =>
+	const normalized = path.trim();
+	if (
+		!/^[A-Za-z_][A-Za-z0-9_]*(?:\[(?:0|[1-9][0-9]*)\])*(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[(?:0|[1-9][0-9]*)\])*)*$/.test(
+			normalized,
+		)
+	) {
+		throw new Error(`Invalid object field path "${path}".`);
+	}
+	const parts = [...normalized.matchAll(/[A-Za-z_][A-Za-z0-9_]*|\[(0|[1-9][0-9]*)\]/g)].map((match) =>
 		match[1] === undefined ? match[0] : Number(match[1]),
 	);
+	const oversizedIndex = parts.find((part) => typeof part === "number" && part >= 100_000);
+	if (oversizedIndex !== undefined) {
+		throw new Error(`Object field path index ${oversizedIndex} exceeds the maximum supported index 99999.`);
+	}
+	return parts;
 }
 
 function cloneJson<T extends JsonValue>(value: T): T {

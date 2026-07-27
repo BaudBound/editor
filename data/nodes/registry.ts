@@ -28,6 +28,7 @@ import { isDesktopTargetRuntime } from "../project/runtimes";
 import { beepNode } from "./definitions/actions/beep";
 import { calculateNode } from "./definitions/actions/calculate";
 import { clipboardNode } from "./definitions/actions/clipboard";
+import { convertValueNode } from "./definitions/actions/convert-value";
 import { delayNode } from "./definitions/actions/delay";
 import { copyFileNode } from "./definitions/actions/file-copy";
 import { deleteFileNode } from "./definitions/actions/file-delete";
@@ -110,6 +111,7 @@ const nodeDefinitions: NodeDefinition[] = [
 	continueLoopNode,
 	variableOperationNode,
 	calculateNode,
+	convertValueNode,
 	formatTextNode,
 	parseUrlNode,
 	logNode,
@@ -166,6 +168,7 @@ const actionPaletteCategories = [
 		actionTypes: [
 			"runtime.set_variable",
 			"action.calculate",
+			"action.value.convert",
 			"action.text.format",
 			"action.url.parse",
 		] satisfies ActionType[],
@@ -431,7 +434,7 @@ export function createNodeFromPaletteItem(
 			config,
 			inputs: ports.inputs,
 			outputs: ports.outputs,
-			runtimeOutputs: getRuntimeDataOutputs(item.actionType),
+			runtimeOutputs: getRuntimeDataOutputs(item.actionType, config),
 		},
 	};
 }
@@ -469,10 +472,14 @@ export function getNodePorts(actionType: ActionType, config?: Record<string, Jso
 	return { inputs: [defaultInputPort], outputs: [defaultOutputPort] };
 }
 
-export function getRuntimeDataOutputs(actionType: ActionType) {
+export function getRuntimeDataOutputs(actionType: ActionType, config: Record<string, JsonValue> = {}) {
 	const definition = getNodeDefinition(actionType);
 	if (!definition) {
 		return [];
+	}
+
+	if (definition.deriveRuntimeOutputs) {
+		return definition.deriveRuntimeOutputs(config);
 	}
 
 	if (definition.runtimeOutputs) {

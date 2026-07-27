@@ -37,7 +37,7 @@ export const beepNode = defineNode({
 			},
 		},
 	],
-	defaultConfig: () => ({ frequencyHz: "800", durationMs: "200" }),
+	defaultConfig: () => ({ frequencyHz: "", durationMs: "" }),
 	description: "Play a tone through the default audio output.",
 	desktopOnly: true,
 	fallible: true,

@@ -1,155 +1,78 @@
 import { TextCursorInput } from "lucide-react";
 import type { JsonValue } from "@/lib/types";
-import { defineNode } from "../../node-definition";
+import { defineNode, withFailureErrorOutput } from "../../node-definition";
 import { textTransformOperationOptions } from "../options";
-import { requiredConfig, staticNonNegativeIntegerConfig } from "../validators";
+import {
+	createTextTransformOperationRow,
+	getTextTransformOperationRows,
+	type TextTransformOperationRow,
+} from "../rows";
 
 const textTransformOperations = textTransformOperationOptions.map((option) => option.value);
 const unicodeLetterPattern = /\p{Alphabetic}/u;
 const whitespacePattern = /\p{White_Space}/u;
-
 type TextTransformOperation = (typeof textTransformOperations)[number];
 
 export const formatTextNode = defineNode({
 	actionType: "action.text.format",
 	capabilities: ["action.text"],
-	configFields: [
-		{ key: "operation", label: "Operation", type: "select", options: textTransformOperationOptions, required: false },
-		{ key: "template", label: "Template", type: "textarea", usesVariables: true, required: false },
-		{ key: "input", label: "Input", type: "textarea", usesVariables: true, required: false },
-		{ key: "search", label: "Search", type: "text", usesVariables: true, required: false },
-		{ key: "replacement", label: "Replacement", type: "textarea", usesVariables: true, required: false },
-		{ key: "delimiter", label: "Delimiter", type: "text", usesVariables: true, required: false },
-		{ key: "items", label: "Items", type: "textarea", usesVariables: true, required: false },
-		{
-			key: "start",
-			label: "Start",
-			type: "number",
-			usesVariables: true,
-			required: false,
-			numeric: {
-				kind: "integer",
-				signed: false,
-				minimum: "0",
-				maximum: "18446744073709551615",
-				minimumInclusive: true,
-				maximumInclusive: true,
-			},
-		},
-		{
-			key: "length",
-			label: "Length",
-			type: "number",
-			usesVariables: true,
-			required: false,
-			numeric: {
-				kind: "integer",
-				signed: false,
-				minimum: "0",
-				maximum: "18446744073709551615",
-				minimumInclusive: true,
-				maximumInclusive: true,
-			},
-		},
-		{
-			key: "targetLength",
-			label: "Target length",
-			type: "number",
-			usesVariables: true,
-			required: false,
-			numeric: {
-				kind: "integer",
-				signed: false,
-				minimum: "0",
-				maximum: "18446744073709551615",
-				minimumInclusive: true,
-				maximumInclusive: true,
-			},
-		},
-		{ key: "pad", label: "Pad text", type: "text", usesVariables: true, required: false },
-	],
+	configFields: [{ key: "input", label: "Input", type: "textarea", usesVariables: true }],
 	defaultConfig: () => ({
-		operation: "template",
-		template: "Hello {{item}}",
-		input: "{{item}}",
-		search: "",
-		replacement: "",
-		delimiter: ",",
-		items: '["one","two","three"]',
-		start: "0",
-		length: "",
-		targetLength: "10",
-		pad: " ",
+		input: "",
+		operations: [createTextTransformOperationRow()],
 	}),
-	description: "Transform text with templates, casing, replace, split, join, substring, padding, and encoding.",
+	description: "Run an ordered pipeline of text operations.",
+	fallible: true,
 	group: "actions",
 	icon: TextCursorInput,
 	kind: "action",
 	label: "Text Transform",
 	permission: { name: "text_transform", risk: "low" },
 	risk: "low",
-	runtimeOutputs: [
+	runtimeOutputs: withFailureErrorOutput([
 		{
 			name: "text",
 			type: "string",
-			description: "Transformed text result. Empty when the selected operation only produces list output.",
-			example: "n-mr3zyt6f-18.text",
+			description: "Final text result. Empty when the final operation produces a list.",
 		},
 		{
 			name: "items",
 			type: "list",
-			description: "List result for split operations, or the parsed list used by join.",
-			example: "n-mr3zyt6f-18.items",
+			description: "Final list result. Empty when the final operation produces text.",
 		},
-	],
+	]),
 	runnerType: "format_text",
 	sanitizeConfig: sanitizeTextTransformConfig,
-	validateConfig: (config) => validateTextTransformConfig(config),
+	validateConfig: validateTextTransformConfig,
 	simulation: {
 		createOutput: ({ api, context, node }) => {
 			const result = executeTextTransform({
 				config: node.data.config,
-				parseJsonValue: api.parseJsonValue,
 				resolveTemplate: (value) => api.resolveTemplate(value, context),
 			});
-
 			if (!result.ok) {
 				return {
 					failed: true,
 					outputData: {
 						error: api.createError(result.error, "TEXT_TRANSFORM_FAILED", "validation", {
-							operation: normalizeTextTransformOperation(configString(node.data.config.operation)),
+							operation_index: result.operationIndex,
 						}),
 					},
 				};
 			}
-
-			return {
-				failed: false,
-				outputData: result.output,
-			};
+			return { failed: false, outputData: result.output };
 		},
-		describe: ({ api, context, failed, node }) => {
-			const operation = normalizeTextTransformOperation(api.getConfigString(node, "operation"));
+		describe: ({ context, failed, node }) => {
+			const operations = getTextTransformOperationRows(node.data.config.operations);
 			if (failed) {
-				return [
-					{
-						level: "error",
-						message: `[Simulation] Text Transform (${node.id}) failed while running ${formatOperationName(operation)}.`,
-					},
-				];
+				return [{ level: "error", message: `[Simulation] Text Transform (${node.id}) failed.` }];
 			}
-
 			const output = context.nodeOutputs[node.id] ?? {};
-			const text = typeof output.text === "string" ? output.text : "";
-			const items = Array.isArray(output.items) ? output.items : [];
-			const count = items.length;
-			const suffix = operation === "split" || operation === "join" ? ` (${count} item${count === 1 ? "" : "s"})` : "";
-
+			const result = Array.isArray(output.items) && output.items.length > 0 ? output.items : output.text;
 			return [
 				{
 					level: "info",
-					message: `[Simulation] Text Transform (${node.id}) ran ${formatOperationName(operation)}${suffix}. Result: "${truncateText(text, 160)}".`,
+					message: `[Simulation] Text Transform (${node.id}) ran ${operations.length} operation${operations.length === 1 ? "" : "s"}. Result: ${truncateText(stringifyItem(result), 160)}.`,
 				},
 			];
 		},
@@ -158,316 +81,231 @@ export const formatTextNode = defineNode({
 
 type ExecuteTextTransformParams = {
 	config: Record<string, JsonValue>;
-	parseJsonValue: (value: string) => JsonValue | undefined;
 	resolveTemplate: (value: string) => JsonValue;
 };
 
 type TextTransformResult =
-	| {
-			ok: true;
-			output: Record<string, JsonValue>;
-	  }
-	| {
-			error: string;
-			ok: false;
-	  };
+	| { ok: true; output: Record<string, JsonValue> }
+	| { error: string; ok: false; operationIndex: number };
 
-function validateTextTransformConfig(config: Record<string, JsonValue>) {
-	const operation = normalizeTextTransformOperation(configString(config.operation));
-	const errors = [validateOperation(configString(config.operation))];
-
-	if (operation === "template") {
-		errors.push(requiredConfig(config, "template", "text template"));
-	}
-
-	if (usesInput(operation)) {
-		errors.push(requiredConfig(config, "input", "input text"));
-	}
-
-	if (operation === "replace" || operation === "regex_replace") {
-		errors.push(requiredConfig(config, "search", operation === "replace" ? "search text" : "regex pattern"));
-	}
-
-	if (operation === "regex_replace") {
-		errors.push(validateRegex(configString(config.search)));
-	}
-
-	if (operation === "split" || operation === "join") {
-		errors.push(requiredConfig(config, "delimiter", "delimiter"));
-	}
-
-	if (operation === "join") {
-		errors.push(validateJsonList(configString(config.items)));
-	}
-
-	if (operation === "substring") {
-		errors.push(staticNonNegativeIntegerConfig(config, "start", "substring start"));
-		if (configString(config.length).trim()) {
-			errors.push(staticNonNegativeIntegerConfig(config, "length", "substring length"));
-		}
-	}
-
-	if (operation === "pad_start" || operation === "pad_end") {
-		errors.push(staticNonNegativeIntegerConfig(config, "targetLength", "target length"));
-		errors.push(requiredConfig(config, "pad", "pad text"));
-	}
-
-	return errors.filter(Boolean);
-}
-
-function sanitizeTextTransformConfig(config: Record<string, JsonValue>) {
-	const operation = normalizeTextTransformOperation(configString(config.operation));
-	const sanitized: Record<string, JsonValue> = { operation };
-	copyConfigFields(config, sanitized, ["customName"]);
-
-	if (operation === "template") {
-		copyConfigFields(config, sanitized, ["template"]);
-		return sanitized;
-	}
-
-	if (operation === "join") {
-		copyConfigFields(config, sanitized, ["items", "delimiter"]);
-		return sanitized;
-	}
-
-	copyConfigFields(config, sanitized, ["input"]);
-	if (operation === "replace" || operation === "regex_replace") {
-		copyConfigFields(config, sanitized, ["search", "replacement"]);
-	} else if (operation === "split") {
-		copyConfigFields(config, sanitized, ["delimiter"]);
-	} else if (operation === "substring") {
-		copyConfigFields(config, sanitized, ["start"]);
-		if (configString(config.length).trim()) {
-			copyConfigFields(config, sanitized, ["length"]);
-		}
-	} else if (operation === "pad_start" || operation === "pad_end") {
-		copyConfigFields(config, sanitized, ["targetLength", "pad"]);
-	}
-
-	return sanitized;
-}
-
-function copyConfigFields(
-	source: Record<string, JsonValue>,
-	target: Record<string, JsonValue>,
-	keys: readonly string[],
-) {
-	for (const key of keys) {
-		if (key in source) {
-			target[key] = source[key];
-		}
-	}
-}
-
-export function executeTextTransform({
-	config,
-	parseJsonValue,
-	resolveTemplate,
-}: ExecuteTextTransformParams): TextTransformResult {
-	const configuredOperation = configString(config.operation);
-	if (configuredOperation && !textTransformOperations.includes(configuredOperation)) {
-		return { error: `Unsupported text transform operation "${configuredOperation}".`, ok: false };
-	}
-	const operation = normalizeTextTransformOperation(configuredOperation);
-	const input = resolveToString(configString(config.input), resolveTemplate);
-	const template = resolveToString(configString(config.template), resolveTemplate);
-	const search = resolveToString(configString(config.search), resolveTemplate);
-	const replacement = resolveToString(configString(config.replacement), resolveTemplate);
-	const delimiter = resolveToString(configString(config.delimiter), resolveTemplate);
-	const pad = resolveToString(configString(config.pad), resolveTemplate) || " ";
+export function executeTextTransform({ config, resolveTemplate }: ExecuteTextTransformParams): TextTransformResult {
+	const operations = getTextTransformOperationRows(config.operations);
+	let current = resolveTemplate(configString(config.input));
 
 	try {
-		if (operation === "template") {
-			return createTextOutput(template);
-		}
-
-		if (operation === "trim") {
-			return createTextOutput(input.trim());
-		}
-
-		if (operation === "uppercase") {
-			return createTextOutput(input.toUpperCase());
-		}
-
-		if (operation === "lowercase") {
-			return createTextOutput(input.toLowerCase());
-		}
-
-		if (operation === "sentence_case") {
-			return createTextOutput(toSentenceCase(input));
-		}
-
-		if (operation === "capitalize_words") {
-			return createTextOutput(capitalizeWords(input));
-		}
-
-		if (operation === "replace") {
-			return createTextOutput(input.replaceAll(search, replacement));
-		}
-
-		if (operation === "regex_replace") {
-			return createTextOutput(input.replace(new RegExp(search, "gu"), replacement));
-		}
-
-		if (operation === "split") {
-			const items = input.split(delimiter);
-			return createTextOutput("", items);
-		}
-
-		if (operation === "join") {
-			const items = parseItems(configString(config.items), parseJsonValue, resolveTemplate);
-			if (!items.ok) {
-				return items;
+		for (const [index, row] of operations.entries()) {
+			const result = executeOperation(current, row, resolveTemplate);
+			if (!result.ok) {
+				return { ...result, operationIndex: index + 1 };
 			}
-
-			return createTextOutput(items.items.map((item) => stringifyItem(item)).join(delimiter), items.items);
+			current = result.value;
 		}
-
-		if (operation === "substring") {
-			const start = normalizeInteger(resolveToString(configString(config.start), resolveTemplate), 0);
-			const rawLength = resolveToString(configString(config.length), resolveTemplate).trim();
-			const length = rawLength ? Math.max(0, normalizeInteger(rawLength, 0)) : undefined;
-			return createTextOutput(substringByCodePoints(input, start, length));
-		}
-
-		if (operation === "pad_start") {
-			const targetLength = normalizeInteger(
-				resolveToString(configString(config.targetLength), resolveTemplate),
-				codePointLength(input),
-			);
-			return createTextOutput(padByCodePoints(input, targetLength, pad, true));
-		}
-
-		if (operation === "pad_end") {
-			const targetLength = normalizeInteger(
-				resolveToString(configString(config.targetLength), resolveTemplate),
-				codePointLength(input),
-			);
-			return createTextOutput(padByCodePoints(input, targetLength, pad, false));
-		}
-
-		if (operation === "url_encode") {
-			return createTextOutput(encodeURIComponent(input));
-		}
-
-		if (operation === "url_decode") {
-			return createTextOutput(decodeURIComponent(input));
-		}
-
-		if (operation === "base64_encode") {
-			return createTextOutput(encodeBase64(input));
-		}
-
-		if (operation === "base64_decode") {
-			return createTextOutput(decodeBase64(input));
-		}
-
-		if (operation === "json_escape") {
-			return createTextOutput(JSON.stringify(input));
-		}
-
-		if (operation === "json_unescape") {
-			const parsed = JSON.parse(input);
-			return createTextOutput(typeof parsed === "string" ? parsed : stringifyItem(parsed));
-		}
-
-		return { error: `Unsupported text transform operation "${operation}".`, ok: false };
+		return {
+			ok: true,
+			output: Array.isArray(current) ? { text: "", items: current } : { text: stringifyItem(current), items: [] },
+		};
 	} catch (error) {
 		return {
 			error: error instanceof Error ? error.message : "Text transform failed.",
 			ok: false,
+			operationIndex: 0,
 		};
 	}
 }
 
-function createTextOutput(text: string, items: JsonValue[] = []) {
-	return {
-		ok: true,
-		output: {
-			text,
-			items,
-		},
-	} satisfies TextTransformResult;
-}
-
-function parseItems(
-	rawItems: string,
-	parseJsonValue: (value: string) => JsonValue | undefined,
+function executeOperation(
+	current: JsonValue,
+	row: TextTransformOperationRow,
 	resolveTemplate: (value: string) => JsonValue,
-): { items: JsonValue[]; ok: true } | { error: string; ok: false } {
-	const resolved = resolveTemplate(rawItems);
-	if (Array.isArray(resolved)) {
-		return { items: resolved, ok: true };
+): { ok: true; value: JsonValue } | { error: string; ok: false } {
+	const operation = normalizeTextTransformOperation(row.operation);
+	if (!operation) {
+		return { error: `Unsupported text transform operation "${row.operation}".`, ok: false };
+	}
+	if (operation === "template") {
+		return { ok: true, value: resolveTemplate(row.template) };
+	}
+	if (operation === "join") {
+		if (!Array.isArray(current)) {
+			return { error: "Join requires a list from the input or the previous operation.", ok: false };
+		}
+		const delimiter = resolveToString(row.delimiter, resolveTemplate);
+		if (!delimiter) return { error: "Join delimiter is required.", ok: false };
+		return { ok: true, value: current.map(stringifyItem).join(delimiter) };
+	}
+	if (typeof current !== "string") {
+		return {
+			error: `${formatOperationName(operation)} requires text from the input or previous operation.`,
+			ok: false,
+		};
 	}
 
-	const parsed = typeof resolved === "string" ? parseJsonValue(resolved) : resolved;
-	if (Array.isArray(parsed)) {
-		return { items: parsed, ok: true };
-	}
+	const search = resolveToString(row.search, resolveTemplate);
+	const replacement = resolveToString(row.replacement, resolveTemplate);
+	const delimiter = resolveToString(row.delimiter, resolveTemplate);
+	const pad = resolveToString(row.pad, resolveTemplate);
 
-	return { error: "Join items must be a JSON array or a reference that resolves to a list.", ok: false };
+	if (operation === "trim") return { ok: true, value: current.trim() };
+	if (operation === "uppercase") return { ok: true, value: current.toUpperCase() };
+	if (operation === "lowercase") return { ok: true, value: current.toLowerCase() };
+	if (operation === "sentence_case") return { ok: true, value: toSentenceCase(current) };
+	if (operation === "capitalize_words") return { ok: true, value: capitalizeWords(current) };
+	if ((operation === "replace" || operation === "regex_replace") && !search) {
+		return { error: "Search text is required.", ok: false };
+	}
+	if ((operation === "split" || operation === "join") && !delimiter) {
+		return { error: "Delimiter is required.", ok: false };
+	}
+	if (operation === "replace") return { ok: true, value: current.replaceAll(search, replacement) };
+	if (operation === "regex_replace") {
+		const portabilityError = portableRegexError(search, replacement);
+		if (portabilityError) return { error: portabilityError, ok: false };
+		return { ok: true, value: current.replace(new RegExp(search, "gu"), replacement) };
+	}
+	if (operation === "split") return { ok: true, value: current.split(delimiter) };
+	if (operation === "substring") {
+		const start = parseNonNegativeInteger(resolveToString(row.start, resolveTemplate), "Substring start");
+		const rawLength = resolveToString(row.length, resolveTemplate).trim();
+		const length = rawLength ? parseNonNegativeInteger(rawLength, "Substring length") : undefined;
+		return { ok: true, value: substringByCodePoints(current, start, length) };
+	}
+	if (operation === "pad_start" || operation === "pad_end") {
+		const targetLength = parseNonNegativeInteger(resolveToString(row.targetLength, resolveTemplate), "Target length");
+		if (!pad) return { error: "Pad text is required.", ok: false };
+		return { ok: true, value: padByCodePoints(current, targetLength, pad, operation === "pad_start") };
+	}
+	if (operation === "url_encode") return { ok: true, value: encodeURIComponent(current) };
+	if (operation === "url_decode") return { ok: true, value: decodeURIComponent(current) };
+	if (operation === "base64_encode") return { ok: true, value: encodeBase64(current) };
+	if (operation === "base64_decode") return { ok: true, value: decodeBase64(current) };
+	if (operation === "json_escape") return { ok: true, value: JSON.stringify(current) };
+	if (operation === "json_unescape") {
+		const parsed = JSON.parse(current) as JsonValue;
+		return { ok: true, value: typeof parsed === "string" ? parsed : stringifyItem(parsed) };
+	}
+	return { error: `Unsupported text transform operation "${row.operation}".`, ok: false };
 }
 
-function usesInput(operation: TextTransformOperation) {
-	return operation !== "template" && operation !== "join";
+function validateTextTransformConfig(config: Record<string, JsonValue>) {
+	const errors: string[] = [];
+	if (!configString(config.input).trim()) errors.push("must define input.");
+	if (!Array.isArray(config.operations) || config.operations.length === 0) {
+		errors.push("must define at least one text operation.");
+		return errors;
+	}
+	for (const [index, row] of getTextTransformOperationRows(config.operations).entries()) {
+		const operation = row.operation;
+		const prefix = `operation ${index + 1}`;
+		if (!textTransformOperations.includes(operation)) errors.push(`${prefix} is not supported.`);
+		if (operation === "template" && !row.template.trim()) errors.push(`${prefix} must define a template.`);
+		if ((operation === "replace" || operation === "regex_replace") && !row.search) {
+			errors.push(`${prefix} must define search text.`);
+		}
+		if (operation === "regex_replace" && row.search) {
+			try {
+				new RegExp(row.search, "u");
+			} catch {
+				errors.push(`${prefix} has an invalid regular expression.`);
+			}
+			const portabilityError = portableRegexError(row.search, row.replacement);
+			if (portabilityError) errors.push(`${prefix}: ${portabilityError}`);
+		}
+		if ((operation === "split" || operation === "join") && !row.delimiter) {
+			errors.push(`${prefix} must define a delimiter.`);
+		}
+		if (operation === "substring") {
+			validateStaticInteger(row.start, `${prefix} start`, errors);
+			if (row.length.trim()) validateStaticInteger(row.length, `${prefix} length`, errors);
+		}
+		if (operation === "pad_start" || operation === "pad_end") {
+			validateStaticInteger(row.targetLength, `${prefix} target length`, errors);
+			if (!row.pad) errors.push(`${prefix} must define pad text.`);
+		}
+	}
+	return errors;
 }
 
-function validateOperation(operation: string) {
-	return textTransformOperations.includes(operation) || operation === ""
-		? ""
-		: `Unsupported text operation "${operation}".`;
+function sanitizeTextTransformConfig(config: Record<string, JsonValue>) {
+	return {
+		...(typeof config.customName === "string" ? { customName: config.customName } : {}),
+		input: configString(config.input),
+		operations: getTextTransformOperationRows(config.operations).map((row) => sanitizeOperation(row)),
+	};
 }
 
-function validateRegex(pattern: string) {
-	if (!pattern.trim()) {
-		return "";
+function sanitizeOperation(row: TextTransformOperationRow) {
+	const operation = row.operation;
+	const result: Record<string, JsonValue> = { id: row.id, operation };
+	if (operation === "template") result.template = row.template;
+	if (operation === "replace" || operation === "regex_replace") {
+		result.search = row.search;
+		result.replacement = row.replacement;
 	}
-
-	try {
-		new RegExp(pattern, "u");
-		return "";
-	} catch (error) {
-		return error instanceof Error ? `Regex pattern is invalid: ${error.message}` : "Regex pattern is invalid.";
+	if (operation === "split" || operation === "join") result.delimiter = row.delimiter;
+	if (operation === "substring") {
+		result.start = row.start;
+		if (row.length.trim()) result.length = row.length;
 	}
+	if (operation === "pad_start" || operation === "pad_end") {
+		result.targetLength = row.targetLength;
+		result.pad = row.pad;
+	}
+	return result;
 }
 
-function validateJsonList(value: string) {
-	const trimmed = value.trim();
-	if (!trimmed || /^\{\{[^{}]+}}$/.test(trimmed)) {
-		return "";
-	}
-
-	try {
-		return Array.isArray(JSON.parse(trimmed)) ? "" : "Join items must be a JSON array.";
-	} catch {
-		return "Join items must be valid JSON or a list reference.";
-	}
+function normalizeTextTransformOperation(value: string): TextTransformOperation | undefined {
+	return textTransformOperations.includes(value) ? value : undefined;
 }
 
-function normalizeTextTransformOperation(value: string): TextTransformOperation {
-	return textTransformOperations.includes(value) ? value : "template";
+function validateStaticInteger(value: string, label: string, errors: string[]) {
+	if (!value.trim()) {
+		errors.push(`${label} is required.`);
+		return;
+	}
+	if (/\{\{[^{}]+}}/.test(value)) return;
+	const parsed = Number(value);
+	if (!Number.isSafeInteger(parsed) || parsed < 0) errors.push(`${label} must be a non-negative safe integer.`);
+}
+
+function parseNonNegativeInteger(value: string, label: string) {
+	const normalized = value.trim();
+	const parsed = Number(normalized);
+	if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error(`${label} must be a non-negative safe integer.`);
+	return parsed;
+}
+
+function portableRegexError(pattern: string, replacement: string) {
+	if (/\(\?(?:[=!]|<[=!]|<[^=!])/.test(pattern)) {
+		return "Regular expressions cannot use lookaround or named capture groups because they must work in both the editor and runner.";
+	}
+	if (/\\[1-9]/.test(pattern)) {
+		return "Regular expressions cannot use backreferences in the search pattern because they must work in both the editor and runner.";
+	}
+	for (let index = 0; index < replacement.length; index += 1) {
+		if (replacement[index] !== "$") continue;
+		const next = replacement[index + 1];
+		if (next === "$") {
+			index += 1;
+			continue;
+		}
+		if (next && /[1-9]/.test(next)) {
+			while (/[0-9]/.test(replacement[index + 2] ?? "")) index += 1;
+			index += 1;
+			continue;
+		}
+		return "Regex replacements support numbered capture groups such as $1. Write a literal $ as $$.";
+	}
+	return "";
 }
 
 function resolveToString(value: string, resolveTemplate: (value: string) => JsonValue) {
-	const resolved = resolveTemplate(value);
-	return typeof resolved === "string" ? resolved : stringifyItem(resolved);
+	return stringifyItem(resolveTemplate(value));
 }
 
-function stringifyItem(value: JsonValue) {
-	if (typeof value === "string") {
-		return value;
-	}
-
-	if (value === undefined) {
-		return "";
-	}
-
+function stringifyItem(value: JsonValue | undefined) {
+	if (typeof value === "string") return value;
+	if (value === undefined) return "";
 	return JSON.stringify(value);
-}
-
-function normalizeInteger(value: string, fallback: number) {
-	const parsed = Number(value);
-	return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
 }
 
 function codePointLength(value: string) {
@@ -482,23 +320,17 @@ function toSentenceCase(value: string) {
 function capitalizeWords(value: string) {
 	let waitingForFirstLetter = true;
 	let result = "";
-
 	for (const character of value) {
 		if (whitespacePattern.test(character)) {
 			waitingForFirstLetter = true;
 			result += character;
-			continue;
-		}
-
-		if (!unicodeLetterPattern.test(character)) {
+		} else if (!unicodeLetterPattern.test(character)) {
 			result += character;
-			continue;
+		} else {
+			result += waitingForFirstLetter ? character.toUpperCase() : character.toLowerCase();
+			waitingForFirstLetter = false;
 		}
-
-		result += waitingForFirstLetter ? character.toUpperCase() : character.toLowerCase();
-		waitingForFirstLetter = false;
 	}
-
 	return result;
 }
 
@@ -510,10 +342,7 @@ function substringByCodePoints(value: string, start: number, length?: number) {
 function padByCodePoints(value: string, targetLength: number, pad: string, atStart: boolean) {
 	const missing = Math.max(0, targetLength - codePointLength(value));
 	const padCodePoints = Array.from(pad);
-	if (missing === 0 || padCodePoints.length === 0) {
-		return value;
-	}
-
+	if (missing === 0 || padCodePoints.length === 0) return value;
 	const repeated = Array.from({ length: missing }, (_, index) => padCodePoints[index % padCodePoints.length]).join("");
 	return atStart ? `${repeated}${value}` : `${value}${repeated}`;
 }
@@ -521,10 +350,7 @@ function padByCodePoints(value: string, targetLength: number, pad: string, atSta
 function encodeBase64(value: string) {
 	const bytes = new TextEncoder().encode(value);
 	let binary = "";
-	for (const byte of bytes) {
-		binary += String.fromCharCode(byte);
-	}
-
+	for (const byte of bytes) binary += String.fromCharCode(byte);
 	return btoa(binary);
 }
 
@@ -533,13 +359,11 @@ function decodeBase64(value: string) {
 	if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
 		throw new Error("Invalid Base64 input. Use standard padded Base64 without embedded whitespace.");
 	}
-
 	const binary = atob(encoded);
-	if (btoa(binary) !== encoded) {
-		throw new Error("Invalid Base64 input. The final Base64 character contains non-zero trailing bits.");
-	}
-	const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-	return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+	if (btoa(binary) !== encoded) throw new Error("Invalid Base64 input.");
+	return new TextDecoder("utf-8", { fatal: true }).decode(
+		Uint8Array.from(binary, (character) => character.charCodeAt(0)),
+	);
 }
 
 function formatOperationName(operation: string) {
@@ -551,13 +375,7 @@ function truncateText(value: string, maxLength: number) {
 }
 
 function configString(value: JsonValue | undefined) {
-	if (typeof value === "string") {
-		return value;
-	}
-
-	if (value === undefined || value === null) {
-		return "";
-	}
-
+	if (typeof value === "string") return value;
+	if (value === undefined || value === null) return "";
 	return String(value);
 }

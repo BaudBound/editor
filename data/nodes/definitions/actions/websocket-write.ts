@@ -18,8 +18,8 @@ export const websocketWriteNode = defineNode({
 		{ key: "message", label: "Message", type: "textarea", usesVariables: true },
 	],
 	defaultConfig: () => ({
-		connectionId: "simulated-connection",
-		message: '{ "ok": true }',
+		connectionId: "",
+		message: "",
 	}),
 	description: "Send a message to an active WebSocket connection.",
 	fallible: true,

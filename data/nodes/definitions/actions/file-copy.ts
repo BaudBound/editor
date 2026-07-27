@@ -13,7 +13,7 @@ export const copyFileNode = defineNode({
 		{ key: "destinationPath", label: "Destination path", type: "text", usesVariables: true },
 		{ key: "overwrite", label: "Overwrite", type: "select", options: fileOverwriteOptions },
 	],
-	defaultConfig: () => ({ sourcePath: "./input.txt", destinationPath: "./backup/input.txt", overwrite: "false" }),
+	defaultConfig: () => ({ sourcePath: "", destinationPath: "", overwrite: "false" }),
 	description: "Copy a file to another location.",
 	fallible: true,
 	group: "actions",

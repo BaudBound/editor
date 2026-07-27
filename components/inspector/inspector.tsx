@@ -26,11 +26,14 @@ import {
 	createConditionRow,
 	createHeaderRow,
 	createSwitchCaseRow,
+	createTextTransformOperationRow,
 	getSwitchCaseRowsFromValue,
+	getTextTransformOperationRows,
 	type HeaderRow,
 	isConditionRow,
 	isHeaderRow,
 	type SwitchCaseRow,
+	type TextTransformOperationRow,
 } from "@/data/nodes/definitions/rows";
 import type { NodeConfigField } from "@/data/nodes/node-definition";
 import { createDefaultNodeConfig, getNodeConfigFields } from "@/data/nodes/registry";
@@ -668,115 +671,194 @@ function TextTransformConfigPanel({
 	variableCompletions: VariableCompletion[];
 	onChange: (key: string, value: JsonValue) => void;
 }) {
-	const operation = normalizeTextTransformOperation(valueToInputString(config.operation));
+	const operations = getTextTransformOperationRows(config.operations);
+	const operationReorder = useReorderController({
+		rows: operations,
+		onCommit: (rows) => onChange("operations", rows),
+	});
+	const draggedOperation = operationReorder.drag
+		? operations.find((operation) => operation.id === operationReorder.drag?.draggedId)
+		: null;
+	let visibleOperationIndex = 0;
 
 	return (
 		<div className="space-y-3">
-			<ComboboxField
-				label="Operation"
-				value={operation}
-				options={textTransformOperationOptions}
-				onChange={(value) => onChange("operation", value)}
+			<TextInput
+				label="Input"
+				value={valueToInputString(config.input)}
+				usesVariables
+				variableCompletions={variableCompletions}
+				onChange={(value) => onChange("input", value)}
 			/>
-			<p className="text-xs leading-4 text-baud-muted">{getTextTransformHelp(operation)}</p>
-
-			{operation === "template" && (
-				<TextInput
-					label="Template"
-					value={valueToInputString(config.template)}
-					usesVariables
-					variableCompletions={variableCompletions}
-					onChange={(value) => onChange("template", value)}
-				/>
+			<p className="text-xs leading-4 text-baud-muted">
+				Operations run from top to bottom. Each operation receives the result from the operation above it.
+			</p>
+			<ul ref={operationReorder.listRef} className="space-y-3" aria-label="Text transform operations">
+				{operationReorder.entries.map((entry) => {
+					if (entry.type === "drop-space") {
+						return <ReorderDropSpace key={entry.id} height={entry.height} />;
+					}
+					const row = entry.row;
+					visibleOperationIndex += 1;
+					const operationIndex = visibleOperationIndex;
+					const operation = normalizeTextTransformOperation(row.operation);
+					return (
+						<li
+							key={row.id}
+							ref={operationReorder.registerRow(row.id)}
+							data-reorder-card={row.id}
+							className="space-y-2 rounded border border-baud-border bg-baud-panel p-2"
+						>
+							<div className="flex items-center justify-between">
+								<div className="flex items-center gap-2">
+									<DragHandle
+										label={`Reorder operation ${operationIndex}`}
+										onPointerDown={(event) => operationReorder.startDrag(row.id, event)}
+									/>
+									<span className="font-mono text-sm text-baud-muted">Operation {operationIndex}</span>
+								</div>
+								<RemoveRowButton
+									label="Remove operation"
+									onClick={() =>
+										onChange(
+											"operations",
+											operations.filter((operationRow) => operationRow.id !== row.id),
+										)
+									}
+								/>
+							</div>
+							<ComboboxField
+								label="Operation"
+								value={operation}
+								options={textTransformOperationOptions}
+								onChange={(value) => updateTextTransformOperation(operations, row.id, { operation: value }, onChange)}
+							/>
+							<p className="text-xs leading-4 text-baud-muted">{getTextTransformHelp(operation)}</p>
+							{operation === "template" && (
+								<TextTransformRowInput
+									label="Template"
+									field="template"
+									row={row}
+									rows={operations}
+									variableCompletions={variableCompletions}
+									onChange={onChange}
+								/>
+							)}
+							{(operation === "replace" || operation === "regex_replace") && (
+								<>
+									<TextTransformRowInput
+										label={operation === "replace" ? "Search" : "Regex pattern"}
+										field="search"
+										row={row}
+										rows={operations}
+										variableCompletions={variableCompletions}
+										onChange={onChange}
+									/>
+									<TextTransformRowInput
+										label="Replacement"
+										field="replacement"
+										row={row}
+										rows={operations}
+										variableCompletions={variableCompletions}
+										onChange={onChange}
+									/>
+								</>
+							)}
+							{(operation === "split" || operation === "join") && (
+								<TextTransformRowInput
+									label="Delimiter"
+									field="delimiter"
+									row={row}
+									rows={operations}
+									variableCompletions={variableCompletions}
+									onChange={onChange}
+								/>
+							)}
+							{operation === "substring" && (
+								<div className="grid grid-cols-2 gap-2">
+									<TextTransformRowInput
+										label="Start"
+										field="start"
+										row={row}
+										rows={operations}
+										variableCompletions={variableCompletions}
+										onChange={onChange}
+									/>
+									<TextTransformRowInput
+										label="Length"
+										field="length"
+										row={row}
+										rows={operations}
+										variableCompletions={variableCompletions}
+										onChange={onChange}
+									/>
+								</div>
+							)}
+							{(operation === "pad_start" || operation === "pad_end") && (
+								<div className="grid grid-cols-2 gap-2">
+									<TextTransformRowInput
+										label="Target length"
+										field="targetLength"
+										row={row}
+										rows={operations}
+										variableCompletions={variableCompletions}
+										onChange={onChange}
+									/>
+									<TextTransformRowInput
+										label="Pad text"
+										field="pad"
+										row={row}
+										rows={operations}
+										variableCompletions={variableCompletions}
+										onChange={onChange}
+									/>
+								</div>
+							)}
+						</li>
+					);
+				})}
+			</ul>
+			{draggedOperation && operationReorder.drag && (
+				<FloatingReorderCard drag={operationReorder.drag}>
+					<div className="flex items-center gap-2">
+						<GripVertical size={15} className="text-baud-muted" />
+						<span className="font-mono text-sm text-baud-muted">
+							{getTextTransformOptionLabel(draggedOperation.operation)}
+						</span>
+					</div>
+				</FloatingReorderCard>
 			)}
-
-			{usesTextTransformInput(operation) && (
-				<TextInput
-					label="Input"
-					value={valueToInputString(config.input)}
-					usesVariables
-					variableCompletions={variableCompletions}
-					onChange={(value) => onChange("input", value)}
-				/>
-			)}
-
-			{(operation === "replace" || operation === "regex_replace") && (
-				<>
-					<TextInput
-						label={operation === "replace" ? "Search" : "Regex pattern"}
-						value={valueToInputString(config.search)}
-						usesVariables
-						variableCompletions={variableCompletions}
-						onChange={(value) => onChange("search", value)}
-					/>
-					<TextInput
-						label="Replacement"
-						value={valueToInputString(config.replacement)}
-						usesVariables
-						variableCompletions={variableCompletions}
-						onChange={(value) => onChange("replacement", value)}
-					/>
-				</>
-			)}
-
-			{operation === "join" && (
-				<TextInput
-					label="Items"
-					value={valueToInputString(config.items)}
-					usesVariables
-					variableCompletions={variableCompletions}
-					onChange={(value) => onChange("items", value)}
-				/>
-			)}
-
-			{(operation === "split" || operation === "join") && (
-				<TextInput
-					label="Delimiter"
-					value={valueToInputString(config.delimiter)}
-					usesVariables
-					variableCompletions={variableCompletions}
-					onChange={(value) => onChange("delimiter", value)}
-				/>
-			)}
-
-			{operation === "substring" && (
-				<div className="grid grid-cols-2 gap-2">
-					<TextInput
-						label="Start"
-						value={valueToInputString(config.start)}
-						usesVariables
-						variableCompletions={variableCompletions}
-						onChange={(value) => onChange("start", value)}
-					/>
-					<TextInput
-						label="Length"
-						value={valueToInputString(config.length)}
-						usesVariables
-						variableCompletions={variableCompletions}
-						onChange={(value) => onChange("length", value)}
-					/>
-				</div>
-			)}
-
-			{(operation === "pad_start" || operation === "pad_end") && (
-				<div className="grid grid-cols-2 gap-2">
-					<TextInput
-						label="Target length"
-						value={valueToInputString(config.targetLength)}
-						usesVariables
-						variableCompletions={variableCompletions}
-						onChange={(value) => onChange("targetLength", value)}
-					/>
-					<TextInput
-						label="Pad text"
-						value={valueToInputString(config.pad)}
-						usesVariables
-						variableCompletions={variableCompletions}
-						onChange={(value) => onChange("pad", value)}
-					/>
-				</div>
-			)}
+			<AddButton
+				label="Add operation"
+				onClick={() => onChange("operations", [...operations, createTextTransformOperationRow()])}
+			/>
 		</div>
+	);
+}
+
+function TextTransformRowInput({
+	field,
+	label,
+	onChange,
+	row,
+	rows,
+	variableCompletions,
+}: {
+	field: keyof Omit<TextTransformOperationRow, "id" | "operation">;
+	label: string;
+	onChange: (key: string, value: JsonValue) => void;
+	row: TextTransformOperationRow;
+	rows: TextTransformOperationRow[];
+	variableCompletions: VariableCompletion[];
+}) {
+	return (
+		<TextInput
+			label={label}
+			value={row[field]}
+			usesVariables
+			variableCompletions={variableCompletions}
+			onChange={(value) => updateTextTransformOperation(rows, row.id, { [field]: value }, onChange)}
+		/>
 	);
 }
 
@@ -1437,10 +1519,6 @@ function normalizeTextTransformOperation(value: string) {
 	return textTransformOperationOptions.some((option) => option.value === value) ? value : "template";
 }
 
-function usesTextTransformInput(operation: string) {
-	return operation !== "template" && operation !== "join";
-}
-
 function getTextTransformHelp(operation: string) {
 	if (operation === "template") {
 		return "Build text from normal content and {{variables}}.";
@@ -1491,6 +1569,10 @@ function getTextTransformHelp(operation: string) {
 	}
 
 	return "Transform the input text and expose the result as runtime data.";
+}
+
+function getTextTransformOptionLabel(operation: string) {
+	return textTransformOperationOptions.find((option) => option.value === operation)?.label ?? "Text operation";
 }
 
 function normalizeLineEnding(value: string) {
@@ -1636,6 +1718,18 @@ function updateSwitchCase(
 	onChange(
 		"cases",
 		cases.map((switchCase) => (switchCase.id === id ? { ...switchCase, ...patch } : switchCase)),
+	);
+}
+
+function updateTextTransformOperation(
+	rows: TextTransformOperationRow[],
+	id: string,
+	updates: Partial<TextTransformOperationRow>,
+	onChange: (key: string, value: JsonValue) => void,
+) {
+	onChange(
+		"operations",
+		rows.map((row) => (row.id === id ? { ...row, ...updates } : row)),
 	);
 }
 

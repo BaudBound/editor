@@ -22,7 +22,20 @@ export type HeaderRow = {
 	value: string;
 };
 
-export function createConditionRow(left = "{{status}}", right = "ok", combinator?: string): ConditionRow {
+export type TextTransformOperationRow = {
+	id: string;
+	operation: string;
+	template: string;
+	search: string;
+	replacement: string;
+	delimiter: string;
+	start: string;
+	length: string;
+	targetLength: string;
+	pad: string;
+};
+
+export function createConditionRow(left = "", right = "", combinator?: string): ConditionRow {
 	const row = {
 		id: crypto.randomUUID(),
 		left,
@@ -33,11 +46,26 @@ export function createConditionRow(left = "{{status}}", right = "ok", combinator
 	return combinator === undefined ? row : { ...row, combinator };
 }
 
-export function createSwitchCaseRow(name = "case"): SwitchCaseRow {
+export function createSwitchCaseRow(name = ""): SwitchCaseRow {
 	return {
 		id: crypto.randomUUID(),
 		name,
 		value: name,
+	};
+}
+
+export function createTextTransformOperationRow(operation = "trim"): TextTransformOperationRow {
+	return {
+		id: crypto.randomUUID(),
+		operation,
+		template: "",
+		search: "",
+		replacement: "",
+		delimiter: "",
+		start: "",
+		length: "",
+		targetLength: "",
+		pad: "",
 	};
 }
 
@@ -82,6 +110,22 @@ export function isSwitchCaseRow(value: JsonValue): value is SwitchCaseRow {
 
 export function isHeaderRow(value: JsonValue): value is HeaderRow {
 	return isRecord(value) && typeof value.id === "string" && typeof value.name === "string";
+}
+
+export function isTextTransformOperationRow(value: JsonValue): value is TextTransformOperationRow {
+	return isRecord(value) && typeof value.id === "string" && typeof value.operation === "string";
+}
+
+export function getTextTransformOperationRows(value: JsonValue | undefined): TextTransformOperationRow[] {
+	if (!Array.isArray(value)) {
+		return [createTextTransformOperationRow()];
+	}
+
+	const rows = value.filter(isTextTransformOperationRow).map((row) => ({
+		...createTextTransformOperationRow(row.operation),
+		...row,
+	}));
+	return rows.length > 0 ? rows : [createTextTransformOperationRow()];
 }
 
 export function getSwitchCaseRowsFromValue(value: JsonValue | undefined): SwitchCaseRow[] {

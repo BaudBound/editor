@@ -1,6 +1,7 @@
 import { ChevronDown, Trash2 } from "lucide-react";
 import type { DependencyList, ReactNode } from "react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { CopyTextButton } from "@/components/common/copy-text-button";
 import { DefaultVariableManager } from "@/components/shell/default-variable-manager";
 import { SecretReferenceManager } from "@/components/shell/secret-reference-manager";
 import { Button } from "@/components/ui/button";
@@ -386,11 +387,22 @@ function VariablesTab({
 									{displayedVariables.map((variable) => (
 										<div
 											key={getVariableKey(variable)}
+											data-variable-name={variable.name}
 											className="grid grid-cols-[minmax(180px,0.8fr)_96px_104px_88px_minmax(220px,1fr)] gap-3 px-3 py-2 font-mono text-sm"
 										>
 											<div className="min-w-0">
-												<div className="break-all text-baud-text">{variable.name}</div>
-												<div className="mt-1 break-all text-xs text-baud-muted">{variable.token}</div>
+												<div className="flex min-w-0 items-start gap-1">
+													<span className="min-w-0 break-all text-baud-text" data-selectable-text="true">
+														{variable.name}
+													</span>
+													<CopyTextButton text={variable.name} label={`Copy ${variable.name} name`} />
+												</div>
+												<div className="mt-1 flex min-w-0 items-start gap-1">
+													<span className="min-w-0 break-all text-xs text-baud-muted" data-selectable-text="true">
+														{variable.token}
+													</span>
+													<CopyTextButton text={variable.token} label={`Copy ${variable.name} reference`} />
+												</div>
 											</div>
 											<div className="min-w-0 break-all text-baud-muted">{variable.type}</div>
 											<div className="min-w-0 break-all text-baud-muted">{variable.scope}</div>

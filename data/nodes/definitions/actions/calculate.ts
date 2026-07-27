@@ -8,7 +8,7 @@ export const calculateNode = defineNode({
 	actionType: "action.calculate",
 	capabilities: ["action.calculate"],
 	configFields: [{ key: "expression", label: "Expression", type: "textarea", usesVariables: true }],
-	defaultConfig: () => ({ expression: "1 + 1" }),
+	defaultConfig: () => ({ expression: "" }),
 	description: "Calculate a numeric expression and expose the result.",
 	fallible: true,
 	group: "actions",

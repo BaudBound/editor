@@ -6,7 +6,7 @@ export const clipboardNode = defineNode({
 	actionType: "action.clipboard.set",
 	capabilities: ["action.clipboard"],
 	configFields: [{ key: "value", label: "Value", type: "textarea", usesVariables: true }],
-	defaultConfig: () => ({ value: "Clipboard text" }),
+	defaultConfig: () => ({ value: "" }),
 	description: "Write text to the system clipboard.",
 	desktopOnly: true,
 	fallible: true,

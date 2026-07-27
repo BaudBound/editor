@@ -7,7 +7,7 @@ export const subScriptNode = defineNode({
 	actionType: "action.script.run",
 	capabilities: ["action.sub_script"],
 	configFields: [{ key: "script", label: "Script", type: "text", usesVariables: true }],
-	defaultConfig: () => ({ script: "other-script" }),
+	defaultConfig: () => ({ script: "" }),
 	description: "Run another local script through its manual trigger.",
 	fallible: true,
 	group: "actions",

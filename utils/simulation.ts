@@ -1,5 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
-import { conditionValuesEqual } from "@/data/nodes/condition-comparison";
+import { compareConditionValues, conditionValuesEqual } from "@/data/nodes/condition-comparison";
 import { isConditionRow, isSwitchCaseRow } from "@/data/nodes/definitions/rows";
 import type { NodeSimulationApi } from "@/data/nodes/node-definition";
 import { numericContractApplies, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
@@ -36,9 +36,6 @@ const SIMULATION_YIELD_INTERVAL = 100;
 const MAX_SIMULATION_MESSAGE_LENGTH = 4000;
 const MAX_VARIABLE_SNAPSHOT_ENTRIES = 600;
 const MAX_VARIABLE_SNAPSHOT_STRING_LENGTH = 4000;
-const MAX_REGEX_PATTERN_LENGTH = 256;
-const UNSAFE_REGEX_PATTERN =
-	/(\([^)]*[+*][^)]*\)[+*?])|(\[[^\]]+\][+*?].*\[[^\]]+\][+*?])|((?:\.\*){2,})|((?:\w|\)|\]|\.|\+|\*)\{\d+,?\d*\}[+*?])/;
 
 type SimulationFrame =
 	| {
@@ -633,11 +630,16 @@ function evaluateIfNode(node: Node<ScriptNodeData>, context: SimulationContext) 
 	}
 
 	return rows.reduce((result, row, index) => {
-		const compared = compareValues(
-			resolveTemplate(row.left, context),
-			row.operator,
-			resolveTemplate(row.right, context),
-		);
+		const compared =
+			row.operator === "is_defined"
+				? isTemplateDefined(row.left, context)
+				: row.operator === "is_missing"
+					? !isTemplateDefined(row.left, context)
+					: compareConditionValues(
+							resolveTemplate(row.left, context),
+							row.operator,
+							resolveTemplate(row.right, context),
+						);
 		const rowResult = row.invert === true ? !compared : compared;
 
 		if (index === 0) {
@@ -668,58 +670,6 @@ async function evaluateSwitchNode(node: Node<ScriptNodeData>, context: Simulatio
 		message: `[Simulation] Switch ${node.id} matched case "${matchedCase.name}" for value "${switchValue}".`,
 	});
 	return `case-${matchedCase.id}`;
-}
-
-function compareValues(left: JsonValue, operator: string, right: JsonValue) {
-	const leftText = String(left);
-	const rightText = String(right);
-	const leftNumber = Number(leftText);
-	const rightNumber = Number(rightText);
-
-	switch (operator) {
-		case "==":
-			return conditionValuesEqual(left, right);
-		case "!=":
-			return !conditionValuesEqual(left, right);
-		case ">":
-			return leftNumber > rightNumber;
-		case ">=":
-			return leftNumber >= rightNumber;
-		case "<":
-			return leftNumber < rightNumber;
-		case "<=":
-			return leftNumber <= rightNumber;
-		case "contains":
-			return leftText.includes(rightText);
-		case "starts_with":
-			return leftText.startsWith(rightText);
-		case "ends_with":
-			return leftText.endsWith(rightText);
-		case "regex_match":
-			return safeRegexMatch(leftText, rightText);
-		case "is_empty":
-			return leftText.length === 0;
-		case "is_null":
-			return left === null || leftText === "null";
-		case "is_true":
-			return left === true;
-		case "is_false":
-			return left === false;
-		default:
-			return false;
-	}
-}
-
-function safeRegexMatch(value: string, pattern: string) {
-	if (pattern.length > MAX_REGEX_PATTERN_LENGTH || UNSAFE_REGEX_PATTERN.test(pattern)) {
-		return false;
-	}
-
-	try {
-		return new RegExp(pattern).test(value);
-	} catch {
-		return false;
-	}
 }
 
 async function createNodeOutputData(
@@ -1176,6 +1126,11 @@ function resolveTemplate(value: string, context: SimulationContext): JsonValue {
 	);
 }
 
+function isTemplateDefined(value: string, context: SimulationContext) {
+	const exactReference = value.trim().match(/^\{\{\s*([^}]+?)\s*\}\}$/);
+	return exactReference ? tryGetReferenceValue(exactReference[1].trim(), context) !== undefined : true;
+}
+
 function normalizeIterationCount(value: JsonValue) {
 	if (typeof value === "number") {
 		return BigInt(value);
@@ -1189,6 +1144,10 @@ function normalizeIterationCount(value: JsonValue) {
 }
 
 function getReferenceValue(reference: string, context: SimulationContext): JsonValue {
+	return tryGetReferenceValue(reference, context) ?? `{{${reference}}}`;
+}
+
+function tryGetReferenceValue(reference: string, context: SimulationContext): JsonValue | undefined {
 	if (reference in context.runtimeVariables) {
 		return context.runtimeVariables[reference];
 	}
@@ -1202,18 +1161,18 @@ function getReferenceValue(reference: string, context: SimulationContext): JsonV
 		getRuntimeVariableReference(reference, context.persistentVariables);
 	if (variableReference) {
 		if (context.secretNames.has(variableReference.name) && variableReference.path.startsWith("$")) {
-			return `{{${reference}}}`;
+			return undefined;
 		}
-		return getPathValue(variableReference.value, variableReference.path) ?? `{{${reference}}}`;
+		return getPathValue(variableReference.value, variableReference.path);
 	}
 
 	const nodeId = [...context.nodesById.keys()].find((id) => reference === id || reference.startsWith(`${id}.`));
 	if (!nodeId) {
-		return `{{${reference}}}`;
+		return undefined;
 	}
 
 	const path = reference.slice(nodeId.length + 1);
-	return getPathValue(context.nodeOutputs[nodeId] ?? {}, path) ?? `{{${reference}}}`;
+	return getPathValue(context.nodeOutputs[nodeId] ?? {}, path);
 }
 
 function getRuntimeVariableReference(reference: string, variables: Record<string, JsonValue>) {

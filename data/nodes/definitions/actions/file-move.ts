@@ -13,7 +13,7 @@ export const moveFileNode = defineNode({
 		{ key: "destinationPath", label: "Destination path", type: "text", usesVariables: true },
 		{ key: "overwrite", label: "Overwrite", type: "select", options: fileOverwriteOptions },
 	],
-	defaultConfig: () => ({ sourcePath: "./input.txt", destinationPath: "./archive/input.txt", overwrite: "false" }),
+	defaultConfig: () => ({ sourcePath: "", destinationPath: "", overwrite: "false" }),
 	description: "Move or rename a file.",
 	fallible: true,
 	group: "actions",

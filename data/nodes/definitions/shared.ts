@@ -1,6 +1,10 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { JsonValue, ScriptNodeData } from "@/lib/types";
-import { booleanConditionOperatorOptions, comparisonOperatorOptions } from "./options";
+import {
+	booleanConditionOperatorOptions,
+	comparisonOperatorOptions,
+	ifElseAdditionalConditionOperatorOptions,
+} from "./options";
 import { isConditionRow } from "./rows";
 
 export function validateLoopBodyDoesNotReturn(
@@ -74,13 +78,15 @@ function canReachNode(startNodeId: string, targetNodeId: string, edges: { source
 }
 
 const comparisonOperators = new Set(comparisonOperatorOptions.map((option) => option.value));
-const booleanConditionOperators = new Set(booleanConditionOperatorOptions.map((option) => option.value));
+const ifElseOnlyConditionOperators = new Set(
+	[...booleanConditionOperatorOptions, ...ifElseAdditionalConditionOperatorOptions].map((option) => option.value),
+);
 const conditionCombinators = new Set(["and", "or"]);
 
 export function validateConditionRowsConfig(
 	config: Record<string, JsonValue>,
 	label: string,
-	allowBooleanChecks = false,
+	allowIfElseOnlyChecks = false,
 ) {
 	const conditions = config.conditions;
 	if (!Array.isArray(conditions) || conditions.length === 0) {
@@ -99,7 +105,7 @@ export function validateConditionRowsConfig(
 		}
 		if (
 			!comparisonOperators.has(condition.operator) &&
-			!(allowBooleanChecks && booleanConditionOperators.has(condition.operator))
+			!(allowIfElseOnlyChecks && ifElseOnlyConditionOperators.has(condition.operator))
 		) {
 			errors.push(`${rowLabel} uses unknown expression "${condition.operator}".`);
 		}

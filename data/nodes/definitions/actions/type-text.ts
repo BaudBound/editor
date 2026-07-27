@@ -7,7 +7,7 @@ export const typeTextNode = defineNode({
 	actionType: "action.keyboard.type_text",
 	capabilities: actionKeyboard,
 	configFields: [{ key: "text", label: "Text", type: "textarea", usesVariables: true }],
-	defaultConfig: () => ({ text: "Hello from BaudBound" }),
+	defaultConfig: () => ({ text: "" }),
 	description: "Type selected text through the keyboard.",
 	desktopOnly: true,
 	fallible: true,

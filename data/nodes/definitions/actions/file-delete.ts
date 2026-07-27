@@ -8,7 +8,7 @@ export const deleteFileNode = defineNode({
 	actionType: "action.file.delete",
 	capabilities: actionFile,
 	configFields: [{ key: "path", label: "Path", type: "text", usesVariables: true }],
-	defaultConfig: () => ({ path: "./old-file.txt" }),
+	defaultConfig: () => ({ path: "" }),
 	description: "Delete a selected file path.",
 	fallible: true,
 	group: "actions",

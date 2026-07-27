@@ -26,7 +26,7 @@ export const killProcessNode = defineNode({
 			numericWhen: { key: "matchMode", equals: "pid" },
 		},
 	],
-	defaultConfig: () => ({ matchMode: "process_name", target: "app.exe" }),
+	defaultConfig: () => ({ matchMode: "process_name", target: "" }),
 	description: "Terminate a target process.",
 	fallible: true,
 	group: "actions",

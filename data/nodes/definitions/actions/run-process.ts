@@ -27,7 +27,7 @@ export const runProcessNode = defineNode({
 			},
 		},
 	],
-	defaultConfig: () => ({ executable: "ffmpeg", arguments: "-version", workingDirectory: "", timeoutSeconds: "300" }),
+	defaultConfig: () => ({ executable: "", arguments: "", workingDirectory: "", timeoutSeconds: "300" }),
 	description:
 		"Execute a program, wait for it to finish, and capture its exit code, standard output, and standard error.",
 	fallible: true,

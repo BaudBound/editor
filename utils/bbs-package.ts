@@ -641,7 +641,7 @@ function toEditorNode(
 
 	const config = asConfig(record.config);
 	const ports = getNodePorts(actionType, config);
-	const runtimeOutputs = getRuntimeDataOutputs(actionType);
+	const runtimeOutputs = getRuntimeDataOutputs(actionType, config);
 	const columns = 4;
 	const columnGap = 300;
 	const rowGap = 190;
