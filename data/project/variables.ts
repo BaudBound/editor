@@ -126,30 +126,6 @@ export const variableOperationDefinitions: Record<
 	},
 };
 
-export function getDefaultVariableValue(type: VariableType) {
-	return variableTypeDefinitions[type].example;
-}
-
-export function getDefaultVariableOperationValue(operation: VariableOperation, type: VariableType) {
-	if (operation === "increment") {
-		return "1";
-	}
-
-	if (operation === "append_list") {
-		return "item";
-	}
-
-	if (operation === "set_object_field") {
-		return "value";
-	}
-
-	if (operation === "clear") {
-		return getClearedVariableValue(type);
-	}
-
-	return getDefaultVariableValue(type);
-}
-
 export function getVariableOperationFixedType(operation: VariableOperation): VariableType | null {
 	if (operation === "increment") {
 		return "number";

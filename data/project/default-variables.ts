@@ -1,17 +1,6 @@
 import { runtimeNumberContract, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
-import {
-	getClearedVariableValue,
-	getDefaultVariableValue,
-	type VariableType,
-	validateVariableName,
-	validateVariableValue,
-} from "@/data/project/variables";
+import { type VariableType, validateVariableName, validateVariableValue } from "@/data/project/variables";
 import type { DefaultVariable, JsonValue, SecretDeclaration } from "@/lib/types";
-
-export function createDefaultValue(type: VariableType): JsonValue {
-	const raw = type === "file_path" ? getDefaultVariableValue(type) : getClearedVariableValue(type);
-	return parseDefaultValue(type, raw) ?? "";
-}
 
 export function formatDefaultValue(type: VariableType, value: JsonValue) {
 	if (type === "string" || type === "file_path") {

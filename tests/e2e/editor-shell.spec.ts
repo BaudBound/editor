@@ -180,6 +180,35 @@ test("variable operation completes writable variable names without template brac
 	await expect(nameInput).not.toHaveValue("{{preferred_status}}");
 });
 
+test("variable editors do not insert example values", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "Data & Variables" }).click();
+	await page.getByRole("button", { name: "Variable Operation" }).click();
+	await expect(page.getByRole("textbox", { name: "Value" })).toHaveValue("");
+	await expect(page.getByText(/^Example:/)).toHaveCount(0);
+
+	await page.getByRole("button", { name: "Variable type" }).click();
+	await page.getByRole("option", { name: "number" }).click();
+	await expect(page.getByRole("textbox", { name: "Value" })).toHaveValue("");
+
+	await page.getByRole("button", { name: "Operation", exact: true }).click();
+	await page.getByRole("option", { name: "Increment" }).click();
+	await expect(page.getByRole("textbox", { name: "Amount" })).toHaveValue("");
+
+	await page.getByRole("button", { name: "Operation", exact: true }).click();
+	await page.getByRole("option", { name: "Set object field" }).click();
+	await expect(page.getByRole("textbox", { name: "Object field path" })).toHaveValue("");
+	await expect(page.getByRole("textbox", { name: "Field value" })).toHaveValue("");
+
+	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await page.getByRole("button", { name: "Add variable" }).click();
+	const variableDialog = page.getByRole("dialog");
+	await variableDialog.getByRole("combobox", { name: "Type" }).click();
+	await page.getByRole("option", { name: "file_path" }).click();
+	await expect(variableDialog.getByRole("textbox", { name: "Default value" })).toHaveValue("");
+});
+
 test("persistent variable simulation carries changes into the next run", async ({ page }) => {
 	await openEditor(page);
 

@@ -41,7 +41,6 @@ import { builtInVariableNames } from "@/data/project/built-in-variables";
 import { createSerialDeviceOptions, serialLineEndingOptions } from "@/data/project/serial";
 import {
 	type EditorVariable,
-	getDefaultVariableOperationValue,
 	getVariableOperationFixedType,
 	normalizeVariableOperation,
 	type VariableType,
@@ -932,25 +931,18 @@ function VariableOperationConfigPanel({
 
 	const handleTypeChange = (value: string) => {
 		const nextType = normalizeVariableType(value);
-		const nextValue = getDefaultVariableOperationValue(operation, nextType);
 		onChange("valueType", nextType);
-		onChange("value", nextValue);
-		setDraftValue(nextValue);
+		onChange("value", "");
+		setDraftValue("");
 	};
 
 	const handleOperationChange = (value: string) => {
 		const nextOperation = normalizeVariableOperation(value);
 		const nextType = getVariableOperationFixedType(nextOperation) ?? selectedType;
-		const nextValue = getDefaultVariableOperationValue(nextOperation, nextType);
 		onChange("operation", nextOperation);
 		onChange("valueType", nextType);
-		onChange("value", nextValue);
-		setDraftValue(nextValue);
-
-		if (nextOperation === "set_object_field" && !draftFieldPath.trim()) {
-			onChange("fieldPath", "field");
-			setDraftFieldPath("field");
-		}
+		onChange("value", "");
+		setDraftValue("");
 	};
 
 	const handleValueChange = (value: string) => {
@@ -1044,11 +1036,12 @@ function VariableOperationConfigPanel({
 				) : selectedType === "boolean" ? (
 					<OptionCombobox
 						ariaLabel={operationDefinition.valueLabel}
-						value={draftValue === "true" ? "true" : "false"}
+						value={draftValue}
 						options={[
 							{ label: "true", value: "true" },
 							{ label: "false", value: "false" },
 						]}
+						placeholder="Select a value"
 						onChange={handleValueChange}
 					/>
 				) : (
@@ -1062,9 +1055,6 @@ function VariableOperationConfigPanel({
 					/>
 				)}
 				<p className="mt-1 text-xs leading-4 text-baud-muted">{definition.description}</p>
-				<p className="mt-1 break-all font-mono text-xs leading-4 text-baud-muted">
-					Example: {getDefaultVariableOperationValue(operation, selectedType) || definition.example}
-				</p>
 				{validationMessage && <p className="mt-1 text-xs leading-4 text-baud-danger">{validationMessage}</p>}
 			</div>
 		</div>

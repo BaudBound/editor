@@ -14,7 +14,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-	createDefaultValue,
 	defaultValueError,
 	formatDefaultValue,
 	parseDefaultValue,
@@ -37,7 +36,7 @@ function emptyVariable(): DefaultVariable {
 		name: "",
 		scope: "runtime",
 		type: "string",
-		value: createDefaultValue("string"),
+		value: "",
 	};
 }
 
@@ -61,7 +60,7 @@ export function DefaultVariableManager({ secrets, variables, onChange }: Default
 		const variable = emptyVariable();
 		setEditingName(null);
 		setDraft(variable);
-		setRawValue(formatDefaultValue(variable.type, variable.value));
+		setRawValue("");
 		setDialogOpen(true);
 	};
 	const openEdit = (variable: DefaultVariable) => {
@@ -71,9 +70,8 @@ export function DefaultVariableManager({ secrets, variables, onChange }: Default
 		setDialogOpen(true);
 	};
 	const changeType = (type: VariableType) => {
-		const value = createDefaultValue(type);
-		setDraft((current) => ({ ...current, type, value }));
-		setRawValue(formatDefaultValue(type, value));
+		setDraft((current) => ({ ...current, type, value: "" }));
+		setRawValue("");
 	};
 	const save = () => {
 		const value = parseDefaultValue(draft.type, rawValue);
@@ -225,7 +223,7 @@ export function DefaultVariableManager({ secrets, variables, onChange }: Default
 						{draft.type === "boolean" ? (
 							<Select value={rawValue} onValueChange={setRawValue}>
 								<SelectTrigger id={valueId} className="w-full">
-									<SelectValue />
+									<SelectValue placeholder="Select a value" />
 								</SelectTrigger>
 								<SelectContent>
 									<SelectItem value="true">true</SelectItem>
