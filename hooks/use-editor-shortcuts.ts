@@ -5,11 +5,13 @@ import { hasBrowserTextSelection, isEditableShortcutTarget } from "@/utils/edito
 
 export function useEditorShortcuts({
 	onCopy,
+	onFind,
 	onRedo,
 	onSave,
 	onUndo,
 }: {
 	onCopy: () => boolean;
+	onFind: () => void;
 	onRedo: () => void;
 	onSave: () => void;
 	onUndo: () => void;
@@ -22,6 +24,11 @@ export function useEditorShortcuts({
 			if (key === "s") {
 				event.preventDefault();
 				onSave();
+				return;
+			}
+			if (key === "f") {
+				event.preventDefault();
+				onFind();
 				return;
 			}
 			if (isEditableShortcutTarget(event.target)) return;
@@ -43,5 +50,5 @@ export function useEditorShortcuts({
 
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [onCopy, onRedo, onSave, onUndo]);
+	}, [onCopy, onFind, onRedo, onSave, onUndo]);
 }

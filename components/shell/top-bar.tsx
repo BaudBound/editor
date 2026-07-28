@@ -5,6 +5,7 @@ import {
 	PackageOpen,
 	Redo2,
 	Save,
+	Search,
 	ShieldCheck,
 	SlidersHorizontal,
 	Undo2,
@@ -24,6 +25,7 @@ type TopBarProps = {
 	onExportClick: () => void;
 	onHomeClick: () => void;
 	onHelpClick: () => void;
+	onNodeFinderClick: () => void;
 	onProjectSettingsClick: () => void;
 	onRedoClick: () => void;
 	onSaveClick: () => void;
@@ -43,6 +45,7 @@ export function TopBar({
 	onExportClick,
 	onHomeClick,
 	onHelpClick,
+	onNodeFinderClick,
 	onProjectSettingsClick,
 	onRedoClick,
 	onSaveClick,
@@ -123,6 +126,16 @@ export function TopBar({
 							<Redo2 />
 						</Button>
 					</div>
+					<Button
+						type="button"
+						onClick={onNodeFinderClick}
+						aria-label="Find a node"
+						title="Find a node (Ctrl+F)"
+						size="icon-sm"
+						variant="ghost"
+					>
+						<Search />
+					</Button>
 				</fieldset>
 				<fieldset
 					className="m-0 flex min-w-0 items-center justify-end gap-1.5 border-0 p-0"

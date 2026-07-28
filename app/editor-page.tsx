@@ -18,11 +18,17 @@ import {
 	toCommentFlowNode,
 	toEditorComment,
 } from "@/components/canvas/comment-card";
-import { type EditorFlowNode, FlowCanvas, type ScriptFlowNode } from "@/components/canvas/flow-canvas";
+import {
+	type CanvasNodeFocusRequest,
+	type EditorFlowNode,
+	FlowCanvas,
+	type ScriptFlowNode,
+} from "@/components/canvas/flow-canvas";
 import { Inspector } from "@/components/inspector/inspector";
 import { AssetEditorModal } from "@/components/modals/asset-editor-modal";
 import { ExportWizardModal } from "@/components/modals/export-wizard-modal";
 import { HelpModal } from "@/components/modals/help-modal";
+import { NodeFinderModal } from "@/components/modals/node-finder-modal";
 import { ProjectSettingsModal } from "@/components/modals/project-settings-modal";
 import { SimulationMessageBoxDialog } from "@/components/modals/simulation-message-box-dialog";
 import { VerificationErrorModal } from "@/components/modals/verification-error-modal";
@@ -154,6 +160,7 @@ export function EditorPage({
 }) {
 	const router = useRouter();
 	const handleCopyGraphRef = useRef<(nodeId?: string) => boolean>(() => false);
+	const nodeFocusRequestIdRef = useRef(0);
 	const simulationLifecycleRef = useRef<SimulationLifecycle>({ abortController: null, active: false, runId: 0 });
 	const simulationMessageBoxResolveRef = useRef<((button: string) => void) | null>(null);
 	const simulationPersistentVariablesRef = useRef<Record<string, JsonValue>>(
@@ -199,6 +206,8 @@ export function EditorPage({
 	const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
 	const [assetEditorOpen, setAssetEditorOpen] = useState(false);
 	const [helpOpen, setHelpOpen] = useState(false);
+	const [nodeFinderOpen, setNodeFinderOpen] = useState(false);
+	const [nodeFocusRequest, setNodeFocusRequest] = useState<CanvasNodeFocusRequest | null>(null);
 	const [exportOpen, setExportOpen] = useState(false);
 	const [clipboard, setClipboard] = useState<EditorClipboard | null>(null);
 	const [assets, setAssets] = useState<EditorAsset[]>(initialProject.assets);
@@ -426,9 +435,11 @@ export function EditorPage({
 		onRestore: restoreDocument,
 	});
 	const handleCopyShortcut = useCallback(() => handleCopyGraphRef.current(), []);
+	const handleOpenNodeFinder = useCallback(() => setNodeFinderOpen(true), []);
 	const handleSaveShortcut = useCallback(() => void projectSave.save(), [projectSave.save]);
 	useEditorShortcuts({
 		onCopy: handleCopyShortcut,
+		onFind: handleOpenNodeFinder,
 		onRedo: history.redo,
 		onSave: handleSaveShortcut,
 		onUndo: history.undo,
@@ -1229,6 +1240,22 @@ export function EditorPage({
 		}
 	};
 
+	const handleFindNode = (nodeId: string) => {
+		setNodes((currentNodes) =>
+			currentNodes.map((node) => ({
+				...node,
+				selected: isScriptFlowNode(node) && node.id === nodeId,
+			})),
+		);
+		setSelectedNodeId(nodeId);
+		setSelectedEdgeId(null);
+		setActiveTab("properties");
+		expandPanel("right");
+		nodeFocusRequestIdRef.current += 1;
+		setNodeFocusRequest({ nodeId, requestId: nodeFocusRequestIdRef.current });
+		setNodeFinderOpen(false);
+	};
+
 	return (
 		<div className="flex h-dvh min-h-0 select-none flex-col overflow-hidden bg-baud-bg text-baud-text">
 			<TopBar
@@ -1243,6 +1270,7 @@ export function EditorPage({
 				onExportClick={handleExport}
 				onHomeClick={projectSave.requestReturn}
 				onHelpClick={() => setHelpOpen(true)}
+				onNodeFinderClick={handleOpenNodeFinder}
 				onProjectSettingsClick={() => setProjectSettingsOpen(true)}
 				onRedoClick={history.redo}
 				onSaveClick={() => void projectSave.save()}
@@ -1270,6 +1298,7 @@ export function EditorPage({
 					<FlowCanvas
 						nodes={nodes}
 						edges={edges}
+						nodeFocusRequest={nodeFocusRequest}
 						simulatedEdgeIds={simulationEdgeIds}
 						simulatedNodeIds={simulationNodeIds}
 						selectedEdgeId={selectedEdgeId}
@@ -1446,6 +1475,12 @@ export function EditorPage({
 				onVerificationComplete={handleExportVerificationComplete}
 			/>
 			<HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+			<NodeFinderModal
+				nodes={scriptNodes}
+				open={nodeFinderOpen}
+				onClose={() => setNodeFinderOpen(false)}
+				onSelectNode={handleFindNode}
+			/>
 			<SimulationMessageBoxDialog messageBox={simulationMessageBox} onSelect={handleSimulationMessageBoxSelect} />
 			<Toaster position="bottom-right" closeButton richColors />
 		</div>
