@@ -32,7 +32,18 @@ export function VerificationErrorModal({ checks, description, open, title, onClo
 							<XCircle size={16} className="mt-0.5 shrink-0 text-baud-danger" />
 							<div className="min-w-0">
 								<h3 className="text-sm font-bold text-baud-danger">{check.title}</h3>
-								<p className="mt-1 text-sm leading-5 text-baud-danger">{check.message}</p>
+								{check.details?.length ? (
+									<ul className="mt-2 space-y-1.5 text-sm leading-5 text-baud-danger">
+										{check.details.map((detail, index) => (
+											<li key={`${check.id}-${index}`} className="flex items-start gap-2">
+												<span aria-hidden="true" className="mt-[0.55rem] size-1.5 shrink-0 rounded-full bg-current" />
+												<span className="min-w-0 break-words">{detail}</span>
+											</li>
+										))}
+									</ul>
+								) : (
+									<p className="mt-1 text-sm leading-5 text-baud-danger">{check.message}</p>
+								)}
 							</div>
 						</div>
 					))}

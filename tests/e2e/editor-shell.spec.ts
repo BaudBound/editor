@@ -472,8 +472,15 @@ test("verification reports graph errors when the script has no trigger", async (
 	await page.getByRole("button", { name: "Verify script" }).click();
 
 	await expect(page.getByRole("heading", { name: "Verification" })).toBeVisible();
-	await expect(page.getByText("No trigger node found. Add at least one trigger before export.")).toBeVisible();
-	await expect(page.getByText("3 failed checks must be resolved.", { exact: true }).first()).toBeVisible();
+	const verificationDialog = page.getByRole("dialog");
+	await expect(
+		verificationDialog.getByText("Canvas > Triggers: add at least one trigger node that can start the script."),
+	).toBeVisible();
+	await expect(
+		verificationDialog
+			.getByText("Verification found errors. Every issue and its location are listed below.", { exact: true })
+			.first(),
+	).toBeVisible();
 });
 
 test("manual trigger creation is limited to one node", async ({ page }) => {
@@ -495,8 +502,13 @@ test("verification warns for medium risk nodes", async ({ page }) => {
 	await page.getByRole("button", { name: "Verify script" }).click();
 
 	await expect(page.getByRole("heading", { name: "Verification" })).toBeVisible();
-	await expect(page.getByText("1 medium-or-higher risk permission requires review.")).toBeVisible();
-	await expect(page.getByText("1 warning should be reviewed.").first()).toBeVisible();
+	const verificationDialog = page.getByRole("dialog");
+	await expect(verificationDialog.getByText(/Project permissions > .*: this permission has medium risk/)).toBeVisible();
+	await expect(
+		verificationDialog
+			.getByText("Verification passed with warnings. Every warning and its location are listed below.")
+			.first(),
+	).toBeVisible();
 	await expect(page.getByText("Warning", { exact: true })).toBeVisible();
 });
 

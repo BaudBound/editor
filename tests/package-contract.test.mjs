@@ -868,7 +868,17 @@ test("export does not create hidden implicit triggers", () => {
 
 	assert.equal(analysisSource.includes("implicit-manual-trigger"), false);
 	assert.match(analysisSource, /Cannot export a script without at least one trigger node/);
-	assert.match(verificationSource, /No trigger node found\. Add at least one trigger before export\./);
+	assert.match(verificationSource, /Canvas > Triggers: add at least one trigger node that can start the script/);
+});
+
+test("verification reports exact connection locations and invalid ports", () => {
+	const verificationSource = read(join(appRoot, "utils", "verification.ts"));
+
+	assert.match(verificationSource, /const edgeLocation = `Connection/);
+	assert.match(verificationSource, /source node .* no longer exists/);
+	assert.match(verificationSource, /target node .* no longer exists/);
+	assert.match(verificationSource, /Available outputs are/);
+	assert.match(verificationSource, /Available inputs are/);
 });
 
 test("node-specific verification is owned by node definitions", () => {

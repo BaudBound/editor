@@ -28,6 +28,7 @@ export type VerificationStatus = "unverified" | "verified" | "warning" | "failed
 
 export type VerificationCheck = {
 	description: string;
+	details?: string[];
 	id: string;
 	message: string;
 	outcome: VerificationOutcome;
@@ -37,7 +38,9 @@ export type VerificationCheck = {
 type VerificationRule<Context> = {
 	description: string;
 	id: string;
-	run: (context: Context) => Pick<VerificationCheck, "message" | "outcome">;
+	run: (
+		context: Context,
+	) => Pick<VerificationCheck, "message" | "outcome"> & Partial<Pick<VerificationCheck, "details">>;
 	title: string;
 };
 
@@ -102,6 +105,17 @@ export function summarizeVerification(checks: VerificationCheck[]): Verification
 	};
 }
 
+export function getVerificationFindings(
+	checks: VerificationCheck[],
+	outcomes: VerificationOutcome[] = ["failed", "warning"],
+) {
+	return checks
+		.filter((check) => outcomes.includes(check.outcome))
+		.flatMap((check) =>
+			(check.details?.length ? check.details : [check.message]).map((detail) => `${check.title}: ${detail}`),
+		);
+}
+
 const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>[] = [
 	{
 		id: "metadata",
@@ -109,13 +123,14 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 		description: "Checking script identity and target runtimes.",
 		run: ({ scriptName, targetRuntimes }) => {
 			const name = scriptName.trim();
+			const details = [
+				...(!name ? ["Project Settings > Script name: enter a name for the script."] : []),
+				...(targetRuntimes.length === 0 ? ["Project Settings > Target runtimes: select at least one runtime."] : []),
+			];
 			return {
-				outcome: name && targetRuntimes.length > 0 ? "passed" : "failed",
-				message: !name
-					? "Script name is required before export."
-					: targetRuntimes.length === 0
-						? "Select at least one target runtime before export."
-						: `${name} targets ${targetRuntimes.join(", ")}.`,
+				outcome: details.length === 0 ? "passed" : "failed",
+				message: details.length === 0 ? `${name} targets ${targetRuntimes.join(", ")}.` : "Script metadata is invalid.",
+				...(details.length > 0 ? { details } : {}),
 			};
 		},
 	},
@@ -142,7 +157,10 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 				message:
 					problems.length === 0
 						? `${declarations.length} secret reference${declarations.length === 1 ? "" : "s"} declared.`
-						: problems.join(" "),
+						: "Secret declarations contain conflicts.",
+				...(problems.length > 0
+					? { details: problems.map((problem) => `Variables > Secret references: ${problem}`) }
+					: {}),
 			};
 		},
 	},
@@ -158,7 +176,8 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 				message:
 					incompatibleNodes.length === 0
 						? `${targetRuntimes.join(", ")} support all nodes in this script.`
-						: incompatibleNodes.join(" "),
+						: "Some nodes do not support every selected target runtime.",
+				...(incompatibleNodes.length > 0 ? { details: incompatibleNodes } : {}),
 			};
 		},
 	},
@@ -167,10 +186,14 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 		title: "Graph structure",
 		description: "Checking that the script contains runnable nodes.",
 		run: ({ nodes }) => {
-			const manualTriggerCount = nodes.filter((node) => node.data.actionType === "trigger.manual").length;
+			const manualTriggers = nodes.filter((node) => node.data.actionType === "trigger.manual");
 			const failureReasons = [
-				...(nodes.length === 0 ? ["No nodes found."] : []),
-				...(manualTriggerCount > 1 ? ["Only one Manual Trigger node is allowed."] : []),
+				...(nodes.length === 0 ? ["Canvas: no nodes exist. Add at least one trigger and its workflow nodes."] : []),
+				...(manualTriggers.length > 1
+					? [
+							`Canvas: only one Manual Trigger is allowed, but these were found: ${manualTriggers.map(getNodeLocation).join(", ")}. Remove the extra Manual Trigger nodes.`,
+						]
+					: []),
 			];
 
 			return {
@@ -178,7 +201,8 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 				message:
 					failureReasons.length === 0
 						? `${nodes.length} node${nodes.length === 1 ? "" : "s"} found.`
-						: failureReasons.join(" "),
+						: "The canvas graph cannot run.",
+				...(failureReasons.length > 0 ? { details: failureReasons } : {}),
 			};
 		},
 	},
@@ -193,7 +217,8 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 			if (invalidTriggerConfig.length > 0) {
 				return {
 					outcome: "failed",
-					message: invalidTriggerConfig.join(" "),
+					message: "One or more trigger configurations are invalid.",
+					details: invalidTriggerConfig,
 				};
 			}
 
@@ -202,7 +227,10 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 				message:
 					triggerCount > 0
 						? `${triggerCount} trigger${triggerCount === 1 ? "" : "s"} available.`
-						: "No trigger node found. Add at least one trigger before export.",
+						: "No trigger node was found.",
+				...(triggerCount === 0
+					? { details: ["Canvas > Triggers: add at least one trigger node that can start the script."] }
+					: {}),
 			};
 		},
 	},
@@ -211,19 +239,16 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 		title: "Connections",
 		description: "Checking edge endpoints and port references.",
 		run: ({ nodes, edges }) => {
-			const invalidEdges = getInvalidEdges(nodes, edges);
+			const connectionErrors = getConnectionVerificationErrors(nodes, edges);
 			const orderErrors = getEdgeExecutionOrderErrors(edges);
-			const valid = invalidEdges.length === 0 && orderErrors.length === 0;
+			const details = [...connectionErrors, ...orderErrors.map((error) => `Connection execution order: ${error}`)];
+			const valid = details.length === 0;
 			return {
 				outcome: valid ? "passed" : "failed",
 				message: valid
 					? `${edges.length} connection${edges.length === 1 ? "" : "s"} validated.`
-					: [
-							...(invalidEdges.length > 0
-								? [`${invalidEdges.length} invalid connection${invalidEdges.length === 1 ? "" : "s"} found.`]
-								: []),
-							...orderErrors,
-						].join(" "),
+					: "Connections are invalid.",
+				...(details.length > 0 ? { details } : {}),
 			};
 		},
 	},
@@ -237,13 +262,22 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 			const mediumRiskPermissions = permissions.filter((permission) => permission.risk === "medium");
 			const elevatedPermissionCount =
 				dangerousPermissions.length + highRiskPermissions.length + mediumRiskPermissions.length;
+			const elevatedPermissions = permissions.filter((permission) =>
+				["dangerous", "high", "medium"].includes(permission.risk),
+			);
 
 			return {
 				outcome: elevatedPermissionCount > 0 ? "warning" : "passed",
 				message:
-					elevatedPermissionCount > 0
-						? `${elevatedPermissionCount} medium-or-higher risk permission${elevatedPermissionCount === 1 ? " requires" : "s require"} review.`
-						: "No elevated permissions detected.",
+					elevatedPermissionCount > 0 ? "Elevated permissions require review." : "No elevated permissions detected.",
+				...(elevatedPermissions.length > 0
+					? {
+							details: elevatedPermissions.map(
+								(permission) =>
+									`Project permissions > ${permission.name}: this permission has ${permission.risk} risk and must be reviewed before installing the package.`,
+							),
+						}
+					: {}),
 			};
 		},
 	},
@@ -263,7 +297,8 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 				message:
 					errors.length === 0
 						? "Variable writes, calculations, and action configs are valid."
-						: `${errors.length} variable, calculation, or action config issue${errors.length === 1 ? "" : "s"}: ${errors.join(" ")}`,
+						: "Variable or node configuration is invalid.",
+				...(errors.length > 0 ? { details: errors } : {}),
 			};
 		},
 	},
@@ -280,7 +315,8 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 			if (validation.errors.length > 0 || invalidReferences.length > 0) {
 				return {
 					outcome: "failed",
-					message: [...validation.errors, ...invalidReferences].join(" "),
+					message: "Package assets or asset references are invalid.",
+					details: [...validation.errors, ...invalidReferences],
 				};
 			}
 
@@ -288,8 +324,9 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 				outcome: validation.warnings.length > 0 ? "warning" : "passed",
 				message:
 					validation.warnings.length > 0
-						? validation.warnings.join(" ")
+						? "Package assets have warnings."
 						: `${assets.length} package asset${assets.length === 1 ? "" : "s"} validated.`,
+				...(validation.warnings.length > 0 ? { details: validation.warnings } : {}),
 			};
 		},
 	},
@@ -307,7 +344,10 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 			return {
 				outcome: invalidSerialConfig.length === 0 ? "passed" : "failed",
 				message:
-					invalidSerialConfig.length === 0 ? "Serial device configuration is valid." : invalidSerialConfig.join(" "),
+					invalidSerialConfig.length === 0
+						? "Serial device configuration is valid."
+						: "Serial configuration is invalid.",
+				...(invalidSerialConfig.length > 0 ? { details: invalidSerialConfig } : {}),
 			};
 		},
 	},
@@ -316,31 +356,46 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 		title: "Export readiness",
 		description: "Checking whether the package can be prepared.",
 		run: (context) => {
-			const invalidEdges = getInvalidEdges(context.nodes, context.edges);
+			const connectionErrors = getConnectionVerificationErrors(context.nodes, context.edges);
 			const invalidEdgeOrders = getEdgeExecutionOrderErrors(context.edges);
 			const triggerCount = context.nodes.filter((node) => node.data.kind === "trigger").length;
-			const manualTriggerCount = context.nodes.filter((node) => node.data.actionType === "trigger.manual").length;
+			const manualTriggers = context.nodes.filter((node) => node.data.actionType === "trigger.manual");
 			const invalidVariableWrites = getInvalidVariableWrites(context.nodes);
 			const invalidGraphConfigs = getInvalidNodeGraphConfigs(context.nodes, context.edges, context.assets);
 			const invalidNodeConfigKeys = getInvalidNodeConfigKeys(context.nodes);
 			const invalidAssets = validateEditorAssets(context.assets).errors;
 			const invalidTargetRuntime = getTargetRuntimeCompatibilityErrors(context.nodes, context.targetRuntimes);
-			const ready =
-				context.scriptName.trim() &&
-				context.nodes.length > 0 &&
-				triggerCount > 0 &&
-				invalidEdges.length === 0 &&
-				invalidEdgeOrders.length === 0 &&
-				manualTriggerCount <= 1 &&
-				invalidVariableWrites.length === 0 &&
-				invalidGraphConfigs.length === 0 &&
-				invalidNodeConfigKeys.length === 0 &&
-				invalidAssets.length === 0 &&
-				invalidTargetRuntime.length === 0;
+			const invalidDefaults = getInvalidDefaultVariables(
+				context.defaultVariables ?? [],
+				context.nodes,
+				context.secretDeclarations ?? [],
+			);
+			const details = [
+				...(!context.scriptName.trim() ? ["Project Settings > Script name: enter a name for the script."] : []),
+				...(context.targetRuntimes.length === 0
+					? ["Project Settings > Target runtimes: select at least one runtime."]
+					: []),
+				...(context.nodes.length === 0 ? ["Canvas: add nodes before exporting the script."] : []),
+				...(triggerCount === 0 ? ["Canvas > Triggers: add at least one trigger node."] : []),
+				...connectionErrors,
+				...invalidEdgeOrders.map((error) => `Connection execution order: ${error}`),
+				...(manualTriggers.length > 1
+					? [
+							`Canvas: only one Manual Trigger is allowed, but these were found: ${manualTriggers.map(getNodeLocation).join(", ")}.`,
+						]
+					: []),
+				...invalidVariableWrites,
+				...invalidGraphConfigs,
+				...invalidNodeConfigKeys,
+				...invalidDefaults,
+				...invalidAssets,
+				...invalidTargetRuntime,
+			];
 
 			return {
-				outcome: ready ? "passed" : "failed",
-				message: ready ? "Script is ready for package export." : "Resolve failed verification steps before export.",
+				outcome: details.length === 0 ? "passed" : "failed",
+				message: details.length === 0 ? "Script is ready for package export." : "Package export is blocked.",
+				...(details.length > 0 ? { details } : {}),
 			};
 		},
 	},
@@ -358,16 +413,19 @@ const packageVerificationRules: VerificationRule<PackageVerificationContext>[] =
 			return {
 				outcome: missingFiles.length === 0 && disallowedFiles.length === 0 ? "passed" : "failed",
 				message:
-					[
-						missingFiles.length > 0
-							? `Missing required file${missingFiles.length === 1 ? "" : "s"}: ${missingFiles.join(", ")}.`
-							: "",
-						disallowedFiles.length > 0
-							? `Package contains disallowed file${disallowedFiles.length === 1 ? "" : "s"}: ${disallowedFiles.join(", ")}.`
-							: "",
-					]
-						.filter(Boolean)
-						.join(" ") || "All required package files are present and package contents are allowed.",
+					missingFiles.length === 0 && disallowedFiles.length === 0
+						? "All required package files are present and package contents are allowed."
+						: "Package files are incomplete or contain unsupported paths.",
+				...(missingFiles.length > 0 || disallowedFiles.length > 0
+					? {
+							details: [
+								...missingFiles.map((fileName) => `Package root > ${fileName}: required file is missing.`),
+								...disallowedFiles.map(
+									(fileName) => `Package entry "${fileName}": this path or file type is not allowed.`,
+								),
+							],
+						}
+					: {}),
 			};
 		},
 	},
@@ -381,13 +439,15 @@ const packageVerificationRules: VerificationRule<PackageVerificationContext>[] =
 			if (validation.errors.length > 0) {
 				return {
 					outcome: "failed",
-					message: validation.errors.join(" "),
+					message: "Package asset paths or file types are invalid.",
+					details: validation.errors,
 				};
 			}
 
 			return {
 				outcome: validation.warnings.length > 0 ? "warning" : "passed",
-				message: validation.warnings.length > 0 ? validation.warnings.join(" ") : "Package assets are valid.",
+				message: validation.warnings.length > 0 ? "Package assets have warnings." : "Package assets are valid.",
+				...(validation.warnings.length > 0 ? { details: validation.warnings } : {}),
 			};
 		},
 	},
@@ -403,7 +463,14 @@ const packageVerificationRules: VerificationRule<PackageVerificationContext>[] =
 				message:
 					failedFiles.length === 0
 						? "Package JSON files parsed successfully."
-						: `Invalid JSON in ${failedFiles.join(", ")}.`,
+						: "One or more package JSON files cannot be parsed.",
+				...(failedFiles.length > 0
+					? {
+							details: failedFiles.map(
+								(fileName) => `Package file "${fileName}": ${parseErrors[fileName] || "invalid JSON."}`,
+							),
+						}
+					: {}),
 			};
 		},
 	},
@@ -415,14 +482,18 @@ const packageVerificationRules: VerificationRule<PackageVerificationContext>[] =
 			if (Object.keys(parseErrors).length > 0) {
 				return {
 					outcome: "failed",
-					message: "Package contract checks require valid JSON.",
+					message: "Package contract checks cannot run until the JSON files are valid.",
+					details: Object.entries(parseErrors).map(
+						([fileName, error]) => `Package file "${fileName}": ${error || "invalid JSON."}`,
+					),
 				};
 			}
 
 			const errors = validatePackageJsonContracts(jsonFiles);
 			return {
 				outcome: errors.length === 0 ? "passed" : "failed",
-				message: errors.length === 0 ? "Package contract is internally consistent." : errors.join(" "),
+				message: errors.length === 0 ? "Package contract is internally consistent." : "Package contract is invalid.",
+				...(errors.length > 0 ? { details: errors } : {}),
 			};
 		},
 	},
@@ -447,7 +518,14 @@ const packageVerificationRules: VerificationRule<PackageVerificationContext>[] =
 				message:
 					missingFields.length === 0
 						? `Manifest found for ${String(manifest?.name ?? "imported script")}.`
-						: `Manifest is missing: ${missingFields.join(", ")}.`,
+						: "Required manifest metadata is missing.",
+				...(missingFields.length > 0
+					? {
+							details: missingFields.map(
+								(field) => `manifest.json > ${field}: provide a non-empty value for this required field.`,
+							),
+						}
+					: {}),
 			};
 		},
 	},
@@ -483,13 +561,28 @@ const packageVerificationRules: VerificationRule<PackageVerificationContext>[] =
 						!Number.isFinite(position.y)
 					);
 				}) ?? [];
+			const details = [
+				...(!editorMetadata ? ['Package file "editor.json": the root value must be a JSON object.'] : []),
+				...(editorMetadata && !nodes
+					? ["editor.json > nodes: this field must be an array of saved node positions."]
+					: []),
+				...invalidNodes.map((node, index) => {
+					const nodeRecord = asRecord(node);
+					const id = typeof nodeRecord?.id === "string" ? nodeRecord.id : `entry ${index + 1}`;
+					return `editor.json > nodes > ${id}: id must be a string and position.x and position.y must be finite numbers.`;
+				}),
+				...(!validCanvas
+					? [`editor.json > canvas.edge_style: "${String(canvas?.edge_style)}" is not a supported edge style.`]
+					: []),
+			];
 
 			return {
-				outcome: editorMetadata && nodes && invalidNodes.length === 0 && validCanvas ? "passed" : "failed",
+				outcome: details.length === 0 ? "passed" : "failed",
 				message:
-					editorMetadata && nodes && invalidNodes.length === 0 && validCanvas
-						? `${nodes.length} editor node position${nodes.length === 1 ? "" : "s"} and canvas preferences validated.`
-						: "Editor metadata must define finite node positions and a valid canvas edge style when present.",
+					details.length === 0
+						? `${nodes?.length ?? 0} editor node position${nodes?.length === 1 ? "" : "s"} and canvas preferences validated.`
+						: "Editor layout metadata is invalid.",
+				...(details.length > 0 ? { details } : {}),
 			};
 		},
 	},
@@ -509,7 +602,14 @@ const packageVerificationRules: VerificationRule<PackageVerificationContext>[] =
 				outcome: validTargetRuntimes ? "passed" : "failed",
 				message: validTargetRuntimes
 					? `Target runtimes: ${targetRuntimes.join(", ")}.`
-					: "Package capabilities must define at least one target runtime.",
+					: "Package target runtime metadata is invalid.",
+				...(!validTargetRuntimes
+					? {
+							details: [
+								"capabilities.json > target_runtimes: provide a non-empty array containing only supported runtime strings.",
+							],
+						}
+					: {}),
 			};
 		},
 	},
@@ -523,26 +623,64 @@ function asRecord(value: unknown) {
 	return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
-function getInvalidEdges(nodes: Node<ScriptNodeData>[], edges: Edge[]) {
+function getConnectionVerificationErrors(nodes: Node<ScriptNodeData>[], edges: Edge[]) {
+	return getConnectionVerificationIssues(nodes, edges).map((issue) => issue.message);
+}
+
+function getConnectionVerificationIssues(nodes: Node<ScriptNodeData>[], edges: Edge[]) {
 	const nodesById = new Map(nodes.map((node) => [node.id, node]));
 
-	return edges.filter((edge) => {
+	return edges.flatMap((edge) => {
+		const edgeLocation = `Connection "${edge.id}"`;
 		if (isSelfConnection(edge)) {
-			return true;
+			const node = nodesById.get(edge.source);
+			return [
+				{
+					edgeId: edge.id,
+					message: `${edgeLocation}: ${node ? getNodeLocation(node) : `node "${edge.source}"`} connects to itself from output "${edge.sourceHandle ?? "unknown"}" to input "${edge.targetHandle ?? "unknown"}". Connect the output to a different node or remove this connection.`,
+				},
+			];
 		}
 
 		const sourceNode = nodesById.get(edge.source);
 		const targetNode = nodesById.get(edge.target);
+		const issues: { edgeId: string; message: string }[] = [];
 
-		if (!sourceNode || !targetNode) {
-			return true;
+		if (!sourceNode) {
+			issues.push({
+				edgeId: edge.id,
+				message: `${edgeLocation}: source node "${edge.source}" no longer exists. Remove this stale connection.`,
+			});
+		}
+		if (!targetNode) {
+			issues.push({
+				edgeId: edge.id,
+				message: `${edgeLocation}: target node "${edge.target}" no longer exists. Remove this stale connection.`,
+			});
 		}
 
-		const hasSourceHandle = sourceNode.data.outputs.some((output) => output.id === edge.sourceHandle);
-		const hasTargetHandle = targetNode.data.inputs.some((input) => input.id === edge.targetHandle);
+		if (sourceNode && !sourceNode.data.outputs.some((output) => output.id === edge.sourceHandle)) {
+			const availableOutputs = sourceNode.data.outputs.map((output) => `"${output.id}"`).join(", ") || "none";
+			issues.push({
+				edgeId: edge.id,
+				message: `${edgeLocation}: ${getNodeLocation(sourceNode)} has no output port "${edge.sourceHandle ?? "unknown"}". Available outputs are ${availableOutputs}. Reconnect this edge from a valid output.`,
+			});
+		}
+		if (targetNode && !targetNode.data.inputs.some((input) => input.id === edge.targetHandle)) {
+			const availableInputs = targetNode.data.inputs.map((input) => `"${input.id}"`).join(", ") || "none";
+			issues.push({
+				edgeId: edge.id,
+				message: `${edgeLocation}: ${getNodeLocation(targetNode)} has no input port "${edge.targetHandle ?? "unknown"}". Available inputs are ${availableInputs}. Reconnect this edge to a valid input.`,
+			});
+		}
 
-		return !hasSourceHandle || !hasTargetHandle;
+		return issues;
 	});
+}
+
+function getNodeLocation(node: Node<ScriptNodeData>) {
+	const customName = configString(node, "customName").trim();
+	return `${customName || node.data.label} (${node.id})`;
 }
 
 function getTargetRuntimeCompatibilityErrors(nodes: Node<ScriptNodeData>[], targetRuntimes: TargetRuntime[]) {
@@ -559,12 +697,18 @@ function getTargetRuntimeCompatibilityErrors(nodes: Node<ScriptNodeData>[], targ
 
 function getInvalidNodeConfigKeys(nodes: Node<ScriptNodeData>[]) {
 	return nodes.flatMap((node) =>
-		validateNodeConfig(node.data.actionType, node.data.config).map((error) => `${node.id} ${error}`),
+		validateNodeConfig(node.data.actionType, node.data.config).map(
+			(error) => `${getNodeLocation(node)} > Configuration: ${error}`,
+		),
 	);
 }
 
 function getInvalidNodeGraphConfigs(nodes: Node<ScriptNodeData>[], edges: Edge[], assets: EditorAsset[]) {
-	return nodes.flatMap((node) => validateNodeGraph(node, { assets, edges, nodes }));
+	return nodes.flatMap((node) =>
+		validateNodeGraph(node, { assets, edges, nodes }).map((error) =>
+			error.includes(node.id) ? error : `${getNodeLocation(node)}: ${error}`,
+		),
+	);
 }
 
 function getInvalidVariableWrites(nodes: Node<ScriptNodeData>[]) {
@@ -580,7 +724,9 @@ function getInvalidVariableWrites(nodes: Node<ScriptNodeData>[]) {
 			const normalizedName = normalizeVariableReferenceName(name);
 
 			if (normalizedName && readOnlyNames.has(normalizedName)) {
-				return [`${node.id} tries to change read-only variable "${normalizedName}".`];
+				return [
+					`${getNodeLocation(node)} > Variable name: "${normalizedName}" is read-only. Select a writable variable.`,
+				];
 			}
 
 			return [];
@@ -600,12 +746,17 @@ function getInvalidDefaultVariables(
 	);
 
 	for (const variable of defaultVariables) {
-		if (names.has(variable.name)) errors.push(`Default variable "${variable.name}" is declared more than once.`);
-		if (secretNames.has(variable.name)) errors.push(`Default variable "${variable.name}" conflicts with a secret.`);
+		const location = `Variables > Default variables > "${variable.name}"`;
+		if (names.has(variable.name)) errors.push(`${location}: this variable is declared more than once.`);
+		if (secretNames.has(variable.name)) {
+			errors.push(`${location}: this name is also used by a secret reference. Rename one of them.`);
+		}
 		names.add(variable.name);
 		const configured = configuredVariables.get(variable.name);
 		if (configured && (configured.scope !== variable.scope || configured.type !== variable.type)) {
-			errors.push(`Default variable "${variable.name}" must match its Variable Operation scope and type.`);
+			errors.push(
+				`${location}: scope "${variable.scope}" and type "${variable.type}" do not match the Variable Operation definition with scope "${configured.scope}" and type "${configured.type}".`,
+			);
 		}
 	}
 
