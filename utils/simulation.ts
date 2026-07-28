@@ -659,10 +659,10 @@ async function evaluateSwitchNode(node: Node<ScriptNodeData>, context: Simulatio
 
 	if (!matchedCase) {
 		await pushStep(context, {
-			level: "warn",
-			message: `[Simulation] Switch ${node.id} found no case for value "${switchValue}".`,
+			level: "info",
+			message: `[Simulation] Switch ${node.id} matched no case and selected "default" output.`,
 		});
-		return "";
+		return "default";
 	}
 
 	await pushStep(context, {

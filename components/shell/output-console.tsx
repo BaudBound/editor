@@ -1,4 +1,4 @@
-import { ChevronDown, Trash2 } from "lucide-react";
+import { ChevronDown, Search, Trash2 } from "lucide-react";
 import type { DependencyList, ReactNode } from "react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { CopyTextButton } from "@/components/common/copy-text-button";
@@ -6,6 +6,7 @@ import { DefaultVariableManager } from "@/components/shell/default-variable-mana
 import { SecretReferenceManager } from "@/components/shell/secret-reference-manager";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { logLevelClassName } from "@/data/editor/output-console";
 import { collapsedPanelSizes } from "@/data/editor/panel-layout";
 import type { EditorVariable } from "@/data/project/variables";
@@ -285,7 +286,9 @@ function VariablesTab({
 	const [sortUpdatedFirst, setSortUpdatedFirst] = useState(true);
 	const [showDerivedMetadata, setShowDerivedMetadata] = useState(false);
 	const [showBuiltInVariables, setShowBuiltInVariables] = useState(false);
+	const [showErrorVariables, setShowErrorVariables] = useState(false);
 	const [showSystemVariables, setShowSystemVariables] = useState(false);
+	const [variableSearch, setVariableSearch] = useState("");
 	const previousSignaturesRef = useRef<Map<string, string>>(new Map());
 	const updatedOrderRef = useRef<Map<string, number>>(new Map());
 	const updateSequenceRef = useRef(0);
@@ -321,8 +324,13 @@ function VariablesTab({
 	}, [variables]);
 
 	const displayedVariables = useMemo(() => {
+		const normalizedSearch = variableSearch.trim().toLowerCase();
 		const filteredVariables = variables.filter((variable) => {
 			if (!showDerivedMetadata && isDerivedMetadataVariable(variable)) {
+				return false;
+			}
+
+			if (!showErrorVariables && isErrorOutputVariable(variable)) {
 				return false;
 			}
 
@@ -334,7 +342,7 @@ function VariablesTab({
 				return false;
 			}
 
-			return true;
+			return !normalizedSearch || createVariableSearchText(variable).includes(normalizedSearch);
 		});
 
 		if (!sortUpdatedFirst) {
@@ -347,7 +355,15 @@ function VariablesTab({
 
 			return bOrder - aOrder;
 		});
-	}, [showBuiltInVariables, showDerivedMetadata, showSystemVariables, sortUpdatedFirst, variables]);
+	}, [
+		showBuiltInVariables,
+		showDerivedMetadata,
+		showErrorVariables,
+		showSystemVariables,
+		sortUpdatedFirst,
+		variableSearch,
+		variables,
+	]);
 
 	return (
 		<div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_32px] overflow-hidden">
@@ -367,11 +383,26 @@ function VariablesTab({
 					/>
 				</div>
 				<div className="px-4 py-3">
+					<div className="relative mb-3">
+						<Search
+							className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-baud-muted"
+							size={14}
+						/>
+						<Input
+							aria-label="Search variables"
+							className="pl-8 pr-3 font-sans"
+							placeholder="Search variables..."
+							value={variableSearch}
+							onChange={(event) => setVariableSearch(event.target.value)}
+						/>
+					</div>
 					{displayedVariables.length === 0 ? (
 						<div className="rounded border border-baud-border bg-baud-soft p-3 text-sm leading-5 text-baud-muted">
 							{variables.length === 0
 								? "Variables will appear here when the script defines them."
-								: "All variables are currently hidden by display options."}
+								: variableSearch.trim()
+									? "No variables match your search and display options."
+									: "All variables are currently hidden by display options."}
 						</div>
 					) : (
 						<div className="overflow-x-auto rounded border border-baud-border bg-baud-soft">
@@ -424,10 +455,12 @@ function VariablesTab({
 			<VariablesFooter
 				showBuiltInVariables={showBuiltInVariables}
 				showDerivedMetadata={showDerivedMetadata}
+				showErrorVariables={showErrorVariables}
 				showSystemVariables={showSystemVariables}
 				sortUpdatedFirst={sortUpdatedFirst}
 				onShowBuiltInVariablesChange={setShowBuiltInVariables}
 				onShowDerivedMetadataChange={setShowDerivedMetadata}
+				onShowErrorVariablesChange={setShowErrorVariables}
 				onShowSystemVariablesChange={setShowSystemVariables}
 				onSortUpdatedFirstChange={setSortUpdatedFirst}
 			/>
@@ -438,19 +471,23 @@ function VariablesTab({
 function VariablesFooter({
 	showBuiltInVariables,
 	showDerivedMetadata,
+	showErrorVariables,
 	showSystemVariables,
 	sortUpdatedFirst,
 	onShowBuiltInVariablesChange,
 	onShowDerivedMetadataChange,
+	onShowErrorVariablesChange,
 	onShowSystemVariablesChange,
 	onSortUpdatedFirstChange,
 }: {
 	showBuiltInVariables: boolean;
 	showDerivedMetadata: boolean;
+	showErrorVariables: boolean;
 	showSystemVariables: boolean;
 	sortUpdatedFirst: boolean;
 	onShowBuiltInVariablesChange: (enabled: boolean) => void;
 	onShowDerivedMetadataChange: (enabled: boolean) => void;
+	onShowErrorVariablesChange: (enabled: boolean) => void;
 	onShowSystemVariablesChange: (enabled: boolean) => void;
 	onSortUpdatedFirstChange: (enabled: boolean) => void;
 }) {
@@ -469,6 +506,7 @@ function VariablesFooter({
 					label="Show built-ins"
 					onCheckedChange={onShowBuiltInVariablesChange}
 				/>
+				<FooterCheckbox checked={showErrorVariables} label="Show errors" onCheckedChange={onShowErrorVariablesChange} />
 				<FooterCheckbox
 					checked={showSystemVariables}
 					label="Show system"
@@ -491,12 +529,30 @@ function isDerivedMetadataVariable(variable: EditorVariable) {
 	return /\.\$(?:length|count|type|is_empty)$/.test(variable.name);
 }
 
+function isErrorOutputVariable(variable: EditorVariable) {
+	return variable.source === "node_output" && /\.error(?:\.|$)/.test(variable.name);
+}
+
 function isSystemVariable(variable: EditorVariable) {
 	return variable.source === "built_in" && variable.name.startsWith("system_");
 }
 
 function isBuiltInVariable(variable: EditorVariable) {
 	return variable.source === "built_in" && !isSystemVariable(variable);
+}
+
+function createVariableSearchText(variable: EditorVariable) {
+	return [
+		variable.name,
+		variable.token,
+		variable.type,
+		variable.scope,
+		variable.source,
+		variable.description ?? "",
+		formatVariableValue(variable.value),
+	]
+		.join("\n")
+		.toLowerCase();
 }
 
 function formatVariableValue(value: EditorVariable["value"]) {
