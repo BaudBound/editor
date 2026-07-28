@@ -10,6 +10,7 @@ test("editor shell loads the core controls", async ({ page }) => {
 	await expect(editingControls.getByRole("button", { name: "Save project" })).toBeVisible();
 	await expect(editingControls.getByRole("button", { name: "Undo" })).toBeVisible();
 	await expect(editingControls.getByRole("button", { name: "Redo" })).toBeVisible();
+	await expect(editingControls.getByRole("button", { name: "Find a node" })).toBeVisible();
 	const projectTools = page.getByRole("group", { name: "Canvas project tools" });
 	await expect(projectTools.getByRole("button", { name: "Open help" })).toBeVisible();
 	await expect(projectTools.getByRole("button", { name: "Open asset editor" })).toBeVisible();
@@ -22,6 +23,34 @@ test("editor shell loads the core controls", async ({ page }) => {
 	await expect(page.getByRole("button", { name: "Simulator" })).toBeVisible();
 	await page.getByRole("button", { name: "Simulator" }).click();
 	await expect(page.getByRole("button", { name: "Stop simulation" })).toBeVisible();
+});
+
+test("node finder searches configuration and focuses the selected node", async ({ page }) => {
+	await openEditor(page);
+
+	const blockSearch = page.getByRole("textbox", { name: "Search blocks" });
+	await blockSearch.fill("Log");
+	await page.getByRole("button", { name: /^Log low/ }).click();
+	await page.getByRole("textbox", { name: "Custom name" }).fill("Inventory logger");
+	await page.getByRole("textbox", { name: "Message" }).fill("Status: {{inventory_status}}");
+
+	await blockSearch.fill("Delay");
+	await page.getByRole("button", { name: /^Delay low/ }).click();
+	await expect(page.getByRole("textbox", { name: "Custom name" })).toHaveValue("");
+
+	await page.keyboard.press("Control+f");
+	const finder = page.getByRole("dialog");
+	await expect(finder.getByRole("heading", { name: "Find a node" })).toBeVisible();
+	const finderSearch = finder.getByRole("combobox", { name: "Search project nodes" });
+	await finderSearch.fill("inventory_status");
+	await expect(finder.getByRole("option", { name: /Inventory logger/ })).toHaveCount(1);
+	await finderSearch.press("Enter");
+
+	await expect(finder).toBeHidden();
+	await expect(page.getByRole("textbox", { name: "Custom name" })).toHaveValue("Inventory logger");
+	await expect(page.locator(".react-flow__node.baud-node-found").filter({ hasText: "Inventory logger" })).toHaveCount(
+		1,
+	);
 });
 
 test("Schedule triggers can start and stop their simulator timer", async ({ page }) => {
@@ -229,6 +258,7 @@ test("persistent variable simulation carries changes into the next run", async (
 	await page.getByRole("button", { name: "Operation", exact: true }).click();
 	await page.getByRole("option", { name: "Increment" }).click();
 	await page.getByRole("combobox", { name: "Variable name" }).fill("counter");
+	await page.getByRole("textbox", { name: "Amount" }).fill("1");
 	await page.getByRole("button", { name: "Scope", exact: true }).click();
 	await page.getByRole("option", { name: "persistent" }).click();
 

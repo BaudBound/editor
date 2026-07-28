@@ -97,6 +97,21 @@ textarea,
 	z-index: 5 !important;
 }
 
+@keyframes baud-node-found-pulse {
+	0%,
+	100% {
+		filter: drop-shadow(0 0 0 rgb(91 138 245 / 0%));
+	}
+
+	35% {
+		filter: drop-shadow(0 0 12px rgb(91 138 245 / 90%));
+	}
+}
+
+.react-flow__node.baud-node-found .baud-script-node {
+	animation: baud-node-found-pulse 700ms ease-in-out 2;
+}
+
 .baud-comment-card {
 	z-index: 5;
 }
@@ -213,5 +228,12 @@ textarea,
 @media (max-width: 960px), (max-height: 620px) {
 	.react-flow__minimap.baud-flow-minimap {
 		display: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.react-flow__node.baud-node-found .baud-script-node {
+		animation: none;
+		box-shadow: 0 0 0 3px rgb(91 138 245 / 55%);
 	}
 }

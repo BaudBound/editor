@@ -46,10 +46,15 @@ import { ScriptNode, ScriptNodeSimulationContext } from "./script-node";
 
 export type ScriptFlowNode = Node<ScriptNodeData, "scriptNode">;
 export type EditorFlowNode = ScriptFlowNode | CommentFlowNode;
+export type CanvasNodeFocusRequest = {
+	nodeId: string;
+	requestId: number;
+};
 
 type FlowCanvasProps = {
 	nodes: EditorFlowNode[];
 	edges: Edge[];
+	nodeFocusRequest: CanvasNodeFocusRequest | null;
 	simulatedEdgeIds: ReadonlySet<string>;
 	simulatedNodeIds: ReadonlySet<string>;
 	selectedEdgeId: string | null;
@@ -94,6 +99,7 @@ export function FlowCanvas({
 	canPaste,
 	edges,
 	nodes,
+	nodeFocusRequest,
 	onCreateComment,
 	onCopyNode,
 	onDeleteComment,
@@ -127,6 +133,7 @@ export function FlowCanvas({
 					canPaste={canPaste}
 					edges={edges}
 					nodes={nodes}
+					nodeFocusRequest={nodeFocusRequest}
 					onCreateComment={onCreateComment}
 					onCopyNode={onCopyNode}
 					onDeleteComment={onDeleteComment}
@@ -161,6 +168,7 @@ export function FlowCanvas({
 function FlowCanvasContent({
 	nodes,
 	edges,
+	nodeFocusRequest,
 	selectedEdgeId,
 	simulatedEdgeIds,
 	targetRuntimes,
@@ -187,12 +195,13 @@ function FlowCanvasContent({
 	showDevelopmentNodeSpawner,
 	onViewportCenterChange,
 }: FlowCanvasProps) {
-	const { screenToFlowPosition } = useReactFlow<EditorFlowNode, Edge>();
+	const { fitView, screenToFlowPosition } = useReactFlow<EditorFlowNode, Edge>();
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const initFrameRef = useRef<number | null>(null);
 	const lastViewportCenterRef = useRef<XYPosition | null>(null);
 	const lastCanvasPointerPositionRef = useRef<XYPosition | null>(null);
 	const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
+	const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
 
 	const onConnect = useCallback(
 		(connection: Connection) => {
@@ -396,6 +405,28 @@ function FlowCanvasContent({
 		};
 	}, []);
 
+	useEffect(() => {
+		if (!nodeFocusRequest) {
+			return;
+		}
+
+		setHighlightedNodeId(nodeFocusRequest.nodeId);
+		const frame = window.requestAnimationFrame(() => {
+			void fitView({
+				nodes: [{ id: nodeFocusRequest.nodeId }],
+				duration: 260,
+				padding: 1.2,
+				maxZoom: 1,
+			});
+		});
+		const highlightTimeout = window.setTimeout(() => setHighlightedNodeId(null), 1_400);
+
+		return () => {
+			window.cancelAnimationFrame(frame);
+			window.clearTimeout(highlightTimeout);
+		};
+	}, [fitView, nodeFocusRequest]);
+
 	const displayedEdges = useMemo(() => {
 		const groupSizes = new Map<string, number>();
 		for (const edge of edges) {
@@ -431,13 +462,23 @@ function FlowCanvasContent({
 			};
 		});
 	}, [edgeStyle, edges, selectedEdgeId, simulatedEdgeIds]);
+	const displayedNodes = useMemo(
+		() =>
+			nodes.map((node) => ({
+				...node,
+				className:
+					[node.className, node.id === highlightedNodeId ? "baud-node-found" : ""].filter(Boolean).join(" ") ||
+					undefined,
+			})),
+		[highlightedNodeId, nodes],
+	);
 	const currentDefaultEdgeOptions = useMemo(() => createDefaultEdgeOptions(edgeStyle), [edgeStyle]);
 
 	return (
 		<div ref={viewportRef} className="relative min-h-0 flex-1 bg-baud-canvas">
 			<CommentNodeActionsContext.Provider value={{ onDelete: onDeleteComment, onUpdate: onUpdateComment }}>
 				<ReactFlow
-					nodes={nodes}
+					nodes={displayedNodes}
 					edges={displayedEdges}
 					nodeTypes={nodeTypes}
 					onNodesChange={onNodesChange}

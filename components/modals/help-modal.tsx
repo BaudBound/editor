@@ -12,6 +12,7 @@ import {
 	type LucideIcon,
 	MousePointer2,
 	PackageCheck,
+	Search,
 	StickyNote,
 	TextCursorInput,
 	Variable,
@@ -35,6 +36,7 @@ const shortcutRows = [
 	{ keys: "Ctrl + Z", description: "Undo the latest project change." },
 	{ keys: "Ctrl + Y", description: "Redo the latest undone project change." },
 	{ keys: "Ctrl + Shift + Z", description: "Redo using the alternate shortcut." },
+	{ keys: "Ctrl + F", description: "Find a project node by name, type, ID, configuration, or variable reference." },
 	{ keys: "Ctrl + C", description: "Copy the selected nodes and their selected connections." },
 	{
 		keys: "Ctrl + V",
@@ -72,6 +74,11 @@ const projectControlRows = [
 ];
 
 const canvasToolRows = [
+	{
+		icon: Search,
+		tool: "Find a node",
+		description: "Searches every project node, then selects it and centers it on the canvas.",
+	},
 	{
 		icon: StickyNote,
 		tool: "Add comment",
