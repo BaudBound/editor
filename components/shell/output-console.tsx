@@ -1,4 +1,4 @@
-import { ChevronDown, Search, Trash2 } from "lucide-react";
+import { ChevronDown, RotateCcw, Search, Trash2 } from "lucide-react";
 import type { DependencyList, ReactNode } from "react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { CopyTextButton } from "@/components/common/copy-text-button";
@@ -6,11 +6,20 @@ import { DefaultVariableManager } from "@/components/shell/default-variable-mana
 import { SecretReferenceManager } from "@/components/shell/secret-reference-manager";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { logLevelClassName } from "@/data/editor/output-console";
 import { collapsedPanelSizes } from "@/data/editor/panel-layout";
 import type { EditorVariable } from "@/data/project/variables";
 import type { DefaultVariable, LogEntry, SecretDeclaration, SimulationTraceEntry } from "@/lib/types";
+import type { VariableRename } from "@/utils/variable-reference-renaming";
 
 type OutputConsoleProps = {
 	activeTab: BottomPanelTab;
@@ -26,10 +35,11 @@ type OutputConsoleProps = {
 	height: number;
 	onClearTab: (tab: ClearableBottomPanelTab) => void;
 	onFollowChange: (tab: ClearableBottomPanelTab, enabled: boolean) => void;
+	onResetStoredValues: () => void;
 	onTabChange: (tab: BottomPanelTab) => void;
 	onToggle: () => void;
-	onDefaultVariablesChange: (variables: DefaultVariable[]) => void;
-	onSecretDeclarationsChange: (declarations: SecretDeclaration[]) => void;
+	onDefaultVariablesChange: (variables: DefaultVariable[], rename?: VariableRename) => void;
+	onSecretDeclarationsChange: (declarations: SecretDeclaration[], rename?: VariableRename) => void;
 	onSimulationSecretValueChange: (name: string, value: string) => void;
 };
 
@@ -59,6 +69,7 @@ export function OutputConsole({
 	height,
 	onClearTab,
 	onFollowChange,
+	onResetStoredValues,
 	onTabChange,
 	onToggle,
 	onDefaultVariablesChange,
@@ -154,6 +165,7 @@ export function OutputConsole({
 							simulationSecretValues={simulationSecretValues}
 							onSecretDeclarationsChange={onSecretDeclarationsChange}
 							onDefaultVariablesChange={onDefaultVariablesChange}
+							onResetStoredValues={onResetStoredValues}
 							onSimulationSecretValueChange={onSimulationSecretValueChange}
 						/>
 					)}
@@ -273,16 +285,19 @@ function VariablesTab({
 	simulationSecretValues,
 	onSecretDeclarationsChange,
 	onDefaultVariablesChange,
+	onResetStoredValues,
 	onSimulationSecretValueChange,
 }: {
 	variables: EditorVariable[];
 	defaultVariables: DefaultVariable[];
 	secretDeclarations: SecretDeclaration[];
 	simulationSecretValues: Record<string, string>;
-	onSecretDeclarationsChange: (declarations: SecretDeclaration[]) => void;
-	onDefaultVariablesChange: (variables: DefaultVariable[]) => void;
+	onSecretDeclarationsChange: (declarations: SecretDeclaration[], rename?: VariableRename) => void;
+	onDefaultVariablesChange: (variables: DefaultVariable[], rename?: VariableRename) => void;
+	onResetStoredValues: () => void;
 	onSimulationSecretValueChange: (name: string, value: string) => void;
 }) {
+	const [resetDialogOpen, setResetDialogOpen] = useState(false);
 	const [sortUpdatedFirst, setSortUpdatedFirst] = useState(true);
 	const [showDerivedMetadata, setShowDerivedMetadata] = useState(false);
 	const [showBuiltInVariables, setShowBuiltInVariables] = useState(false);
@@ -383,18 +398,24 @@ function VariablesTab({
 					/>
 				</div>
 				<div className="px-4 py-3">
-					<div className="relative mb-3">
-						<Search
-							className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-baud-muted"
-							size={14}
-						/>
-						<Input
-							aria-label="Search variables"
-							className="pl-8 pr-3 font-sans"
-							placeholder="Search variables..."
-							value={variableSearch}
-							onChange={(event) => setVariableSearch(event.target.value)}
-						/>
+					<div className="mb-3 flex items-center gap-2">
+						<div className="relative min-w-0 flex-1">
+							<Search
+								className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-baud-muted"
+								size={14}
+							/>
+							<Input
+								aria-label="Search variables"
+								className="pl-8 pr-3 font-sans"
+								placeholder="Search variables..."
+								value={variableSearch}
+								onChange={(event) => setVariableSearch(event.target.value)}
+							/>
+						</div>
+						<Button type="button" onClick={() => setResetDialogOpen(true)} size="sm" variant="outline">
+							<RotateCcw />
+							Reset stored values
+						</Button>
 					</div>
 					{displayedVariables.length === 0 ? (
 						<div className="rounded border border-baud-border bg-baud-soft p-3 text-sm leading-5 text-baud-muted">
@@ -464,6 +485,33 @@ function VariablesTab({
 				onShowSystemVariablesChange={setShowSystemVariables}
 				onSortUpdatedFirstChange={setSortUpdatedFirst}
 			/>
+			<Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Reset stored values?</DialogTitle>
+						<DialogDescription>
+							Persistent simulation values will return to their declared defaults. Global simulation values will be
+							cleared.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button type="button" variant="outline" onClick={() => setResetDialogOpen(false)}>
+							Cancel
+						</Button>
+						<Button
+							type="button"
+							variant="destructive"
+							onClick={() => {
+								onResetStoredValues();
+								setResetDialogOpen(false);
+							}}
+						>
+							<RotateCcw />
+							Reset stored values
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }

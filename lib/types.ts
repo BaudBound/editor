@@ -275,7 +275,7 @@ export type SimulationTriggerInputDraft = {
 
 export type SimulationVariableSnapshot = {
 	name: string;
-	source: "runtime" | "persistent" | "node_output" | "secret";
+	source: "runtime" | "persistent" | "global" | "node_output" | "secret";
 	value: JsonValue;
 };
 

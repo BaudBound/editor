@@ -21,11 +21,12 @@ import {
 } from "@/data/project/default-variables";
 import { type VariableType, variableTypes } from "@/data/project/variables";
 import type { DefaultVariable, SecretDeclaration } from "@/lib/types";
+import type { VariableRename } from "@/utils/variable-reference-renaming";
 
 type DefaultVariableManagerProps = {
 	secrets: SecretDeclaration[];
 	variables: DefaultVariable[];
-	onChange: (variables: DefaultVariable[]) => void;
+	onChange: (variables: DefaultVariable[], rename?: VariableRename) => void;
 };
 
 const defaultValueCompletions: VariableCompletion[] = [];
@@ -85,7 +86,10 @@ export function DefaultVariableManager({ secrets, variables, onChange }: Default
 		const next = editingName
 			? variables.map((variable) => (variable.name === editingName ? normalized : variable))
 			: [...variables, normalized];
-		onChange(next.sort((left, right) => left.name.localeCompare(right.name)));
+		onChange(
+			next.sort((left, right) => left.name.localeCompare(right.name)),
+			editingName && editingName !== normalized.name ? { from: editingName, to: normalized.name } : undefined,
+		);
 		setDialogOpen(false);
 	};
 

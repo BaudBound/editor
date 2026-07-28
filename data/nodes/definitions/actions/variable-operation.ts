@@ -112,7 +112,7 @@ export const variableOperationNode = defineNode({
 
 			const result = applyVariableOperation(node.data.config, context, api);
 			const scope = api.getConfigString(node, "scope");
-			const variables = scope === "persistent" ? context.persistentVariables : context.runtimeVariables;
+			const variables = getVariableStore(scope, context);
 			variables[name] = result.value;
 
 			return [
@@ -150,7 +150,7 @@ function applyVariableOperation(
 	const operation = normalizeVariableOperation(configString(config.operation));
 	const type = getVariableOperationFixedType(operation) ?? normalizeVariableType(configString(config.valueType));
 	const scope = configString(config.scope);
-	const variables = scope === "persistent" ? context.persistentVariables : context.runtimeVariables;
+	const variables = getVariableStore(scope, context);
 	const scopeLabel = scope === "persistent" ? "persistent" : scope === "global" ? "global" : "runtime";
 	const currentValue = variables[name];
 
@@ -211,6 +211,18 @@ function applyVariableOperation(
 		value,
 		message: `Set ${scopeLabel} variable "${name}" to ${api.formatValue(value)}.`,
 	};
+}
+
+function getVariableStore(scope: string, context: SimulationContext) {
+	if (scope === "persistent") {
+		return context.persistentVariables;
+	}
+
+	if (scope === "global") {
+		return context.globalVariables;
+	}
+
+	return context.runtimeVariables;
 }
 
 function normalizeVariableType(value: string): VariableType {
