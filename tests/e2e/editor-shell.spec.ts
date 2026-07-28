@@ -399,6 +399,43 @@ test("Switch simulation follows the default output when no case matches", async 
 	await expect(logNode.locator(".baud-script-node")).toHaveCSS("border-color", "rgb(46, 217, 143)");
 });
 
+test("Switch simulation follows the default output when no case matches", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "Manual" }).click();
+	const blockSearch = page.getByRole("textbox", { name: "Search blocks" });
+	await blockSearch.fill("Switch");
+	await page.getByRole("button", { name: /^Switch low/ }).click();
+	await page.getByRole("textbox", { name: "Switch value" }).fill("missing");
+	const switchCases = page.getByRole("list", { name: "Switch cases" });
+	await switchCases.getByRole("textbox", { name: "Name" }).fill("Expected");
+	await switchCases.getByRole("textbox", { name: "Value" }).fill("matched");
+	await blockSearch.fill("Log");
+	await page.getByRole("button", { name: /^Log low/ }).click();
+	await page.getByRole("textbox", { name: "Message" }).fill("default path ran");
+
+	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
+	const switchNode = page.locator(".react-flow__node").filter({ hasText: "Switch" });
+	const logNode = page.locator(".react-flow__node").filter({ hasText: "Log" });
+	await manualNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
+	await switchNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+	await switchNode
+		.locator('.react-flow__handle.source[data-handleid="default"]')
+		.dispatchEvent("click", { bubbles: true });
+	await logNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Simulation speed" }).click();
+	await page.getByRole("option", { name: "Instant" }).click();
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+	await page.getByRole("button", { name: "Simulation", exact: true }).click();
+
+	await expect(page.getByText(/matched no case and selected "default" output/)).toBeVisible();
+	await expect(page.getByText(/default path ran/)).toBeVisible();
+	await expect(switchNode.locator(".baud-script-node")).toHaveCSS("border-color", "rgb(46, 217, 143)");
+	await expect(logNode.locator(".baud-script-node")).toHaveCSS("border-color", "rgb(46, 217, 143)");
+});
+
 test("coordinate verification rejects values outside the signed i32 contract", async ({ page }) => {
 	await openEditor(page);
 
