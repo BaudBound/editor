@@ -2,6 +2,7 @@
 
 import { XCircle } from "lucide-react";
 import { useId } from "react";
+import { VerificationResultBlock } from "@/components/modals/verification-result-block";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { VerificationCheck } from "@/utils/verification";
@@ -30,20 +31,12 @@ export function VerificationErrorModal({ checks, description, open, title, onClo
 					{failedChecks.map((check) => (
 						<div key={check.id} className="flex gap-3 rounded border border-baud-danger/40 bg-baud-danger/10 p-3">
 							<XCircle size={16} className="mt-0.5 shrink-0 text-baud-danger" />
-							<div className="min-w-0">
+							<div className="min-w-0 flex-1">
 								<h3 className="text-sm font-bold text-baud-danger">{check.title}</h3>
-								{check.details?.length ? (
-									<ul className="mt-2 space-y-1.5 text-sm leading-5 text-baud-danger">
-										{check.details.map((detail, index) => (
-											<li key={`${check.id}-${index}`} className="flex items-start gap-2">
-												<span aria-hidden="true" className="mt-[0.55rem] size-1.5 shrink-0 rounded-full bg-current" />
-												<span className="min-w-0 break-words">{detail}</span>
-											</li>
-										))}
-									</ul>
-								) : (
-									<p className="mt-1 text-sm leading-5 text-baud-danger">{check.message}</p>
-								)}
+								<VerificationResultBlock
+									check={check}
+									className="border-baud-danger/30 bg-baud-panel/60 text-baud-danger"
+								/>
 							</div>
 						</div>
 					))}
