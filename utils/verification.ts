@@ -109,11 +109,11 @@ export function getVerificationFindings(
 	checks: VerificationCheck[],
 	outcomes: VerificationOutcome[] = ["failed", "warning"],
 ) {
-	return checks
-		.filter((check) => outcomes.includes(check.outcome))
-		.flatMap((check) =>
-			(check.details?.length ? check.details : [check.message]).map((detail) => `${check.title}: ${detail}`),
-		);
+	const matchingChecks = checks.filter((check) => outcomes.includes(check.outcome));
+	const specificChecks = matchingChecks.filter((check) => check.id !== "export-readiness");
+	return (specificChecks.length > 0 ? specificChecks : matchingChecks).flatMap((check) =>
+		(check.details?.length ? check.details : [check.message]).map((detail) => `${check.title}: ${detail}`),
+	);
 }
 
 const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>[] = [
@@ -394,8 +394,10 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 
 			return {
 				outcome: details.length === 0 ? "passed" : "failed",
-				message: details.length === 0 ? "Script is ready for package export." : "Package export is blocked.",
-				...(details.length > 0 ? { details } : {}),
+				message:
+					details.length === 0
+						? "Script is ready for package export."
+						: "Package export is blocked by the failed verification checks listed above.",
 			};
 		},
 	},

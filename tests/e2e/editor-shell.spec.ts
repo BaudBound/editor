@@ -473,8 +473,16 @@ test("verification reports graph errors when the script has no trigger", async (
 
 	await expect(page.getByRole("heading", { name: "Verification" })).toBeVisible();
 	const verificationDialog = page.getByRole("dialog");
+	const triggerFinding = verificationDialog.getByText(
+		"Canvas > Triggers: add at least one trigger node that can start the script.",
+	);
+	await expect(triggerFinding).toHaveCount(1);
+	await expect(triggerFinding).toBeVisible();
+	await expect(triggerFinding).toHaveCSS("user-select", "text");
+	await expect(triggerFinding.locator("xpath=ancestor::*[@data-verification-result]")).toHaveCSS("user-select", "text");
+	await expect(verificationDialog.getByRole("button", { name: "Copy Entry points result" })).toBeVisible();
 	await expect(
-		verificationDialog.getByText("Canvas > Triggers: add at least one trigger node that can start the script."),
+		verificationDialog.getByText("Package export is blocked by the failed verification checks listed above."),
 	).toBeVisible();
 	await expect(
 		verificationDialog
