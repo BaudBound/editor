@@ -498,7 +498,8 @@ async function createPackageAssetContentCheck(
 			title: "Asset content",
 			description: "Checking package asset signatures and manifest media metadata.",
 			outcome: errors.length === 0 ? "passed" : "failed",
-			message: errors.length === 0 ? "No package assets found." : errors.join(" "),
+			message: errors.length === 0 ? "No package assets found." : "Package asset content is invalid.",
+			...(errors.length > 0 ? { details: errors } : {}),
 		};
 	}
 
@@ -546,7 +547,8 @@ async function createPackageAssetContentCheck(
 		message:
 			errors.length === 0
 				? `${assetManifest.records.length} asset file${assetManifest.records.length === 1 ? "" : "s"} validated.`
-				: errors.join(" "),
+				: "Package asset content is invalid.",
+		...(errors.length > 0 ? { details: errors } : {}),
 	};
 }
 

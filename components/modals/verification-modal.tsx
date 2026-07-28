@@ -163,7 +163,7 @@ export function VerificationProgress({ active = true, checks, onComplete }: Veri
 							</div>
 							<p className="mt-1 text-sm leading-5 text-baud-muted">{step.description}</p>
 							{step.status !== "pending" && step.status !== "running" && (
-								<p className={`mt-1 text-sm leading-5 ${getStepMessageClassName(step.status)}`}>{step.message}</p>
+								<VerificationResult check={step} status={step.status} />
 							)}
 						</div>
 					</div>
@@ -174,6 +174,24 @@ export function VerificationProgress({ active = true, checks, onComplete }: Veri
 				<p className="text-sm leading-5 text-baud-muted">{getVerificationSummary(true, failedSteps, warningSteps)}</p>
 			)}
 		</div>
+	);
+}
+
+function VerificationResult({ check, status }: { check: VerificationCheck; status: VerificationStepStatus }) {
+	const className = getStepMessageClassName(status);
+	if (!check.details?.length) {
+		return <p className={`mt-1 text-sm leading-5 ${className}`}>{check.message}</p>;
+	}
+
+	return (
+		<ul className={`mt-2 space-y-1.5 text-sm leading-5 ${className}`}>
+			{check.details.map((detail, index) => (
+				<li key={`${check.id}-${index}`} className="flex items-start gap-2">
+					<span aria-hidden="true" className="mt-[0.55rem] size-1.5 shrink-0 rounded-full bg-current" />
+					<span className="min-w-0 break-words">{detail}</span>
+				</li>
+			))}
+		</ul>
 	);
 }
 
@@ -259,11 +277,11 @@ function getVerificationSummary(complete: boolean, failedSteps: number, warningS
 	}
 
 	if (failedSteps > 0) {
-		return `${failedSteps} failed check${failedSteps === 1 ? "" : "s"} must be resolved.`;
+		return "Verification found errors. Every issue and its location are listed below.";
 	}
 
 	if (warningSteps > 0) {
-		return `${warningSteps} warning${warningSteps === 1 ? "" : "s"} should be reviewed.`;
+		return "Verification passed with warnings. Every warning and its location are listed below.";
 	}
 
 	return "All checks passed.";

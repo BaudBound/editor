@@ -99,6 +99,7 @@ import { getSimulationStepDelay, getSimulationTriggers } from "@/utils/simulatio
 import { executeSimulationSideEffects } from "@/utils/simulation-side-effects";
 import {
 	createVerificationChecks,
+	getVerificationFindings,
 	summarizeVerification,
 	type VerificationCheck,
 	type VerificationStatus,
@@ -120,6 +121,16 @@ type VerificationErrorDialog = {
 	open: boolean;
 	title: string;
 };
+
+function createVerificationLogEntries(prefix: string, checks: VerificationCheck[]): SimulationTraceEntry[] {
+	const summary = summarizeVerification(checks);
+	const level: SimulationTraceEntry["level"] =
+		summary.status === "failed" ? "error" : summary.status === "warning" ? "warn" : "info";
+	const findings = getVerificationFindings(checks);
+	return findings.length > 0
+		? findings.map((message) => ({ level, message: `${prefix}: ${message}` }))
+		: [{ level, message: `${prefix}: all checks passed.` }];
+}
 
 type SimulationMessageBoxState = Extract<SimulationSideEffect, { type: "message_box" }> | null;
 
@@ -509,27 +520,17 @@ export function EditorPage({
 	const handleExportVerificationComplete = useCallback(
 		(summary: ReturnType<typeof summarizeVerification>) => {
 			setVerificationRecord({ signature: verificationSignature, status: summary.status });
-			appendSystemLogs([
-				{
-					level: summary.status === "failed" ? "error" : summary.status === "warning" ? "warn" : "info",
-					message: `Export verification ${summary.status}: ${summary.passed} passed, ${summary.warnings} warning${summary.warnings === 1 ? "" : "s"}, ${summary.failed} failed.`,
-				},
-			]);
+			appendSystemLogs(createVerificationLogEntries("Export verification", verificationChecks));
 			expandPanel("bottom");
 		},
-		[appendSystemLogs, expandPanel, verificationSignature],
+		[appendSystemLogs, expandPanel, verificationChecks, verificationSignature],
 	);
 
 	const handleVerify = () => {
 		const summary = summarizeVerification(verificationChecks);
 		setVerificationRecord({ signature: verificationSignature, status: summary.status });
 		setVerificationOpen(true);
-		appendSystemLogs([
-			{
-				level: summary.status === "failed" ? "error" : summary.status === "warning" ? "warn" : "info",
-				message: `Verification ${summary.status}: ${summary.passed} passed, ${summary.warnings} warning${summary.warnings === 1 ? "" : "s"}, ${summary.failed} failed.`,
-			},
-		]);
+		appendSystemLogs(createVerificationLogEntries("Verification", verificationChecks));
 		expandPanel("bottom");
 	};
 
@@ -744,18 +745,10 @@ export function EditorPage({
 		}
 
 		const summary = summarizeVerification(verificationChecks);
-		const verificationLog: SimulationTraceEntry = {
-			level: summary.status === "failed" ? "error" : summary.status === "warning" ? "warn" : "info",
-			message: `[Simulation] Verification ${summary.status}: ${summary.passed} passed, ${summary.warnings} warning${summary.warnings === 1 ? "" : "s"}, ${summary.failed} failed.`,
-		};
+		const verificationLogs = createVerificationLogEntries("[Simulation] Verification", verificationChecks);
 
 		setVerificationRecord({ signature: verificationSignature, status: summary.status });
-		appendSystemLogs([
-			{
-				level: verificationLog.level,
-				message: `Simulation verification ${summary.status}: ${summary.passed} passed, ${summary.warnings} warning${summary.warnings === 1 ? "" : "s"}, ${summary.failed} failed.`,
-			},
-		]);
+		appendSystemLogs(createVerificationLogEntries("Simulation verification", verificationChecks));
 
 		if (summary.status === "failed") {
 			setVerificationErrorDialog({
@@ -765,14 +758,17 @@ export function EditorPage({
 				checks: verificationChecks,
 			});
 			appendSimulationLogs([
-				verificationLog,
-				{ level: "error", message: "[Simulation] Simulation blocked: verification failed." },
+				...verificationLogs,
+				{
+					level: "error",
+					message: "[Simulation] Simulation was blocked because the verification findings listed above must be fixed.",
+				},
 			]);
 			expandPanel("bottom");
 			return null;
 		}
 
-		return startSimulationSession([verificationLog]);
+		return startSimulationSession(verificationLogs);
 	}, [
 		appendSimulationLogs,
 		appendSystemLogs,
