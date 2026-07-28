@@ -209,6 +209,52 @@ test("variable operation completes writable variable names without template brac
 	await expect(nameInput).not.toHaveValue("{{preferred_status}}");
 });
 
+test("renaming defaults and secrets updates every node reference", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await page.getByRole("button", { name: "Add variable" }).click();
+	let variableDialog = page.getByRole("dialog");
+	await variableDialog.getByRole("textbox", { name: "Name" }).fill("inventory");
+	await variableDialog.getByRole("textbox", { name: "Default value" }).fill("ready");
+	await variableDialog.getByRole("button", { name: "Save" }).click();
+
+	await page.getByRole("button", { name: "Add secret" }).click();
+	let secretDialog = page.getByRole("dialog");
+	await secretDialog.getByRole("textbox", { name: "Name" }).fill("api_token");
+	await secretDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("textbox", { name: "Simulation value" }).fill("test-secret");
+
+	await page.getByRole("button", { name: "Data & Variables" }).click();
+	await page.getByRole("button", { name: "Variable Operation" }).click();
+	await page.getByRole("combobox", { name: "Variable name" }).fill("inventory");
+	const variableNode = page.locator(".react-flow__node").filter({ hasText: "Variable Operation" });
+
+	await page.getByRole("button", { name: "Output & Timing" }).click();
+	await page.getByRole("button", { name: /^Log low/ }).click();
+	await page
+		.getByRole("textbox", { name: "Message" })
+		.fill("{{inventory}} {{inventory.items[0]}} {{api_token}} {{api_token.value}} {{inventory_backup}}");
+	const logNode = page.locator(".react-flow__node").filter({ hasText: "Log" });
+
+	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await page.getByRole("button", { name: "Edit inventory" }).click();
+	variableDialog = page.getByRole("dialog");
+	await variableDialog.getByRole("textbox", { name: "Name" }).fill("stock");
+	await variableDialog.getByRole("button", { name: "Save" }).click();
+
+	await page.getByRole("button", { name: "Edit api_token" }).click();
+	secretDialog = page.getByRole("dialog");
+	await secretDialog.getByRole("textbox", { name: "Name" }).fill("access_token");
+	await secretDialog.getByRole("button", { name: "Save" }).click();
+	await expect(page.getByRole("textbox", { name: "Simulation value" })).toHaveValue("test-secret");
+
+	await expect(variableNode).toContainText("stock");
+	await expect(logNode).toContainText(
+		"{{stock}} {{stock.items[0]}} {{access_token}} {{access_token.value}} {{inventory_backup}}",
+	);
+});
+
 test("variable search respects the error output visibility option", async ({ page }) => {
 	await openEditor(page);
 
@@ -302,6 +348,18 @@ test("persistent variable simulation carries changes into the next run", async (
 	await expect(variableNode.locator(".baud-script-node")).toHaveCSS("border-color", "rgb(46, 217, 143)");
 	await page.getByRole("button", { name: "Trigger", exact: true }).click();
 	await expect(counterValue).toHaveText("2");
+
+	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await page.getByRole("button", { name: "Reset stored values" }).click();
+	const resetDialog = page.getByRole("dialog");
+	await expect(resetDialog.getByRole("heading", { name: "Reset stored values?" })).toBeVisible();
+	await resetDialog.getByRole("button", { name: "Reset stored values" }).click();
+	await expect(counterValue).toHaveText("0");
+
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await expect(counterValue).toHaveText("1");
 });
 
 test("Switch simulation follows the default output when no case matches", async ({ page }) => {

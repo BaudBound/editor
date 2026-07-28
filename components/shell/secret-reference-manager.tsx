@@ -14,12 +14,13 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { secretSimulationValueError, validateSecretDeclaration } from "@/data/project/secrets";
 import type { SecretDeclaration } from "@/lib/types";
+import type { VariableRename } from "@/utils/variable-reference-renaming";
 
 type SecretReferenceManagerProps = {
 	declarations: SecretDeclaration[];
 	reservedVariableNames?: ReadonlySet<string>;
 	simulationValues: Record<string, string>;
-	onDeclarationsChange: (declarations: SecretDeclaration[]) => void;
+	onDeclarationsChange: (declarations: SecretDeclaration[], rename?: VariableRename) => void;
 	onSimulationValueChange: (name: string, value: string) => void;
 };
 
@@ -62,10 +63,21 @@ export function SecretReferenceManager({
 		if (declarationError) return;
 		const normalized = { ...draft, name: draft.name.trim(), description: draft.description.trim() };
 		if (editingName) {
-			onDeclarationsChange(declarations.map((secret) => (secret.name === editingName ? normalized : secret)));
+			onDeclarationsChange(
+				declarations.map((secret) => (secret.name === editingName ? normalized : secret)),
+				editingName !== normalized.name ? { from: editingName, to: normalized.name } : undefined,
+			);
 			if (editingName !== normalized.name && simulationValues[editingName] !== undefined) {
 				onSimulationValueChange(normalized.name, simulationValues[editingName]);
 				onSimulationValueChange(editingName, "");
+			}
+			if (editingName !== normalized.name && visibleValues.has(editingName)) {
+				setVisibleValues((current) => {
+					const next = new Set(current);
+					next.delete(editingName);
+					next.add(normalized.name);
+					return next;
+				});
 			}
 		} else {
 			onDeclarationsChange([...declarations, normalized].sort((a, b) => a.name.localeCompare(b.name)));

@@ -74,7 +74,8 @@ export function createEditorVariableRegistry(
 		variables.set(snapshot.name, {
 			name: snapshot.name,
 			read_only: snapshot.source !== "runtime",
-			scope: snapshot.source === "node_output" ? "node_output" : snapshot.source === "secret" ? "secret" : "runtime",
+			scope:
+				snapshot.source === "node_output" ? "node_output" : snapshot.source === "secret" ? "secret" : snapshot.source,
 			source: snapshot.source === "node_output" ? "node_output" : snapshot.source === "secret" ? "secret" : "user",
 			token: `{{${snapshot.name}}}`,
 			type: inferVariableType(snapshot.value),

@@ -103,6 +103,7 @@ import {
 } from "@/utils/simulation";
 import { getSimulationStepDelay, getSimulationTriggers } from "@/utils/simulation-settings";
 import { executeSimulationSideEffects } from "@/utils/simulation-side-effects";
+import { renameVariableReferences, type VariableRename } from "@/utils/variable-reference-renaming";
 import {
 	createVerificationChecks,
 	getVerificationFindings,
@@ -127,6 +128,40 @@ type VerificationErrorDialog = {
 	open: boolean;
 	title: string;
 };
+
+function renameNodeVariableReferences(
+	nodes: EditorFlowNode[],
+	rename: VariableRename,
+	renameVariableOperationTarget: boolean,
+) {
+	return nodes.map((node) => {
+		if (!isScriptFlowNode(node)) {
+			return node;
+		}
+
+		let config = renameVariableReferences(node.data.config, rename) as Record<string, JsonValue>;
+		if (
+			renameVariableOperationTarget &&
+			node.data.actionType === "runtime.set_variable" &&
+			config.name === rename.from
+		) {
+			config = { ...config, name: rename.to };
+		}
+
+		if (config === node.data.config) {
+			return node;
+		}
+
+		return {
+			...node,
+			data: {
+				...node.data,
+				config,
+				runtimeOutputs: getRuntimeDataOutputs(node.data.actionType, config),
+			},
+		};
+	});
+}
 
 function createVerificationLogEntries(prefix: string, checks: VerificationCheck[]): SimulationTraceEntry[] {
 	const summary = summarizeVerification(checks);
@@ -170,6 +205,7 @@ export function EditorPage({
 				.map((variable) => [variable.name, structuredClone(variable.value)]),
 		),
 	);
+	const simulationGlobalVariablesRef = useRef<Record<string, JsonValue>>({});
 	const initialNodes = useMemo<EditorFlowNode[]>(
 		() => [
 			...(initialProject.nodes as ScriptFlowNode[]),
@@ -661,6 +697,7 @@ export function EditorPage({
 					overrides: simulationOverrides,
 					projectSettings,
 					defaultVariables,
+					globalVariables: simulationGlobalVariablesRef.current,
 					persistentVariables: simulationPersistentVariablesRef.current,
 					secretValues: createSimulationSecretValues(secretDeclarations, simulationSecretValues),
 					signal: abortController.signal,
@@ -673,6 +710,7 @@ export function EditorPage({
 					return;
 				}
 
+				simulationGlobalVariablesRef.current = run.globalVariables;
 				simulationPersistentVariablesRef.current = run.persistentVariables;
 				setSimulationVariables(run.finalVariables);
 				setSimulationStatus(abortController.signal.aborted ? "stopped" : keepWaiting ? "waiting" : run.status);
@@ -963,6 +1001,79 @@ export function EditorPage({
 			setSimulationVariables([]);
 		}
 	};
+
+	const handleResetStoredSimulationValues = useCallback(() => {
+		abortSimulationLifecycle("stored simulation values reset");
+		const persistentVariables = Object.fromEntries(
+			defaultVariables
+				.filter((variable) => variable.scope === "persistent")
+				.map((variable) => [variable.name, structuredClone(variable.value)]),
+		);
+
+		simulationPersistentVariablesRef.current = persistentVariables;
+		simulationGlobalVariablesRef.current = {};
+		setSimulationStatus("idle");
+		setSimulationVariables((currentVariables) => [
+			...currentVariables.filter((variable) => variable.source !== "persistent" && variable.source !== "global"),
+			...Object.entries(persistentVariables).map(([name, value]) => ({
+				name,
+				source: "persistent" as const,
+				value,
+			})),
+		]);
+		appendSystemLogs([
+			{
+				level: "info",
+				message: "Reset simulated persistent values to their defaults and cleared simulated global values.",
+			},
+		]);
+	}, [abortSimulationLifecycle, appendSystemLogs, defaultVariables]);
+
+	const handleDefaultVariablesChange = useCallback(
+		(nextVariables: DefaultVariable[], rename?: VariableRename) => {
+			if (rename) {
+				setNodes((currentNodes) => renameNodeVariableReferences(currentNodes, rename, true));
+
+				const nextDeclaration = nextVariables.find((variable) => variable.name === rename.to);
+				const currentStoredValues = simulationPersistentVariablesRef.current;
+				const nextStoredValues = { ...currentStoredValues };
+				const previousStoredValue = currentStoredValues[rename.from];
+				const hadStoredValue = Object.hasOwn(currentStoredValues, rename.from);
+				delete nextStoredValues[rename.from];
+				if (nextDeclaration?.scope === "persistent") {
+					nextStoredValues[rename.to] = hadStoredValue ? previousStoredValue : structuredClone(nextDeclaration.value);
+				}
+				simulationPersistentVariablesRef.current = nextStoredValues;
+
+				appendSystemLogs([
+					{
+						level: "info",
+						message: `Renamed default variable "${rename.from}" to "${rename.to}" and updated its node references.`,
+					},
+				]);
+			}
+
+			setDefaultVariables(nextVariables);
+		},
+		[appendSystemLogs, setNodes],
+	);
+
+	const handleSecretDeclarationsChange = useCallback(
+		(nextDeclarations: SecretDeclaration[], rename?: VariableRename) => {
+			if (rename) {
+				setNodes((currentNodes) => renameNodeVariableReferences(currentNodes, rename, false));
+				appendSystemLogs([
+					{
+						level: "info",
+						message: `Renamed secret reference "${rename.from}" to "${rename.to}" and updated its node references.`,
+					},
+				]);
+			}
+
+			setSecretDeclarations(nextDeclarations);
+		},
+		[appendSystemLogs, setNodes],
+	);
 
 	const handleFollowBottomPanelTab = (tab: Exclude<BottomPanelTab, "variables">, enabled: boolean) => {
 		setBottomPanelFollow((currentFollow) => ({ ...currentFollow, [tab]: enabled }));
@@ -1352,10 +1463,11 @@ export function EditorPage({
 						height={sizes.bottom}
 						onClearTab={handleClearBottomPanelTab}
 						onFollowChange={handleFollowBottomPanelTab}
+						onResetStoredValues={handleResetStoredSimulationValues}
 						onTabChange={setBottomPanelTab}
 						onToggle={() => togglePanel("bottom")}
-						onDefaultVariablesChange={setDefaultVariables}
-						onSecretDeclarationsChange={setSecretDeclarations}
+						onDefaultVariablesChange={handleDefaultVariablesChange}
+						onSecretDeclarationsChange={handleSecretDeclarationsChange}
 						onSimulationSecretValueChange={(name, value) =>
 							setSimulationSecretValues((current) => {
 								if (value === "") {

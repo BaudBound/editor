@@ -91,6 +91,7 @@ export async function createSimulationRun({
 	assets,
 	defaultVariables = [],
 	edges,
+	globalVariables = {},
 	nodes,
 	onStep,
 	overrides,
@@ -107,6 +108,7 @@ export async function createSimulationRun({
 		assetsByPackagePath: new Map(assets.map((asset) => [asset.packagePath.toLowerCase(), asset])),
 		edgesBySource: groupEdgesBySource(edges),
 		failed: false,
+		globalVariables: structuredClone(globalVariables),
 		halted: false,
 		nodeOutputs: {},
 		nodesById: new Map(nodes.map((node) => [node.id, node])),
@@ -177,6 +179,7 @@ export async function createSimulationRun({
 function createSimulationRunResult(context: SimulationContext, status: SimulationRun["status"]): SimulationRun {
 	return {
 		finalVariables: createVariableSnapshot(context),
+		globalVariables: structuredClone(context.globalVariables),
 		persistentVariables: structuredClone(context.persistentVariables),
 		status,
 	};
@@ -1156,9 +1159,14 @@ function tryGetReferenceValue(reference: string, context: SimulationContext): Js
 		return context.persistentVariables[reference];
 	}
 
+	if (reference in context.globalVariables) {
+		return context.globalVariables[reference];
+	}
+
 	const variableReference =
 		getRuntimeVariableReference(reference, context.runtimeVariables) ??
-		getRuntimeVariableReference(reference, context.persistentVariables);
+		getRuntimeVariableReference(reference, context.persistentVariables) ??
+		getRuntimeVariableReference(reference, context.globalVariables);
 	if (variableReference) {
 		if (context.secretNames.has(variableReference.name) && variableReference.path.startsWith("$")) {
 			return undefined;
@@ -1406,6 +1414,12 @@ function createVariableSnapshot(context: SimulationContext): SimulationVariableS
 		value: createSnapshotValue(redactSnapshotValue(context, value)),
 	}));
 
+	const globalVariables = Object.entries(context.globalVariables).map(([name, value]) => ({
+		name,
+		source: "global" as const,
+		value: createSnapshotValue(redactSnapshotValue(context, value)),
+	}));
+
 	const nodeOutputVariables = Object.entries(context.nodeOutputs).flatMap(([nodeId, outputs]) =>
 		flattenObject(outputs).map(([name, value]) => ({
 			name: `${nodeId}.${name}`,
@@ -1414,7 +1428,7 @@ function createVariableSnapshot(context: SimulationContext): SimulationVariableS
 		})),
 	);
 
-	return [...runtimeVariables, ...persistentVariables, ...nodeOutputVariables]
+	return [...runtimeVariables, ...persistentVariables, ...globalVariables, ...nodeOutputVariables]
 		.sort((a, b) => a.name.localeCompare(b.name))
 		.slice(0, MAX_VARIABLE_SNAPSHOT_ENTRIES);
 }

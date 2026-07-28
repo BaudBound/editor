@@ -22,6 +22,7 @@ export type SimulationRunOptions = {
 	overrides: SimulationOverride[];
 	projectSettings: ProjectSettings;
 	defaultVariables?: DefaultVariable[];
+	globalVariables?: Record<string, JsonValue>;
 	persistentVariables?: Record<string, JsonValue>;
 	secretValues?: Record<string, JsonValue>;
 	signal?: AbortSignal;
@@ -72,6 +73,7 @@ export type SimulationSideEffectResult = {
 
 export type SimulationRun = {
 	finalVariables: SimulationVariableSnapshot[];
+	globalVariables: Record<string, JsonValue>;
 	persistentVariables: Record<string, JsonValue>;
 	status: "completed" | "failed";
 };
@@ -81,6 +83,7 @@ export type SimulationContext = {
 	edgesBySource: Map<string, Edge[]>;
 	failed: boolean;
 	halted: boolean;
+	globalVariables: Record<string, JsonValue>;
 	nodeOutputs: Record<string, Record<string, JsonValue>>;
 	nodesById: Map<string, Node<ScriptNodeData>>;
 	onStep?: (
