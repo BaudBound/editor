@@ -513,15 +513,7 @@ async function processForEachFrame(
 	}
 
 	const item = frame.items[frame.index];
-	const itemVariable = getConfigString(node, "itemVariable").trim();
-	const indexVariable = getConfigString(node, "indexVariable").trim();
 	context.nodeOutputs[node.id] = { item, index: frame.index };
-	if (itemVariable) {
-		context.runtimeVariables[itemVariable] = item;
-	}
-	if (indexVariable) {
-		context.runtimeVariables[indexVariable] = frame.index;
-	}
 
 	await pushStep(context, {
 		level: "info",

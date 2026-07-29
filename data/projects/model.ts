@@ -9,7 +9,7 @@ import type {
 	SecretDeclaration,
 } from "@/lib/types";
 
-export const editorProjectSchemaVersion = 3;
+export const editorProjectSchemaVersion = 4;
 
 export type ProjectIdentity = {
 	createdAt: string;
