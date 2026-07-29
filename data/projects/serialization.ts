@@ -338,13 +338,18 @@ function isProjectSettings(value: unknown): value is ProjectSettings {
 }
 
 function migrateStoredProjectRecord(value: unknown): unknown {
-	if (!isRecord(value) || !isRecord(value.settings) || (value.schemaVersion !== 1 && value.schemaVersion !== 2)) {
+	if (
+		!isRecord(value) ||
+		!isRecord(value.settings) ||
+		(value.schemaVersion !== 1 && value.schemaVersion !== 2 && value.schemaVersion !== 3)
+	) {
 		return value;
 	}
 
 	const migratedTargetRuntimes = migrateTargetRuntimes(value.settings);
 	return {
 		...value,
+		nodes: Array.isArray(value.nodes) ? value.nodes.map(migrateStoredNode) : value.nodes,
 		schemaVersion: editorProjectSchemaVersion,
 		secretDeclarations: Array.isArray(value.secretDeclarations)
 			? value.secretDeclarations.map((declaration) =>
@@ -358,6 +363,17 @@ function migrateStoredProjectRecord(value: unknown): unknown {
 			targetRuntimes: migratedTargetRuntimes,
 		},
 	};
+}
+
+function migrateStoredNode(value: unknown): unknown {
+	if (!isRecord(value) || value.actionType !== "control.for_each" || !isRecord(value.config)) {
+		return value;
+	}
+
+	const config = { ...value.config };
+	delete config.itemVariable;
+	delete config.indexVariable;
+	return { ...value, config };
 }
 
 function migrateTargetRuntimes(settings: Record<string, unknown>): ProjectSettings["targetRuntimes"] {

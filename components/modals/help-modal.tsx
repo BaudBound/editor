@@ -235,7 +235,7 @@ const nodeBehaviorRows = [
 	{
 		label: "For Each",
 		description:
-			"Loops through a list value. The loop output branch runs once for each item and should end naturally. The items field can reference a list variable or nested list such as {{payload.users}}.",
+			"Loops through a list value. The loop output branch runs once for each item and should end naturally. Read the current item and zero-based index from the node's item and index runtime outputs.",
 	},
 	{
 		label: "HTTP Request",
