@@ -50,6 +50,13 @@ export function createTriggerPayload(
 	headers: HeaderRow[],
 	query: HeaderRow[],
 ): SimulationTriggerPayload {
+	if (triggerNode.data.actionType === "trigger.serial_input") {
+		return {
+			...payload,
+			data: decodeSimulationText(payload.data ?? ""),
+		};
+	}
+
 	if (triggerNode.data.actionType !== "trigger.webhook" && triggerNode.data.actionType !== "trigger.websocket") {
 		return payload;
 	}
@@ -60,6 +67,37 @@ export function createTriggerPayload(
 		query: rowsToRecord(query),
 	};
 }
+
+export function decodeSimulationText(value: string) {
+	let result = "";
+	for (let index = 0; index < value.length; index += 1) {
+		const character = value[index];
+		if (character !== "\\" || index + 1 >= value.length) {
+			result += character;
+			continue;
+		}
+
+		const escaped = value[index + 1];
+		const replacement = simulationEscapeCharacters[escaped];
+		if (replacement === undefined) {
+			result += character;
+			continue;
+		}
+		result += replacement;
+		index += 1;
+	}
+	return result;
+}
+
+const simulationEscapeCharacters: Record<string, string> = {
+	"0": "\0",
+	"\\": "\\",
+	b: "\b",
+	f: "\f",
+	n: "\n",
+	r: "\r",
+	t: "\t",
+};
 
 function rowsToRecord(rows: HeaderRow[]): Record<string, string> {
 	return Object.fromEntries(rows.map((row) => [row.name.trim(), row.value]).filter(([name]) => name.length > 0));
