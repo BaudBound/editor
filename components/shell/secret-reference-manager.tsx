@@ -230,9 +230,16 @@ export function SecretReferenceManager({
 							onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
 						/>
 					</label>
-					<div className="flex items-center justify-between gap-3 rounded border border-baud-border p-2 text-sm text-baud-text">
-						<span>Required before a run starts</span>
+					<div className="flex items-center justify-between gap-3 rounded border border-baud-border p-2 text-baud-text">
+						<div className="grid gap-0.5">
+							<span className="text-sm">Required for execution</span>
+							<span className="text-xs leading-4 text-baud-muted">
+								The script cannot run until this secret has a value and secret storage is unlocked. An enabled script
+								with a required secret also blocks the background service from starting.
+							</span>
+						</div>
 						<Switch
+							aria-label="Required for execution"
 							checked={draft.required}
 							onCheckedChange={(required) => setDraft((current) => ({ ...current, required }))}
 						/>
