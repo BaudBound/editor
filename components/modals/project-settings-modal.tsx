@@ -2,6 +2,9 @@
 
 import { X } from "lucide-react";
 import { type ClipboardEvent, type KeyboardEvent, useEffect, useId, useState } from "react";
+import { DefaultVariableManager } from "@/components/shell/default-variable-manager";
+import { ScriptSettingManager } from "@/components/shell/script-setting-manager";
+import { SecretReferenceManager } from "@/components/shell/secret-reference-manager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,9 +19,12 @@ import { Input } from "@/components/ui/input";
 import { MultiOptionCombobox } from "@/components/ui/multi-option-combobox";
 import { Textarea } from "@/components/ui/textarea";
 import { targetRuntimes } from "@/data/project/runtimes";
-import type { ProjectSettings, TargetRuntime } from "@/lib/types";
+import type { DefaultVariable, ProjectSettings, ScriptSetting, SecretDeclaration, TargetRuntime } from "@/lib/types";
 import { DEFAULT_MINIMUM_RUNNER_VERSION } from "@/lib/version";
 import { getRepositoryUrlError, getScriptVersionError } from "@/utils/script-repository";
+import type { VariableRename } from "@/utils/variable-reference-renaming";
+
+type ProjectSettingsTab = "general" | "runtime" | "defaultVariables" | "secrets" | "scriptSettings";
 
 type ProjectSettingsModalProps = {
 	description?: string;
@@ -26,9 +32,17 @@ type ProjectSettingsModalProps = {
 	projectId?: string;
 	saveLabel?: string;
 	settings: ProjectSettings;
+	defaultVariables?: DefaultVariable[];
+	secretDeclarations?: SecretDeclaration[];
+	scriptSettings?: ScriptSetting[];
+	simulationSecretValues?: Record<string, string>;
 	title?: string;
 	onClose: () => void;
+	onDefaultVariablesChange?: (variables: DefaultVariable[], renames?: VariableRename[]) => void;
 	onSave: (settings: ProjectSettings) => void;
+	onScriptSettingsChange?: (settings: ScriptSetting[], renames?: VariableRename[]) => void;
+	onSecretDeclarationsChange?: (declarations: SecretDeclaration[], renames?: VariableRename[]) => void;
+	onSimulationSecretValuesChange?: (values: Record<string, string>) => void;
 };
 
 export function ProjectSettingsModal({
@@ -37,15 +51,36 @@ export function ProjectSettingsModal({
 	projectId,
 	saveLabel = "Save Settings",
 	settings,
+	defaultVariables,
+	secretDeclarations,
+	scriptSettings,
+	simulationSecretValues,
 	title = "Project Settings",
 	onClose,
+	onDefaultVariablesChange,
 	onSave,
+	onScriptSettingsChange,
+	onSecretDeclarationsChange,
+	onSimulationSecretValuesChange,
 }: ProjectSettingsModalProps) {
 	const titleId = useId();
 	const descriptionId = useId();
 	const [draft, setDraft] = useState(settings);
 	const [tagsDraft, setTagsDraft] = useState<string[]>(settings.tags);
 	const [tagInput, setTagInput] = useState("");
+	const [activeTab, setActiveTab] = useState<ProjectSettingsTab>("general");
+	const [defaultVariablesDraft, setDefaultVariablesDraft] = useState(defaultVariables ?? []);
+	const [secretDeclarationsDraft, setSecretDeclarationsDraft] = useState(secretDeclarations ?? []);
+	const [scriptSettingsDraft, setScriptSettingsDraft] = useState(scriptSettings ?? []);
+	const [simulationSecretValuesDraft, setSimulationSecretValuesDraft] = useState(simulationSecretValues ?? {});
+	const [defaultVariableRenames, setDefaultVariableRenames] = useState<VariableRename[]>([]);
+	const [secretRenames, setSecretRenames] = useState<VariableRename[]>([]);
+	const [scriptSettingRenames, setScriptSettingRenames] = useState<VariableRename[]>([]);
+	const hasDefinitionTabs =
+		defaultVariables !== undefined &&
+		secretDeclarations !== undefined &&
+		scriptSettings !== undefined &&
+		simulationSecretValues !== undefined;
 
 	useEffect(() => {
 		if (!open) {
@@ -55,7 +90,15 @@ export function ProjectSettingsModal({
 		setDraft(settings);
 		setTagsDraft(settings.tags);
 		setTagInput("");
-	}, [open, settings]);
+		setActiveTab("general");
+		setDefaultVariablesDraft(defaultVariables ?? []);
+		setSecretDeclarationsDraft(secretDeclarations ?? []);
+		setScriptSettingsDraft(scriptSettings ?? []);
+		setSimulationSecretValuesDraft(simulationSecretValues ?? {});
+		setDefaultVariableRenames([]);
+		setSecretRenames([]);
+		setScriptSettingRenames([]);
+	}, [defaultVariables, open, scriptSettings, secretDeclarations, settings, simulationSecretValues]);
 
 	const nameError = draft.name.trim().length === 0 ? "Project name is required." : "";
 	const nameLengthError = draft.name.length > 128 ? "Project name cannot exceed 128 characters." : "";
@@ -102,6 +145,10 @@ export function ProjectSettingsModal({
 			minimumRunnerVersion: draft.minimumRunnerVersion.trim() || DEFAULT_MINIMUM_RUNNER_VERSION,
 			tags: nextTags,
 		});
+		onDefaultVariablesChange?.(defaultVariablesDraft, defaultVariableRenames);
+		onSecretDeclarationsChange?.(secretDeclarationsDraft, secretRenames);
+		onScriptSettingsChange?.(scriptSettingsDraft, scriptSettingRenames);
+		onSimulationSecretValuesChange?.(simulationSecretValuesDraft);
 		onClose();
 	};
 
@@ -109,7 +156,7 @@ export function ProjectSettingsModal({
 		<Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
 			<DialogContent
 				aria-labelledby={titleId}
-				className="sm:max-w-2xl"
+				className="sm:max-w-4xl"
 				onOpenAutoFocus={(event) => event.preventDefault()}
 			>
 				<DialogHeader>
@@ -117,115 +164,199 @@ export function ProjectSettingsModal({
 					<DialogDescription>{description}</DialogDescription>
 				</DialogHeader>
 
-				<div className="grid max-h-[70vh] gap-4 overflow-y-auto pr-1">
-					{projectId && (
-						<div>
-							<label htmlFor={`${titleId}-project-id`} className="mb-1 block font-mono text-sm text-baud-muted">
-								Project ID
-							</label>
-							<Input id={`${titleId}-project-id`} value={projectId} readOnly className="font-mono" />
-							<p className="mt-1 text-xs leading-4 text-baud-muted">
-								This stable ID lets the runner recognize later exports as the same script.
+				<div
+					role="tablist"
+					aria-label="Project Settings sections"
+					className="flex min-w-0 overflow-x-auto border-b border-baud-border"
+				>
+					{getProjectSettingsTabs(hasDefinitionTabs).map((tab) => (
+						<Button
+							key={tab.id}
+							type="button"
+							role="tab"
+							aria-selected={activeTab === tab.id}
+							size="none"
+							variant="tab"
+							className={`h-9 shrink-0 rounded-none border-b-2 px-3 ${
+								activeTab === tab.id ? "border-baud-red text-baud-text" : "border-transparent text-baud-muted"
+							}`}
+							onClick={() => setActiveTab(tab.id)}
+						>
+							{tab.label}
+						</Button>
+					))}
+				</div>
+
+				<div className="max-h-[68vh] min-h-[360px] overflow-y-auto pr-1">
+					{activeTab === "general" && (
+						<div className="grid gap-4">
+							{projectId && (
+								<div>
+									<label htmlFor={`${titleId}-project-id`} className="mb-1 block font-mono text-sm text-baud-muted">
+										Project ID
+									</label>
+									<Input id={`${titleId}-project-id`} value={projectId} readOnly className="font-mono" />
+									<p className="mt-1 text-xs leading-4 text-baud-muted">
+										This stable ID lets the runner recognize later exports as the same script.
+									</p>
+								</div>
+							)}
+							<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+								<TextField
+									label="Name"
+									value={draft.name}
+									error={nameError || nameLengthError}
+									maxLength={128}
+									onChange={(value) => setDraft((current) => ({ ...current, name: value }))}
+								/>
+								<TextField
+									label="Script Version"
+									value={draft.version}
+									error={versionError}
+									maxLength={128}
+									onChange={(value) => setDraft((current) => ({ ...current, version: value }))}
+								/>
+							</div>
+							<div>
+								<label htmlFor={descriptionId} className="mb-1 block font-mono text-sm text-baud-muted">
+									Description
+								</label>
+								<Textarea
+									id={descriptionId}
+									value={draft.description}
+									onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
+									className="min-h-24"
+									maxLength={4096}
+								/>
+								{descriptionError && <p className="mt-1 text-xs leading-4 text-baud-danger">{descriptionError}</p>}
+							</div>
+							<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+								<TextField
+									label="Author"
+									value={draft.author}
+									error={authorError}
+									maxLength={128}
+									onChange={(value) => setDraft((current) => ({ ...current, author: value }))}
+								/>
+								<TextField
+									label="Repository URL"
+									value={draft.repositoryUrl}
+									error={repositoryUrlError}
+									maxLength={2048}
+									onChange={(value) => setDraft((current) => ({ ...current, repositoryUrl: value }))}
+								/>
+							</div>
+							<p className="-mt-3 text-xs leading-4 text-baud-muted">
+								The optional repository URL must use HTTPS and point to repository.json. The editor does not contact it.
 							</p>
+							<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+								<TextField
+									label="Website"
+									value={draft.website}
+									error={websiteError}
+									maxLength={2048}
+									onChange={(value) => setDraft((current) => ({ ...current, website: value }))}
+								/>
+								<TextField
+									label="Source"
+									value={draft.source}
+									error={sourceError}
+									maxLength={2048}
+									onChange={(value) => setDraft((current) => ({ ...current, source: value }))}
+								/>
+							</div>
+							<TagField
+								tags={tagsDraft}
+								inputValue={tagInput}
+								error={tagsError}
+								onInputChange={setTagInput}
+								onTagsChange={setTagsDraft}
+							/>
 						</div>
 					)}
-					<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-						<TextField
-							label="Name"
-							value={draft.name}
-							error={nameError || nameLengthError}
-							maxLength={128}
-							onChange={(value) => setDraft((current) => ({ ...current, name: value }))}
-						/>
-						<div>
-							<span className="mb-1 block font-mono text-sm text-baud-muted">Target Runtimes</span>
-							<MultiOptionCombobox
-								ariaLabel="Target runtimes"
-								options={targetRuntimes.map((runtime) => ({ label: runtime, value: runtime }))}
-								values={draft.targetRuntimes}
-								onChange={(values) =>
-									setDraft((current) => ({ ...current, targetRuntimes: values as TargetRuntime[] }))
-								}
+
+					{activeTab === "runtime" && (
+						<div className="grid gap-4">
+							<div>
+								<span className="mb-1 block font-mono text-sm text-baud-muted">Target Runtimes</span>
+								<MultiOptionCombobox
+									ariaLabel="Target runtimes"
+									options={targetRuntimes.map((runtime) => ({ label: runtime, value: runtime }))}
+									values={draft.targetRuntimes}
+									onChange={(values) =>
+										setDraft((current) => ({
+											...current,
+											targetRuntimes: values as TargetRuntime[],
+										}))
+									}
+								/>
+								{targetRuntimesError && (
+									<p className="mt-1 text-xs leading-4 text-baud-danger">{targetRuntimesError}</p>
+								)}
+							</div>
+							<TextField
+								label="Minimum BaudBound Version"
+								value={draft.minimumRunnerVersion}
+								error={minimumRunnerError}
+								maxLength={64}
+								onChange={(value) => setDraft((current) => ({ ...current, minimumRunnerVersion: value }))}
 							/>
-							{targetRuntimesError && <p className="mt-1 text-xs leading-4 text-baud-danger">{targetRuntimesError}</p>}
 						</div>
-					</div>
+					)}
 
-					<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-						<TextField
-							label="Script Version"
-							value={draft.version}
-							error={versionError}
-							maxLength={128}
-							onChange={(value) => setDraft((current) => ({ ...current, version: value }))}
+					{activeTab === "defaultVariables" && (
+						<DefaultVariableManager
+							secrets={secretDeclarationsDraft}
+							variables={defaultVariablesDraft}
+							onChange={(variables, rename) => {
+								setDefaultVariablesDraft(variables);
+								if (rename) {
+									setDefaultVariableRenames((current) => [...current, rename]);
+								}
+							}}
 						/>
-						<TextField
-							label="Repository URL"
-							value={draft.repositoryUrl}
-							error={repositoryUrlError}
-							maxLength={2048}
-							onChange={(value) => setDraft((current) => ({ ...current, repositoryUrl: value }))}
-						/>
-					</div>
-					<p className="-mt-3 text-xs leading-4 text-baud-muted">
-						The optional repository URL must use HTTPS and point to repository.json. The editor does not contact it.
-					</p>
+					)}
 
-					<div>
-						<label htmlFor={descriptionId} className="mb-1 block font-mono text-sm text-baud-muted">
-							Description
-						</label>
-						<Textarea
-							id={descriptionId}
-							value={draft.description}
-							onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
-							className="min-h-24"
-							maxLength={4096}
+					{activeTab === "secrets" && (
+						<SecretReferenceManager
+							declarations={secretDeclarationsDraft}
+							reservedVariableNames={
+								new Set([
+									...defaultVariablesDraft.map((variable) => variable.name),
+									...scriptSettingsDraft.map((setting) => setting.name),
+								])
+							}
+							simulationValues={simulationSecretValuesDraft}
+							onDeclarationsChange={(declarations, rename) => {
+								setSecretDeclarationsDraft(declarations);
+								if (rename) {
+									setSecretRenames((current) => [...current, rename]);
+								}
+							}}
+							onSimulationValueChange={(name, value) =>
+								setSimulationSecretValuesDraft((current) => {
+									if (value === "") {
+										const next = { ...current };
+										delete next[name];
+										return next;
+									}
+									return { ...current, [name]: value };
+								})
+							}
 						/>
-						{descriptionError && <p className="mt-1 text-xs leading-4 text-baud-danger">{descriptionError}</p>}
-					</div>
+					)}
 
-					<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-						<TextField
-							label="Author"
-							value={draft.author}
-							error={authorError}
-							maxLength={128}
-							onChange={(value) => setDraft((current) => ({ ...current, author: value }))}
+					{activeTab === "scriptSettings" && (
+						<ScriptSettingManager
+							settings={scriptSettingsDraft}
+							onChange={(nextSettings, rename) => {
+								setScriptSettingsDraft(nextSettings);
+								if (rename) {
+									setScriptSettingRenames((current) => [...current, rename]);
+								}
+							}}
 						/>
-						<TextField
-							label="Minimum BaudBound Version"
-							value={draft.minimumRunnerVersion}
-							error={minimumRunnerError}
-							maxLength={64}
-							onChange={(value) => setDraft((current) => ({ ...current, minimumRunnerVersion: value }))}
-						/>
-					</div>
-
-					<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-						<TextField
-							label="Website"
-							value={draft.website}
-							error={websiteError}
-							maxLength={2048}
-							onChange={(value) => setDraft((current) => ({ ...current, website: value }))}
-						/>
-						<TextField
-							label="Source"
-							value={draft.source}
-							error={sourceError}
-							maxLength={2048}
-							onChange={(value) => setDraft((current) => ({ ...current, source: value }))}
-						/>
-					</div>
-
-					<TagField
-						tags={tagsDraft}
-						inputValue={tagInput}
-						error={tagsError}
-						onInputChange={setTagInput}
-						onTagsChange={setTagsDraft}
-					/>
+					)}
 				</div>
 
 				<DialogFooter className="bg-baud-panel">
@@ -239,6 +370,21 @@ export function ProjectSettingsModal({
 			</DialogContent>
 		</Dialog>
 	);
+}
+
+function getProjectSettingsTabs(includeDefinitions: boolean): Array<{ id: ProjectSettingsTab; label: string }> {
+	const tabs: Array<{ id: ProjectSettingsTab; label: string }> = [
+		{ id: "general", label: "General" },
+		{ id: "runtime", label: "Runtime" },
+	];
+	if (includeDefinitions) {
+		tabs.push(
+			{ id: "defaultVariables", label: "Default Variables" },
+			{ id: "secrets", label: "Secrets" },
+			{ id: "scriptSettings", label: "Script Settings" },
+		);
+	}
+	return tabs;
 }
 
 function TextField({

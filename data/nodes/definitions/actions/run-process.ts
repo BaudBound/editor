@@ -1,4 +1,7 @@
 import { Code } from "lucide-react";
+import type { JsonValue } from "@/lib/types";
+import type { SimulationContext } from "@/utils/simulation-types";
+import type { NodeSimulationApi } from "../../node-definition";
 import { defineNode } from "../../node-definition";
 import { fallible } from "../runtime-outputs";
 import { actionProcess } from "../shared";
@@ -9,7 +12,7 @@ export const runProcessNode = defineNode({
 	capabilities: actionProcess,
 	configFields: [
 		{ key: "executable", label: "Executable", type: "text", usesVariables: true },
-		{ key: "arguments", label: "Arguments", type: "textarea", usesVariables: true },
+		{ key: "arguments", label: "Arguments", type: "string-list", usesVariables: true },
 		{ key: "workingDirectory", label: "Working directory", type: "text", usesVariables: true },
 		{
 			key: "timeoutSeconds",
@@ -27,7 +30,7 @@ export const runProcessNode = defineNode({
 			},
 		},
 	],
-	defaultConfig: () => ({ executable: "", arguments: "", workingDirectory: "", timeoutSeconds: "300" }),
+	defaultConfig: () => ({ executable: "", arguments: [], workingDirectory: "", timeoutSeconds: "300" }),
 	description:
 		"Execute a program, wait for it to finish, and capture its exit code, standard output, and standard error.",
 	fallible: true,
@@ -35,7 +38,7 @@ export const runProcessNode = defineNode({
 	icon: Code,
 	kind: "action",
 	label: "Run Process",
-	permission: { name: "run_process", risk: "dangerous" },
+	permission: { name: "process.run", risk: "dangerous" },
 	risk: "dangerous",
 	runtimeOutputs: fallible([
 		{
@@ -83,8 +86,16 @@ export const runProcessNode = defineNode({
 		describe: ({ api, context, node }) => [
 			{
 				level: "info",
-				message: `[Simulation] Run Process (${node.id}) succeeded. Would run ${api.formatValue(api.resolveTemplate(api.getConfigString(node, "executable"), context))} ${api.formatValue(api.resolveTemplate(api.getConfigString(node, "arguments"), context))}.`,
+				message: `[Simulation] Run Process (${node.id}) succeeded. Would run ${api.formatValue(api.resolveTemplate(api.getConfigString(node, "executable"), context))} with arguments ${api.formatValue(resolveArguments(node.data.config.arguments, context, api))}.`,
 			},
 		],
 	},
 });
+
+function resolveArguments(value: JsonValue | undefined, context: SimulationContext, api: NodeSimulationApi) {
+	return Array.isArray(value)
+		? value
+				.filter((argument): argument is string => typeof argument === "string")
+				.map((argument) => api.resolveTemplate(argument, context))
+		: [];
+}

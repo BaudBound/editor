@@ -13,7 +13,7 @@ export const serialWriteNode = defineNode({
 	icon: Usb,
 	kind: "action",
 	label: "Serial Write",
-	permission: { name: "serial_write", risk: "medium" },
+	permission: { name: "serial.write", risk: "medium" },
 	risk: "medium",
 	runnerType: "serial_write",
 	validateConfig: (config) =>

@@ -14,7 +14,7 @@ export const subScriptNode = defineNode({
 	icon: Play,
 	kind: "action",
 	label: "Sub-script",
-	permission: { name: "sub_script_run", risk: "high" },
+	permission: { name: "script.run", risk: "high" },
 	risk: "high",
 	runtimeOutputs: fallible([
 		{ name: "status", type: "string", description: "Sub-script run status.", example: "n-mr3zyt6f-18.status" },

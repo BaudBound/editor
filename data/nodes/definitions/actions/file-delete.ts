@@ -15,7 +15,8 @@ export const deleteFileNode = defineNode({
 	icon: Trash2,
 	kind: "action",
 	label: "Delete File",
-	permission: { name: "delete_file", risk: "dangerous" },
+	permission: { name: "file.delete.any", risk: "dangerous" },
+	permissionPathRules: [{ access: "delete", configKey: "path" }],
 	risk: "dangerous",
 	runtimeOutputs: fallible([
 		{ name: "path", type: "file_path", description: "Deleted file path.", example: "n-mr3zyt6f-20.path" },

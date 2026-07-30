@@ -3,6 +3,7 @@ import type { EditorEdgeStyle } from "@/data/editor/flow-canvas";
 import { isEditorEdgeStyle } from "@/data/editor/flow-canvas";
 import { getNodeDefinition, getNodePorts, getRuntimeDataOutputs } from "@/data/nodes/registry";
 import { targetRuntimes } from "@/data/project/runtimes";
+import { inferListItemType, inferTypedValueType } from "@/data/project/typed-values";
 import { variableTypes } from "@/data/project/variables";
 import type {
 	ActionType,
@@ -14,6 +15,7 @@ import type {
 	ProjectSettings,
 	RiskLevel,
 	ScriptNodeData,
+	ScriptSetting,
 	SecretDeclaration,
 } from "@/lib/types";
 import { isSelfConnection, withEdgeExecutionOrder } from "@/utils/editor-graph";
@@ -33,6 +35,7 @@ export type StoredProjectRecord = {
 	revision: number;
 	schemaVersion: number;
 	secretDeclarations: SecretDeclaration[];
+	scriptSettings: ScriptSetting[];
 	settings: ProjectSettings;
 	updatedAt: string;
 };
@@ -88,6 +91,7 @@ export function toStoredProject(project: EditorProject): StoredProjectRecord {
 		revision: project.revision,
 		schemaVersion: editorProjectSchemaVersion,
 		secretDeclarations: structuredClone(project.secretDeclarations),
+		scriptSettings: structuredClone(project.scriptSettings),
 		settings: structuredClone(project.settings),
 		updatedAt: project.updatedAt,
 	};
@@ -149,6 +153,7 @@ export function hydrateProject(recordValue: unknown, assetValues: unknown[]): Ed
 		revision: record.revision,
 		schemaVersion: editorProjectSchemaVersion,
 		secretDeclarations: record.secretDeclarations,
+		scriptSettings: record.scriptSettings,
 		settings: record.settings,
 		updatedAt: record.updatedAt,
 	};
@@ -179,6 +184,7 @@ export function projectContentSignature(project: EditorProject) {
 		edges: stored.edges,
 		nodes: stored.nodes,
 		secretDeclarations: stored.secretDeclarations,
+		scriptSettings: stored.scriptSettings,
 		settings: stored.settings,
 	});
 }
@@ -284,12 +290,14 @@ function requireStoredProjectRecord(value: unknown): StoredProjectRecord {
 		!Array.isArray(value.comments) ||
 		!Array.isArray(value.assets) ||
 		!Array.isArray(value.secretDeclarations) ||
+		!Array.isArray(value.scriptSettings) ||
 		!Array.isArray(value.defaultVariables) ||
 		!value.nodes.every(isStoredNode) ||
 		!value.edges.every(isStoredEdge) ||
 		!value.comments.every(isEditorComment) ||
 		!value.assets.every(isStoredAssetMetadata) ||
 		!value.secretDeclarations.every(isSecretDeclaration) ||
+		!value.scriptSettings.every(isScriptSetting) ||
 		!value.defaultVariables.every(isDefaultVariable) ||
 		typeof value.edgeStyle !== "string" ||
 		!isEditorEdgeStyle(value.edgeStyle)
@@ -338,11 +346,7 @@ function isProjectSettings(value: unknown): value is ProjectSettings {
 }
 
 function migrateStoredProjectRecord(value: unknown): unknown {
-	if (
-		!isRecord(value) ||
-		!isRecord(value.settings) ||
-		(value.schemaVersion !== 1 && value.schemaVersion !== 2 && value.schemaVersion !== 3)
-	) {
+	if (!isRecord(value) || !isRecord(value.settings) || ![1, 2, 3, 4, 5].includes(Number(value.schemaVersion))) {
 		return value;
 	}
 
@@ -351,6 +355,10 @@ function migrateStoredProjectRecord(value: unknown): unknown {
 		...value,
 		nodes: Array.isArray(value.nodes) ? value.nodes.map(migrateStoredNode) : value.nodes,
 		schemaVersion: editorProjectSchemaVersion,
+		scriptSettings: Array.isArray(value.scriptSettings) ? value.scriptSettings.map(migrateStoredTypedDeclaration) : [],
+		defaultVariables: Array.isArray(value.defaultVariables)
+			? value.defaultVariables.map(migrateStoredTypedDeclaration)
+			: value.defaultVariables,
 		secretDeclarations: Array.isArray(value.secretDeclarations)
 			? value.secretDeclarations.map((declaration) =>
 					isRecord(declaration) ? { ...declaration, type: "string" } : declaration,
@@ -365,15 +373,71 @@ function migrateStoredProjectRecord(value: unknown): unknown {
 	};
 }
 
+function migrateStoredTypedDeclaration(value: unknown): unknown {
+	if (!isRecord(value) || value.type !== "list" || typeof value.itemType === "string") {
+		return value;
+	}
+	const candidate = value.value ?? value.defaultValue ?? value.simulationValue;
+	if (!isJsonValue(candidate)) {
+		return value;
+	}
+	const itemType = inferListItemType(candidate);
+	return itemType ? { ...value, itemType } : value;
+}
+
 function migrateStoredNode(value: unknown): unknown {
-	if (!isRecord(value) || value.actionType !== "control.for_each" || !isRecord(value.config)) {
+	if (!isRecord(value) || !isRecord(value.config)) {
 		return value;
 	}
 
 	const config = { ...value.config };
-	delete config.itemVariable;
-	delete config.indexVariable;
+	if (value.actionType === "control.for_each") {
+		delete config.itemVariable;
+		delete config.indexVariable;
+	}
+	if (value.actionType === "runtime.set_variable") {
+		const operation = typeof config.operation === "string" ? config.operation : "set";
+		const targetType = typeof config.valueType === "string" ? config.valueType : "string";
+		const parsedValue = parseStoredConfigValue(config.value);
+		if (
+			(targetType === "list" || operation === "append_list" || operation === "remove_list_items") &&
+			typeof config.itemType !== "string"
+		) {
+			const inferred =
+				operation === "append_list" || operation === "remove_list_items"
+					? parsedValue === undefined
+						? undefined
+						: inferTypedValueType(parsedValue)
+					: parsedValue === undefined
+						? undefined
+						: inferListItemType(parsedValue);
+			if (inferred) config.itemType = inferred;
+		}
+		if (operation === "set_object_field" && typeof config.fieldValueType !== "string" && parsedValue !== undefined) {
+			const inferred = Array.isArray(parsedValue) ? "list" : inferTypedValueType(parsedValue);
+			if (inferred) config.fieldValueType = inferred;
+			if (inferred === "list" && typeof config.fieldItemType !== "string") {
+				const itemType = inferListItemType(parsedValue);
+				if (itemType) config.fieldItemType = itemType;
+			}
+		}
+	}
 	return { ...value, config };
+}
+
+function parseStoredConfigValue(value: unknown): JsonValue | undefined {
+	if (isJsonValue(value) && typeof value !== "string") {
+		return value;
+	}
+	if (typeof value !== "string" || /^\{\{\s*[^{}]+\s*\}\}$/.test(value.trim())) {
+		return undefined;
+	}
+	try {
+		const parsed = JSON.parse(value) as unknown;
+		return isJsonValue(parsed) ? parsed : undefined;
+	} catch {
+		return value;
+	}
 }
 
 function migrateTargetRuntimes(settings: Record<string, unknown>): ProjectSettings["targetRuntimes"] {
@@ -466,6 +530,63 @@ function isSecretDeclaration(value: unknown): value is SecretDeclaration {
 	);
 }
 
+function isScriptSetting(value: unknown): value is ScriptSetting {
+	if (
+		!isRecord(value) ||
+		typeof value.name !== "string" ||
+		typeof value.description !== "string" ||
+		typeof value.required !== "boolean" ||
+		!["string", "number", "boolean", "object", "list", "datetime", "duration", "file_path"].includes(
+			String(value.type),
+		) ||
+		(value.type === "list" &&
+			value.itemType !== undefined &&
+			!["string", "number", "boolean", "object", "datetime", "duration", "file_path"].includes(String(value.itemType)))
+	) {
+		return false;
+	}
+
+	return (
+		(value.defaultValue === undefined || scriptSettingValueMatchesType(value.type, value.defaultValue)) &&
+		(value.simulationValue === undefined || scriptSettingValueMatchesType(value.type, value.simulationValue))
+	);
+}
+
+function scriptSettingValueMatchesType(type: unknown, value: unknown) {
+	if (!isJsonValue(value)) {
+		return false;
+	}
+	switch (type) {
+		case "string":
+		case "file_path":
+			return typeof value === "string";
+		case "number":
+			return typeof value === "number" && Number.isFinite(value);
+		case "boolean":
+			return typeof value === "boolean";
+		case "object":
+			return isRecord(value);
+		case "list":
+			return Array.isArray(value);
+		case "datetime":
+			return (
+				isRecord(value) &&
+				value.type === "datetime" &&
+				typeof value.value === "string" &&
+				!Number.isNaN(Date.parse(value.value))
+			);
+		case "duration":
+			return (
+				isRecord(value) &&
+				value.type === "duration" &&
+				typeof value.value === "number" &&
+				typeof value.unit === "string"
+			);
+		default:
+			return false;
+	}
+}
+
 function cloneEditorComment(comment: EditorComment): EditorComment {
 	return {
 		id: comment.id,
@@ -504,6 +625,11 @@ export function isDefaultVariable(value: unknown): value is DefaultVariable {
 		(value.scope === "runtime" || value.scope === "persistent") &&
 		typeof value.type === "string" &&
 		variableTypes.includes(value.type as DefaultVariable["type"]) &&
+		(value.type !== "list" ||
+			value.itemType === undefined ||
+			["string", "number", "boolean", "object", "datetime", "duration", "file_path"].includes(
+				String(value.itemType),
+			)) &&
 		isJsonValue(value.value)
 	);
 }

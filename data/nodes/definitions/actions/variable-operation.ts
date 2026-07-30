@@ -1,7 +1,8 @@
 import { Database } from "lucide-react";
 import {
-	getClearedVariableValue,
 	getVariableOperationFixedType,
+	type ListItemType,
+	listItemTypes,
 	normalizeVariableOperation,
 	type VariableType,
 	validateVariableName,
@@ -20,17 +21,21 @@ export const variableOperationNode = defineNode({
 		{ key: "operation", label: "Operation", type: "select", options: variableOperationOptions },
 		{ key: "name", label: "Variable name", type: "text" },
 		{ key: "scope", label: "Scope", type: "select", options: variableScopeOptions },
-		{ key: "valueType", label: "Variable type", type: "select", options: variableTypeOptions },
+		{ key: "valueType", label: "Variable type", type: "select", options: variableTypeOptions, required: false },
 	],
 	defaultConfig: () => ({
 		operation: "set",
 		name: "",
 		scope: "runtime",
 		valueType: "string",
+		itemType: "string",
 		value: "",
 		fieldPath: "",
+		fieldValueType: "string",
+		fieldItemType: "string",
+		removeMode: "all",
 	}),
-	description: "Set, increment, append, clear, or edit variable values.",
+	description: "Create, change, merge, clear, or delete variable values.",
 	fallible: true,
 	deriveCapabilities: (config) =>
 		configString(config.scope) === "runtime"
@@ -39,20 +44,25 @@ export const variableOperationNode = defineNode({
 	derivePermissions: (config) => {
 		const scope = configString(config.scope);
 		if (scope === "persistent") {
-			return [{ name: "set_persistent_variable", risk: "medium" }];
+			return [{ name: "variable.persistent.set", risk: "medium" }];
 		}
 		if (scope === "global") {
-			return [{ name: "set_global_variable", risk: "high" }];
+			return [{ name: "variable.global.set", risk: "high" }];
 		}
-		return [{ name: "set_local_variable", risk: "low" }];
+		return [{ name: "variable.local.set", risk: "low" }];
 	},
 	group: "actions",
 	icon: Database,
 	kind: "action",
 	label: "Variable Operation",
-	permission: { name: "set_local_variable", risk: "low" },
+	permission: { name: "variable.local.set", risk: "low" },
 	risk: "low",
 	runnerType: "set_variable",
+	sanitizeConfig: (config) => {
+		const operation = normalizeVariableOperation(configString(config.operation));
+		const allowedKeys = getVariableOperationConfigKeys(operation);
+		return Object.fromEntries(Object.entries(config).filter(([key]) => allowedKeys.has(key)));
+	},
 	validateConfig: (config) => {
 		const name = configString(config.name);
 		const nameError = validateVariableName(name);
@@ -62,18 +72,27 @@ export const variableOperationNode = defineNode({
 		const fixedType = getVariableOperationFixedType(operation);
 		const declaredType = variableTypes.find((type) => type === rawType);
 		const valueType = fixedType ?? declaredType;
+		const itemType = normalizeListItemType(configString(config.itemType));
+		const fieldValueType = normalizeVariableTypeOrUndefined(configString(config.fieldValueType));
+		const fieldItemType = normalizeListItemType(configString(config.fieldItemType));
 		const errors = [
 			nameError ? `has invalid variable name: ${nameError}` : "",
 			["runtime", "persistent", "global"].includes(scope) ? "" : `has invalid variable scope "${scope || "missing"}".`,
-			valueType ? "" : `has invalid variable type "${rawType || "missing"}".`,
+			operation !== "set" || valueType ? "" : `has invalid variable type "${rawType || "missing"}".`,
+			operation === "remove_list_items" && !["first", "all"].includes(configString(config.removeMode))
+				? `has invalid removal mode "${configString(config.removeMode) || "missing"}".`
+				: "",
 		];
 
-		if (valueType) {
+		if (operation !== "clear" && operation !== "delete" && valueType) {
 			const valueError = validateVariableOperationValue(
 				operation,
 				valueType,
 				configString(config.value),
 				configString(config.fieldPath),
+				itemType,
+				fieldValueType,
+				fieldItemType,
 			);
 			if (valueError) {
 				errors.push(valueError);
@@ -113,7 +132,11 @@ export const variableOperationNode = defineNode({
 			const result = applyVariableOperation(node.data.config, context, api);
 			const scope = api.getConfigString(node, "scope");
 			const variables = getVariableStore(scope, context);
-			variables[name] = result.value;
+			if (result.deleted) {
+				delete variables[name];
+			} else {
+				variables[name] = result.value;
+			}
 
 			return [
 				{
@@ -147,12 +170,30 @@ function applyVariableOperation(
 	api: VariableOperationSimulationApi,
 ) {
 	const name = configString(config.name).trim();
+	const nameError = validateVariableName(name);
+	if (nameError) {
+		throw new Error(nameError);
+	}
 	const operation = normalizeVariableOperation(configString(config.operation));
 	const type = getVariableOperationFixedType(operation) ?? normalizeVariableType(configString(config.valueType));
+	const itemType = normalizeListItemType(configString(config.itemType));
+	const fieldValueType = normalizeVariableType(configString(config.fieldValueType));
+	const fieldItemType = normalizeListItemType(configString(config.fieldItemType));
 	const scope = configString(config.scope);
 	const variables = getVariableStore(scope, context);
 	const scopeLabel = scope === "persistent" ? "persistent" : scope === "global" ? "global" : "runtime";
 	const currentValue = variables[name];
+
+	if (operation === "toggle_boolean") {
+		if (currentValue !== undefined && typeof currentValue !== "boolean") {
+			throw new Error(`Toggling requires existing variable "${name}" to be a boolean.`);
+		}
+		const value = !(currentValue ?? false);
+		return {
+			value,
+			message: `Toggled ${scopeLabel} boolean variable "${name}" to ${api.formatValue(value)}.`,
+		};
+	}
 
 	if (operation === "increment") {
 		const amount = parseFiniteNumber(api.resolveTemplate(configString(config.value), context), "Increment value");
@@ -172,6 +213,7 @@ function applyVariableOperation(
 		if (currentValue !== undefined && !Array.isArray(currentValue)) {
 			throw new Error(`Appending requires existing variable "${name}" to be a list.`);
 		}
+		validateListAppend(currentValue ?? [], item, name);
 		const value = [...(currentValue ?? []), item];
 
 		return {
@@ -180,9 +222,33 @@ function applyVariableOperation(
 		};
 	}
 
+	if (operation === "remove_list_items") {
+		if (!Array.isArray(currentValue)) {
+			throw new Error(`Removing matching items requires existing variable "${name}" to be a list.`);
+		}
+		const item = api.resolveJsonCompatibleInput(configString(config.value), context);
+		const removeMode = configString(config.removeMode);
+		if (removeMode !== "first" && removeMode !== "all") {
+			throw new Error(`Removal mode must be "first" or "all".`);
+		}
+		let removedCount = 0;
+		const value = currentValue.filter((entry) => {
+			if (!jsonValuesEqual(entry, item) || (removeMode === "first" && removedCount > 0)) {
+				return true;
+			}
+			removedCount += 1;
+			return false;
+		});
+		return {
+			value,
+			message: `Removed ${removedCount} matching ${removedCount === 1 ? "item" : "items"} from ${scopeLabel} list variable "${name}". New value: ${api.formatValue(value)}.`,
+		};
+	}
+
 	if (operation === "set_object_field") {
 		const fieldPath = configString(config.fieldPath).trim();
 		const fieldValue = api.resolveJsonCompatibleInput(configString(config.value), context);
+		validateSimulationValue(fieldValue, fieldValueType, fieldItemType, "Object field value");
 		if (
 			currentValue !== undefined &&
 			(!currentValue || typeof currentValue !== "object" || Array.isArray(currentValue))
@@ -197,8 +263,53 @@ function applyVariableOperation(
 		};
 	}
 
+	if (operation === "remove_object_field") {
+		const fieldPath = configString(config.fieldPath).trim();
+		if (!currentValue || typeof currentValue !== "object" || Array.isArray(currentValue)) {
+			throw new Error(`Removing an object field requires existing variable "${name}" to be an object.`);
+		}
+		const value = cloneJson(currentValue);
+		const removed = removeObjectPathValue(value, fieldPath);
+		return {
+			value,
+			message: removed
+				? `Removed object field "${name}.${fieldPath}". New value: ${api.formatValue(value)}.`
+				: `Object field "${name}.${fieldPath}" was not present. Value was unchanged: ${api.formatValue(value)}.`,
+		};
+	}
+
+	if (operation === "merge_object") {
+		const incoming = api.resolveJsonCompatibleInput(configString(config.value), context);
+		validateSimulationValue(incoming, "object", undefined, "Object to merge");
+		if (
+			currentValue !== undefined &&
+			(!currentValue || typeof currentValue !== "object" || Array.isArray(currentValue))
+		) {
+			throw new Error(`Merging requires existing variable "${name}" to be an object.`);
+		}
+		const value = {
+			...(currentValue && typeof currentValue === "object" && !Array.isArray(currentValue) ? currentValue : {}),
+			...(incoming as Record<string, JsonValue>),
+		};
+		return {
+			value,
+			message: `Merged ${api.formatValue(incoming)} into ${scopeLabel} object variable "${name}". New value: ${api.formatValue(value)}.`,
+		};
+	}
+
+	if (operation === "delete") {
+		return {
+			deleted: true,
+			value: null,
+			message:
+				currentValue === undefined
+					? `${scopeLabel[0].toUpperCase()}${scopeLabel.slice(1)} variable "${name}" was already missing.`
+					: `Deleted ${scopeLabel} variable "${name}".`,
+		};
+	}
+
 	if (operation === "clear") {
-		const value = resolveVariableInput(getClearedVariableValue(type), type, context, api);
+		const value = getClearedSimulationValue(currentValue, name);
 
 		return {
 			value,
@@ -207,10 +318,28 @@ function applyVariableOperation(
 	}
 
 	const value = resolveVariableInput(configString(config.value), type, context, api);
+	validateSimulationValue(value, type, itemType, "Variable value");
 	return {
 		value,
 		message: `Set ${scopeLabel} variable "${name}" to ${api.formatValue(value)}.`,
 	};
+}
+
+function getVariableOperationConfigKeys(operation: ReturnType<typeof normalizeVariableOperation>) {
+	const base = ["customName", "operation", "name", "scope"];
+	const operationKeys: Record<ReturnType<typeof normalizeVariableOperation>, string[]> = {
+		set: ["valueType", "itemType", "value"],
+		increment: ["value"],
+		toggle_boolean: [],
+		append_list: ["value"],
+		remove_list_items: ["value", "removeMode"],
+		set_object_field: ["fieldPath", "fieldValueType", "fieldItemType", "value"],
+		remove_object_field: ["fieldPath"],
+		merge_object: ["value"],
+		clear: [],
+		delete: [],
+	};
+	return new Set([...base, ...operationKeys[operation]]);
 }
 
 function getVariableStore(scope: string, context: SimulationContext) {
@@ -227,6 +356,116 @@ function getVariableStore(scope: string, context: SimulationContext) {
 
 function normalizeVariableType(value: string): VariableType {
 	return variableTypes.includes(value as VariableType) ? (value as VariableType) : "string";
+}
+
+function normalizeVariableTypeOrUndefined(value: string): VariableType | undefined {
+	return variableTypes.includes(value as VariableType) ? (value as VariableType) : undefined;
+}
+
+function normalizeListItemType(value: string): ListItemType | undefined {
+	return listItemTypes.includes(value as ListItemType) ? (value as ListItemType) : undefined;
+}
+
+function validateSimulationValue(
+	value: JsonValue,
+	type: VariableType | undefined,
+	itemType: ListItemType | undefined,
+	label: string,
+) {
+	if (!type) {
+		throw new Error(`${label} type is required.`);
+	}
+	const valid = (() => {
+		if (type === "string" || type === "file_path") return typeof value === "string";
+		if (type === "number") return typeof value === "number" && Number.isFinite(value);
+		if (type === "boolean") return typeof value === "boolean";
+		if (type === "object") return !!value && typeof value === "object" && !Array.isArray(value);
+		if (type === "list") {
+			return (
+				Array.isArray(value) &&
+				!!itemType &&
+				value.every((item) => {
+					try {
+						validateSimulationValue(item, itemType, undefined, label);
+						return true;
+					} catch {
+						return false;
+					}
+				})
+			);
+		}
+		if (type === "datetime") {
+			return (
+				!!value &&
+				typeof value === "object" &&
+				!Array.isArray(value) &&
+				value.type === "datetime" &&
+				typeof value.value === "string" &&
+				!Number.isNaN(Date.parse(value.value))
+			);
+		}
+		return (
+			!!value &&
+			typeof value === "object" &&
+			!Array.isArray(value) &&
+			value.type === "duration" &&
+			typeof value.value === "number" &&
+			Number.isFinite(value.value) &&
+			value.value >= 0 &&
+			typeof value.unit === "string" &&
+			["milliseconds", "seconds", "minutes", "hours", "days"].includes(value.unit)
+		);
+	})();
+	if (!valid) {
+		throw new Error(`${label} does not match declared type "${type}".`);
+	}
+}
+
+function validateListAppend(list: JsonValue[], item: JsonValue, name: string) {
+	const itemKind = getListItemKind(item);
+	if (!itemKind) {
+		throw new Error(`Appending to list variable "${name}" requires a supported non-null, non-list item.`);
+	}
+	const existingKinds = new Set(list.map(getListItemKind));
+	if (existingKinds.has(undefined) || existingKinds.size > 1) {
+		throw new Error(`Existing list variable "${name}" contains mixed or unsupported item types.`);
+	}
+	const existingKind = existingKinds.values().next().value;
+	if (existingKind && existingKind !== itemKind) {
+		throw new Error(
+			`Appending to list variable "${name}" requires ${existingKind} items, but the new item is ${itemKind}.`,
+		);
+	}
+}
+
+function getListItemKind(value: JsonValue) {
+	if (typeof value === "string") return "string";
+	if (typeof value === "number" && Number.isFinite(value)) return "number";
+	if (typeof value === "boolean") return "boolean";
+	if (!value || Array.isArray(value) || typeof value !== "object") return undefined;
+	if (value.type === "datetime") return "datetime";
+	if (value.type === "duration") return "duration";
+	return "object";
+}
+
+function getClearedSimulationValue(value: JsonValue | undefined, name: string): JsonValue {
+	if (value === undefined) {
+		throw new Error(`Clearing requires existing variable "${name}".`);
+	}
+	if (typeof value === "string") return "";
+	if (typeof value === "number") return 0;
+	if (typeof value === "boolean") return false;
+	if (Array.isArray(value)) return [];
+	if (!value || typeof value !== "object") {
+		throw new Error(`Existing variable "${name}" has an unsupported value type.`);
+	}
+	if (value.type === "datetime") {
+		return { type: "datetime", value: "1970-01-01T00:00:00.000Z" };
+	}
+	if (value.type === "duration") {
+		return { type: "duration", unit: "seconds", value: 0 };
+	}
+	return {};
 }
 
 function resolveVariableInput(
@@ -250,7 +489,7 @@ function resolveVariableInput(
 		throw new Error("Variable value must be true or false.");
 	}
 
-	if (type === "list" || type === "object" || type === "duration" || type === "datetime" || type === "http_response") {
+	if (type === "list" || type === "object" || type === "duration" || type === "datetime") {
 		const parsed = api.parseJsonValue(resolved);
 		if (parsed === undefined) throw new Error(`Variable value must be valid JSON for type "${type}".`);
 		if (type === "list" && !Array.isArray(parsed)) throw new Error("Variable value must be a JSON list.");
@@ -298,6 +537,65 @@ function setObjectPathValue(currentValue: JsonValue | undefined, path: string, v
 	}
 
 	return root;
+}
+
+function removeObjectPathValue(currentValue: JsonValue, path: string) {
+	const parts = parseObjectPath(path);
+	let cursor: JsonValue = currentValue;
+
+	for (let index = 0; index < parts.length - 1; index += 1) {
+		const part = parts[index];
+		if (!cursor || typeof cursor !== "object") {
+			return false;
+		}
+		cursor = Array.isArray(cursor) ? cursor[Number(part)] : cursor[String(part)];
+	}
+
+	if (!cursor || typeof cursor !== "object") {
+		return false;
+	}
+	const finalPart = parts.at(-1);
+	if (finalPart === undefined) {
+		return false;
+	}
+	if (Array.isArray(cursor)) {
+		const itemIndex = Number(finalPart);
+		if (!Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= cursor.length) {
+			return false;
+		}
+		cursor.splice(itemIndex, 1);
+		return true;
+	}
+	if (!Object.hasOwn(cursor, String(finalPart))) {
+		return false;
+	}
+	delete cursor[String(finalPart)];
+	return true;
+}
+
+function jsonValuesEqual(left: JsonValue, right: JsonValue): boolean {
+	if (left === right) {
+		return true;
+	}
+	if (Array.isArray(left) && Array.isArray(right)) {
+		return left.length === right.length && left.every((item, index) => jsonValuesEqual(item, right[index]));
+	}
+	if (
+		left &&
+		right &&
+		typeof left === "object" &&
+		typeof right === "object" &&
+		!Array.isArray(left) &&
+		!Array.isArray(right)
+	) {
+		const leftKeys = Object.keys(left);
+		const rightKeys = Object.keys(right);
+		return (
+			leftKeys.length === rightKeys.length &&
+			leftKeys.every((key) => Object.hasOwn(right, key) && jsonValuesEqual(left[key], right[key]))
+		);
+	}
+	return false;
 }
 
 function getPathContainerValue(container: Record<string, JsonValue> | JsonValue[], key: string | number) {

@@ -16,7 +16,7 @@ export const parseUrlNode = defineNode({
 	icon: Link,
 	kind: "action",
 	label: "Parse URL",
-	permission: { name: "parse_url", risk: "low" },
+	permission: { name: "url.parse", risk: "low" },
 	risk: "low",
 	runtimeOutputs: fallible([
 		{

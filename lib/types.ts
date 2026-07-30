@@ -185,8 +185,32 @@ export type SecretDeclaration = {
 	type: "string";
 };
 
+export const scriptSettingTypes = [
+	"string",
+	"number",
+	"boolean",
+	"object",
+	"list",
+	"datetime",
+	"duration",
+	"file_path",
+] as const;
+
+export type ScriptSettingType = (typeof scriptSettingTypes)[number];
+
+export type ScriptSetting = {
+	defaultValue?: JsonValue;
+	description: string;
+	itemType?: import("@/data/project/variables").ListItemType;
+	name: string;
+	required: boolean;
+	simulationValue?: JsonValue;
+	type: ScriptSettingType;
+};
+
 export type DefaultVariable = {
 	description: string;
+	itemType?: import("@/data/project/variables").ListItemType;
 	name: string;
 	scope: "runtime" | "persistent";
 	type: import("@/data/project/variables").VariableType;
@@ -249,15 +273,22 @@ export type SimulationTriggerPayload = {
 	event?: string;
 	executablePath?: string;
 	headers?: Record<string, string>;
+	interval_seconds?: number;
 	key?: string;
 	message?: string;
 	method?: string;
+	missed_intervals?: number;
 	path?: string;
 	processId?: string;
 	processName?: string;
 	query?: Record<string, string>;
 	reason?: string;
 	remoteAddress?: string;
+	schedule?: JsonValue;
+	scheduled_at_unix?: number;
+	timestamp?: string;
+	trigger_id?: string;
+	watched_path?: string;
 	windowTitle?: string;
 };
 

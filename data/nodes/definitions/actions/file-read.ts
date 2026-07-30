@@ -18,7 +18,7 @@ export const readFileNode = defineNode({
 	icon: FileInput,
 	kind: "action",
 	label: "Read File",
-	permission: { name: "file_read", risk: "medium" },
+	permission: { name: "file.read", risk: "medium" },
 	permissionPathRules: [{ access: "read", configKey: "path" }],
 	risk: "medium",
 	runtimeOutputs: fallible([

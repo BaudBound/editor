@@ -159,7 +159,7 @@ export function EdgeOrderPanel({
 function FloatingEdgeRow({ drag, children }: { drag: ActiveReorderDragState; children: ReactNode }) {
 	return (
 		<div
-			className="pointer-events-none fixed z-9999 flex items-center gap-2 rounded border border-baud-purple bg-baud-panel px-3 py-2 opacity-95 shadow-[0_18px_42px_rgba(0,0,0,0.38)]"
+			className="pointer-events-none fixed z-9999 flex items-center gap-2 rounded border border-baud-red bg-baud-panel px-3 py-2 opacity-95 shadow-[0_18px_42px_rgba(0,0,0,0.38)]"
 			style={{
 				left: drag.pointerX - drag.pointerOffsetX,
 				minHeight: drag.cardHeight,

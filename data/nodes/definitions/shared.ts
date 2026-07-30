@@ -1,9 +1,11 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { JsonValue, ScriptNodeData } from "@/lib/types";
+import { conditionNumber } from "../condition-comparison";
 import {
 	booleanConditionOperatorOptions,
 	comparisonOperatorOptions,
 	ifElseAdditionalConditionOperatorOptions,
+	isBetweenConditionOperator,
 } from "./options";
 import { isConditionRow } from "./rows";
 
@@ -112,9 +114,43 @@ export function validateConditionRowsConfig(
 		if (index > 0 && !conditionCombinators.has(condition.combinator ?? "")) {
 			errors.push(`${rowLabel} combinator must be AND or OR.`);
 		}
+		if (isBetweenConditionOperator(condition.operator)) {
+			errors.push(...validateBetweenCondition(condition.right, condition.rightEnd ?? "", rowLabel));
+		}
 
 		return errors;
 	});
+}
+
+function validateBetweenCondition(start: string, end: string, rowLabel: string) {
+	const errors: string[] = [];
+	if (!start.trim()) {
+		errors.push(`${rowLabel} start value is required for Is between.`);
+	}
+	if (!end.trim()) {
+		errors.push(`${rowLabel} end value is required for Is between.`);
+	}
+	if (errors.length > 0 || containsVariableReference(start) || containsVariableReference(end)) {
+		return errors;
+	}
+
+	const startNumber = conditionNumber(start);
+	const endNumber = conditionNumber(end);
+	if (startNumber === undefined) {
+		errors.push(`${rowLabel} start value must be a finite number or variable expression.`);
+	}
+	if (endNumber === undefined) {
+		errors.push(`${rowLabel} end value must be a finite number or variable expression.`);
+	}
+	if (startNumber !== undefined && endNumber !== undefined && startNumber > endNumber) {
+		errors.push(`${rowLabel} start value must be less than or equal to the end value.`);
+	}
+
+	return errors;
+}
+
+function containsVariableReference(value: string) {
+	return /\{\{[^{}]+}}/.test(value);
 }
 
 export const actionAudio = ["action.sound"];

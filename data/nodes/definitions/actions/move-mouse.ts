@@ -44,7 +44,7 @@ export const moveMouseNode = defineNode({
 	icon: MousePointer2,
 	kind: "action",
 	label: "Move Mouse",
-	permission: { name: "mouse_control", risk: "high" },
+	permission: { name: "mouse.control", risk: "high" },
 	risk: "high",
 	runnerType: "move_mouse",
 	supportedTargetRuntimes: ["Windows Desktop"],

@@ -69,54 +69,115 @@ test("editor condition equality follows the shared Rust parity matrix", async ()
 	}
 });
 
+test("datetime values use selectable timezones while retaining UTC storage", async () => {
+	const { datetimeInTimeZoneToIso, formatDatetimeForTimeZone } = await loadDatetimeUtilities();
+
+	assert.equal(datetimeInTimeZoneToIso("2026-01-15T12:00:00", "UTC"), "2026-01-15T12:00:00.000Z");
+	assert.equal(datetimeInTimeZoneToIso("2026-01-15T12:00:00", "Europe/Helsinki"), "2026-01-15T10:00:00.000Z");
+	assert.equal(datetimeInTimeZoneToIso("2026-07-15T12:00:00", "Europe/Helsinki"), "2026-07-15T09:00:00.000Z");
+	assert.equal(formatDatetimeForTimeZone("2026-07-15T09:00:00.000Z", "Europe/Helsinki"), "2026-07-15T12:00:00");
+	assert.equal(datetimeInTimeZoneToIso("2026-03-29T03:30:00", "Europe/Helsinki"), null);
+
+	const typedValueSource = read(join(appRoot, "data", "project", "typed-values.ts"));
+	assert.match(
+		typedValueSource,
+		/case "datetime":\s*return \{ type: "datetime", value: new Date\(\)\.toISOString\(\) \};/,
+	);
+});
+
 test("editor supports the complete If / Else condition operator set", async () => {
 	const { compareConditionValues } = await loadConditionComparison();
 	const cases = [
 		["BaudBound", "equals_ignore_case", "baudbound", true],
 		["BaudBound", "contains_ignore_case", "BOUN", true],
-		["BaudBound", "does_not_contain", "Runner", true],
 		["42.5", "is_numeric", null, true],
 		["42px", "is_numeric", null, false],
-		["text", "is_text", null, true],
+		["text", "is_string", null, true],
 		[true, "is_boolean", null, true],
 		[[1, 2], "is_list", null, true],
 		[{ name: "BaudBound" }, "is_object", null, true],
-		["value", "is_not_empty", null, true],
-		[[], "is_not_empty", null, false],
 		[{ name: "BaudBound" }, "has_key", "name", true],
 		[{}, "has_key", "toString", false],
 		[[1, 2], "contains_item", "2", true],
-		["åäö", "length_equals", 3, true],
-		[[1, 2, 3], "length_greater_than", 2, true],
-		[{ first: 1 }, "length_less_than", 2, true],
 	];
 
 	for (const [left, operator, right, expected] of cases) {
 		assert.equal(compareConditionValues(left, operator, right), expected, operator);
 	}
+	assert.equal(compareConditionValues(5, "is_between", 1, 5), true, "inclusive range end");
+	assert.equal(compareConditionValues(1, "is_between", 1, 5), true, "inclusive range start");
+	assert.equal(compareConditionValues(6, "is_between", 1, 5), false, "outside range");
 
 	const optionsSource = read(join(appRoot, "data", "nodes", "definitions", "options.ts"));
 	for (const operator of [
+		"is_between",
 		"equals_ignore_case",
 		"contains_ignore_case",
-		"does_not_contain",
 		"has_key",
 		"contains_item",
-		"length_equals",
-		"length_greater_than",
-		"length_less_than",
 		"is_numeric",
-		"is_text",
+		"is_string",
 		"is_boolean",
 		"is_list",
 		"is_object",
+		"is_null_or_missing",
+	]) {
+		assert.match(optionsSource, new RegExp(`value: "${operator}"`), operator);
+	}
+	for (const removedOperator of [
+		"!=",
+		"does_not_contain",
+		"length_equals",
+		"length_greater_than",
+		"length_less_than",
+		"is_text",
 		"is_defined",
 		"is_missing",
 		"is_not_empty",
 	]) {
-		assert.match(optionsSource, new RegExp(`value: "${operator}"`), operator);
+		assert.doesNotMatch(optionsSource, new RegExp(`value: "${removedOperator}"`), removedOperator);
 	}
-	assert.doesNotMatch(optionsSource, /value: "is_integer"/);
+});
+
+test("condition schemas reject retired operators and require both range bounds", () => {
+	const programSchema = JSON.parse(read(join(schemasRoot, "program.schema.json")));
+	const operators = programSchema.$defs.conditionOperator.enum;
+	assert.ok(operators.includes("is_between"));
+	assert.ok(operators.includes("is_null_or_missing"));
+	assert.ok(operators.includes("is_string"));
+
+	for (const removedOperator of [
+		"!=",
+		"does_not_contain",
+		"length_equals",
+		"length_greater_than",
+		"length_less_than",
+		"is_null",
+		"is_text",
+		"is_defined",
+		"is_missing",
+		"is_not_empty",
+	]) {
+		assert.equal(operators.includes(removedOperator), false, removedOperator);
+	}
+
+	const rangeRule = programSchema.$defs.conditionRow.allOf.find(
+		(rule) => rule.if?.properties?.operator?.const === "is_between",
+	);
+	assert.deepEqual(rangeRule.then.required, ["rightEnd"]);
+	assert.equal(rangeRule.then.properties.right.minLength, 1);
+	assert.equal(rangeRule.then.properties.rightEnd.minLength, 1);
+
+	const ifSchema = JSON.parse(read(join(schemasRoot, "nodes", "control-if.schema.json")));
+	assert.equal(
+		ifSchema.$defs.config.properties.conditions.$ref,
+		"https://schemas.baudbound.app/program.schema.json#/$defs/conditionRows",
+	);
+	const whileSchema = JSON.parse(read(join(schemasRoot, "nodes", "control-while.schema.json")));
+	assert.equal(
+		whileSchema.$defs.config.properties.conditions.$ref,
+		"https://schemas.baudbound.app/program.schema.json#/$defs/whileConditionRows",
+	);
 });
 
 test("editor color matching rejects malformed inputs without coercion", async () => {
@@ -160,6 +221,7 @@ test("manifest metadata is bounded and untrusted links are validated", () => {
 	assert.equal(manifestSchema.properties.assets.maxItems, 256);
 	assert.equal(manifestSchema.properties.variables.maxItems, 256);
 	assert.equal(manifestSchema.properties.secrets.maxItems, 256);
+	assert.equal(manifestSchema.properties.settings.maxItems, 256);
 	assert.match(contractSource, /absolute HTTP or HTTPS URL/);
 	assert.match(contractSource, /unsupported control characters/);
 	assert.match(contractSource, /maximumDefaultValueBytes/);
@@ -199,7 +261,7 @@ test("repository generation preserves other scripts and replaces the matching sc
 			capabilities: [{ name: "runtime.variables" }],
 			existingRepository,
 			packageUrl: `https://example.com/packages/${scriptId}/${name.toLowerCase()}-${version}.bbs`,
-			permissions: [{ name: "set_runtime_variable", risk: "low" }],
+			permissions: [{ name: "variable.local.set", risk: "low" }],
 			projectSettings: {
 				author: "Example Author",
 				description: `${name} description`,
@@ -427,10 +489,22 @@ test("select config fields produce enum values in generated node schemas", () =>
 	assert.deepEqual(variableSchema.$defs.config.properties.operation.enum, [
 		"set",
 		"increment",
+		"toggle_boolean",
 		"append_list",
+		"remove_list_items",
 		"set_object_field",
+		"remove_object_field",
+		"merge_object",
 		"clear",
+		"delete",
 	]);
+	assert.equal(variableSchema.$defs.config.required.includes("valueType"), false);
+	assert.ok(
+		variableSchema.$defs.config.allOf.some(
+			(rule) => rule.if?.properties?.operation?.const === "set" && rule.then?.required?.includes("valueType"),
+		),
+		"Only Set requires a configured valueType",
+	);
 });
 
 test("schemas are served with public canonical ids", () => {
@@ -817,7 +891,7 @@ test("package contract validates graph structure and import rejects malformed ed
 	assert.equal(/return \[\];\s*\n\s*}\);\s*\n}/.test(packageSource), false, "import must not silently drop edges");
 });
 
-test("file permissions are derived from node config paths", () => {
+test("file permissions are derived from node config paths", async () => {
 	const analysisSource = read(join(appRoot, "utils", "analysis.ts"));
 	const contractSource = read(join(appRoot, "utils", "package-contract.ts"));
 	const filePolicySource = read(join(appRoot, "data", "project", "file-permissions.ts"));
@@ -827,13 +901,27 @@ test("file permissions are derived from node config paths", () => {
 
 	assert.match(analysisSource, /getNodePermissions\(node\.data\.actionType, node\.data\.config\)/);
 	assert.match(contractSource, /getNodePermissions\(actionType, config\)/);
-	assert.match(filePolicySource, /read_sensitive_file/);
-	assert.match(filePolicySource, /write_any_file/);
+	assert.match(filePolicySource, /file\.read\.any/);
+	assert.match(filePolicySource, /file\.write\.any/);
 	assert.match(filePolicySource, /pathUsesRuntimeData/);
+	assert.match(filePolicySource, /containsParentTraversal/);
 	assert.match(readFileSource, /permissionPathRules: \[\{ access: "read", configKey: "path" \}\]/);
 	assert.match(writeFileSource, /permissionPathRules: \[\{ access: "write", configKey: "path" \}\]/);
 	assert.match(copyFileSource, /\{ access: "read", configKey: "sourcePath" \}/);
 	assert.match(copyFileSource, /\{ access: "write", configKey: "destinationPath" \}/);
+	const deleteFileSource = read(join(appRoot, "data", "nodes", "definitions", "actions", "file-delete.ts"));
+	assert.match(deleteFileSource, /permissionPathRules: \[\{ access: "delete", configKey: "path" \}\]/);
+
+	const { createDeleteFilePermission, createReadFilePermission, createWriteFilePermission } =
+		await loadFilePermissionUtilities();
+	assert.equal(createReadFilePermission("workspace/input.txt").name, "file.read");
+	assert.equal(createWriteFilePermission("workspace/output.txt").name, "file.write.limited");
+	assert.equal(createDeleteFilePermission("workspace/output.txt").name, "file.delete.limited");
+	for (const path of ["../outside.txt", "nested/../../outside.txt", "..\\outside.txt"]) {
+		assert.equal(createReadFilePermission(path).name, "file.read.any", path);
+		assert.equal(createWriteFilePermission(path).name, "file.write.any", path);
+		assert.equal(createDeleteFilePermission(path).name, "file.delete.any", path);
+	}
 });
 
 test("editor enforces bounded package ingestion limits", () => {
@@ -959,6 +1047,32 @@ async function loadConditionComparison() {
 	return import(moduleUrl);
 }
 
+async function loadDatetimeUtilities() {
+	const typescript = await import("typescript");
+	const source = read(join(appRoot, "data", "project", "datetime.ts"));
+	const compiled = typescript.transpileModule(source, {
+		compilerOptions: {
+			module: typescript.ModuleKind.ESNext,
+			target: typescript.ScriptTarget.ES2022,
+		},
+	});
+	const moduleUrl = `data:text/javascript;base64,${Buffer.from(compiled.outputText).toString("base64")}`;
+	return import(moduleUrl);
+}
+
+async function loadFilePermissionUtilities() {
+	const typescript = await import("typescript");
+	const source = read(join(appRoot, "data", "project", "file-permissions.ts"));
+	const compiled = typescript.transpileModule(source, {
+		compilerOptions: {
+			module: typescript.ModuleKind.ESNext,
+			target: typescript.ScriptTarget.ES2022,
+		},
+	});
+	const moduleUrl = `data:text/javascript;base64,${Buffer.from(compiled.outputText).toString("base64")}`;
+	return import(moduleUrl);
+}
+
 async function loadNumericValidator() {
 	const typescript = await import("typescript");
 	const source = read(join(appRoot, "data", "nodes", "numeric-validation.ts"));
@@ -1049,7 +1163,7 @@ test("secret declarations are package metadata while simulation values remain se
 
 	assert.ok(manifestSchema.properties.secrets, "manifest must declare secret references");
 	assert.deepEqual(variableSchema.$defs.config.properties.scope.enum, ["runtime", "persistent", "global"]);
-	assert.ok(permissionsSchema.properties.declared_permissions.items.enum.includes("read_secret"));
+	assert.ok(permissionsSchema.properties.declared_permissions.items.enum.includes("secret.read"));
 	assert.match(editorPage, /simulationSecretValues/);
 	assert.match(packageSource, /secretDeclarations/);
 	assert.doesNotMatch(packageSource, /simulationSecretValues/);
@@ -1077,6 +1191,50 @@ test("default variables are typed package metadata and runner execution state", 
 	assert.match(simulationSource, /defaultVariables[\s\S]*variable\.scope === "persistent"/);
 	assert.match(simulationSource, /defaultVariables[\s\S]*variable\.scope === "runtime"/);
 	assert.match(simulationSource, /persistentVariables:\s*structuredClone/);
+});
+
+test("Script Settings are typed package metadata and read only simulation values", () => {
+	const manifestSchema = JSON.parse(read(join(schemasRoot, "manifest.schema.json")));
+	const settingSource = read(join(appRoot, "data", "project", "script-settings.ts"));
+	const packageSource = read(join(appRoot, "utils", "bbs-package.ts"));
+	const simulationSource = read(join(appRoot, "utils", "simulation.ts"));
+	const variableNameInputSource = read(join(appRoot, "components", "inspector", "variable-name-input.tsx"));
+	const variableOperationSource = read(
+		join(appRoot, "data", "nodes", "definitions", "actions", "variable-operation.ts"),
+	);
+	const settingsSchema = manifestSchema.properties.settings;
+
+	assert.ok(settingsSchema, "manifest must declare Script Settings");
+	assert.equal(settingsSchema.maxItems, 256);
+	assert.deepEqual(settingsSchema.items.properties.type.enum, [
+		"string",
+		"number",
+		"boolean",
+		"object",
+		"list",
+		"datetime",
+		"duration",
+		"file_path",
+	]);
+	assert.deepEqual(settingsSchema.items.properties.item_type.enum, [
+		"string",
+		"number",
+		"boolean",
+		"object",
+		"datetime",
+		"duration",
+		"file_path",
+	]);
+	assert.equal(settingsSchema.items.allOf.length, 8);
+	assert.match(settingSource, /createSimulationScriptSettingValues/);
+	assert.match(packageSource, /settings:\s*params\.scriptSettings\.map/);
+	assert.match(simulationSource, /createSimulationScriptSettingValues/);
+	assert.match(simulationSource, /settings:\s*createSimulationScriptSettingValues\(scriptSettings\)/);
+	assert.match(variableNameInputSource, /\.filter\(\(variable\) => !variable\.readOnly/);
+	assert.match(
+		variableOperationSource,
+		/const nameError = validateVariableName\(name\);[\s\S]*if \(nameError\) \{[\s\S]*throw new Error\(nameError\);/,
+	);
 });
 
 test("IndexedDB is the editor's only normal durable browser storage", () => {

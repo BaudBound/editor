@@ -101,6 +101,7 @@ test("history restores project settings, variables, secrets, comments, and edge 
 	await createProject(page, "Durable history fields");
 
 	await page.getByRole("button", { name: "Open project settings" }).click();
+	await page.getByRole("tab", { name: "Runtime" }).click();
 	await page.getByRole("button", { name: "Target runtimes" }).click();
 	await page.getByRole("option", { name: "Linux Desktop" }).click();
 	await page.getByRole("button", { name: "Save Settings" }).click();
@@ -110,56 +111,45 @@ test("history restores project settings, variables, secrets, comments, and edge 
 	await page.keyboard.press("Control+y");
 	await expect(page.getByText("Windows Desktop, Linux Desktop", { exact: true })).toBeVisible();
 
-	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await page.getByRole("button", { name: "Open project settings" }).click();
+	await page.getByRole("tab", { name: "Default Variables" }).click();
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("history_value");
 	await variableDialog.getByRole("textbox", { name: "Default value" }).fill("restored");
 	await variableDialog.getByRole("button", { name: "Save", exact: true }).click();
-	await expect(page.getByText("history_value", { exact: true }).first()).toBeVisible();
-	await page.keyboard.press("Control+z");
-	await expect(page.getByText("history_value", { exact: true })).toHaveCount(0);
-	await page.keyboard.press("Control+y");
-	await expect(page.getByText("history_value", { exact: true }).first()).toBeVisible();
-	await page.getByRole("button", { name: "Edit history_value" }).click();
-	await variableDialog.getByRole("textbox", { name: "Description" }).fill("Variable history description");
-	await variableDialog.getByRole("button", { name: "Save", exact: true }).click();
-	await expect(page.getByText("Variable history description", { exact: true })).toBeVisible();
-	await page.keyboard.press("Control+z");
-	await expect(page.getByText("Variable history description", { exact: true })).toHaveCount(0);
-	await page.keyboard.press("Control+y");
-	await expect(page.getByText("Variable history description", { exact: true })).toBeVisible();
-	await page.getByRole("button", { name: "Delete history_value" }).click();
-	await expect(page.getByText("history_value", { exact: true })).toHaveCount(0);
-	await page.keyboard.press("Control+z");
-	await expect(page.getByText("history_value", { exact: true }).first()).toBeVisible();
-	await page.keyboard.press("Control+y");
-	await expect(page.getByText("history_value", { exact: true })).toHaveCount(0);
-	await page.keyboard.press("Control+z");
 
+	await page.getByRole("tab", { name: "Secrets" }).click();
 	await page.getByRole("button", { name: "Add secret" }).click();
 	const secretDialog = page.getByRole("dialog");
 	await secretDialog.getByRole("textbox", { name: "Name" }).fill("history_secret");
 	await secretDialog.getByRole("button", { name: "Save", exact: true }).click();
-	await expect(page.getByText("history_secret", { exact: true }).first()).toBeVisible();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
+	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await expect(page.locator('[data-variable-name="history_value"]')).toBeVisible();
+	await expect(page.locator('[data-variable-name="history_secret"]')).toBeVisible();
 	await page.keyboard.press("Control+z");
-	await expect(page.getByText("history_secret", { exact: true })).toHaveCount(0);
+	await expect(page.locator('[data-variable-name="history_value"]')).toHaveCount(0);
+	await expect(page.locator('[data-variable-name="history_secret"]')).toHaveCount(0);
 	await page.keyboard.press("Control+y");
-	await expect(page.getByText("history_secret", { exact: true }).first()).toBeVisible();
-	await page.getByRole("button", { name: "Edit history_secret" }).click();
-	await secretDialog.getByRole("textbox", { name: "Description" }).fill("Secret history description");
-	await secretDialog.getByRole("button", { name: "Save", exact: true }).click();
-	await expect(page.getByText("Secret history description", { exact: true })).toBeVisible();
-	await page.keyboard.press("Control+z");
-	await expect(page.getByText("Secret history description", { exact: true })).toHaveCount(0);
-	await page.keyboard.press("Control+y");
-	await expect(page.getByText("Secret history description", { exact: true })).toBeVisible();
+	await expect(page.locator('[data-variable-name="history_value"]')).toBeVisible();
+	await expect(page.locator('[data-variable-name="history_secret"]')).toBeVisible();
+
+	await page.getByRole("button", { name: "Open project settings" }).click();
+	await page.getByRole("tab", { name: "Default Variables" }).click();
+	await page.getByRole("button", { name: "Delete history_value" }).click();
+	await page.getByRole("tab", { name: "Secrets" }).click();
 	await page.getByRole("button", { name: "Delete history_secret" }).click();
-	await expect(page.getByText("history_secret", { exact: true })).toHaveCount(0);
+	await page.getByRole("button", { name: "Save Settings" }).click();
+	await expect(page.locator('[data-variable-name="history_value"]')).toHaveCount(0);
+	await expect(page.locator('[data-variable-name="history_secret"]')).toHaveCount(0);
 	await page.keyboard.press("Control+z");
-	await expect(page.getByText("history_secret", { exact: true }).first()).toBeVisible();
+	await expect(page.locator('[data-variable-name="history_value"]')).toBeVisible();
+	await expect(page.locator('[data-variable-name="history_secret"]')).toBeVisible();
 	await page.keyboard.press("Control+y");
-	await expect(page.getByText("history_secret", { exact: true })).toHaveCount(0);
+	await expect(page.locator('[data-variable-name="history_value"]')).toHaveCount(0);
+	await expect(page.locator('[data-variable-name="history_secret"]')).toHaveCount(0);
 	await page.keyboard.press("Control+z");
 
 	await page.getByTitle("Add comment").click();

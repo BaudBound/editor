@@ -15,7 +15,7 @@ export const serialInputTriggerNode = defineNode({
 	icon: Usb,
 	kind: "trigger",
 	label: "Serial Input",
-	permission: { name: "serial_input", risk: "high" },
+	permission: { name: "serial.input", risk: "high" },
 	risk: "high",
 	runtimeOutputs: [
 		{
@@ -34,7 +34,7 @@ export const serialInputTriggerNode = defineNode({
 		{
 			name: "timestamp",
 			type: "string",
-			description: "Runner timestamp when serial data was received.",
+			description: "Unix timestamp in milliseconds when serial data was received.",
 			example: "n-mr3zyt6f-5.timestamp",
 		},
 	],
@@ -61,14 +61,14 @@ export const serialInputTriggerNode = defineNode({
 	},
 	simulation: {
 		createOutput: ({ api, context, node }) => {
-			const data = context.triggerPayload.data || "simulation serial input";
+			const data = context.triggerPayload.data ?? "simulation serial input";
 			return {
 				failed: false,
 				outputData: {
 					device_id: api.getConfigString(node, "deviceId") || node.id,
 					data,
 					bytes: new TextEncoder().encode(data).length,
-					timestamp: new Date().toISOString(),
+					timestamp: Date.now().toString(),
 				},
 			};
 		},

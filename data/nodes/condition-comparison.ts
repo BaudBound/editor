@@ -34,72 +34,113 @@ export function conditionNumber(value: JsonValue) {
 	return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-export function compareConditionValues(left: JsonValue, operator: string, right: JsonValue) {
+export function compareConditionValues(
+	left: JsonValue,
+	operator: string,
+	right: JsonValue,
+	rightEnd: JsonValue = null,
+) {
+	const result = evaluateConditionValues(left, operator, right, rightEnd);
+	return result.error ? false : result.value;
+}
+
+export type ConditionEvaluationResult = { error?: never; value: boolean } | { error: string; value?: never };
+
+export function evaluateConditionValues(
+	left: JsonValue,
+	operator: string,
+	right: JsonValue,
+	rightEnd: JsonValue = null,
+): ConditionEvaluationResult {
 	const leftText = conditionValueToText(left);
 	const rightText = conditionValueToText(right);
 	const leftNumber = conditionNumber(left);
 	const rightNumber = conditionNumber(right);
+	const rightEndNumber = conditionNumber(rightEnd);
 
 	switch (operator) {
 		case "==":
-			return conditionValuesEqual(left, right);
-		case "!=":
-			return !conditionValuesEqual(left, right);
+			return conditionResult(conditionValuesEqual(left, right));
 		case ">":
-			return leftNumber !== undefined && rightNumber !== undefined && leftNumber > rightNumber;
+			return compareConditionNumbers(leftNumber, rightNumber, (leftValue, rightValue) => leftValue > rightValue);
 		case ">=":
-			return leftNumber !== undefined && rightNumber !== undefined && leftNumber >= rightNumber;
+			return compareConditionNumbers(leftNumber, rightNumber, (leftValue, rightValue) => leftValue >= rightValue);
 		case "<":
-			return leftNumber !== undefined && rightNumber !== undefined && leftNumber < rightNumber;
+			return compareConditionNumbers(leftNumber, rightNumber, (leftValue, rightValue) => leftValue < rightValue);
 		case "<=":
-			return leftNumber !== undefined && rightNumber !== undefined && leftNumber <= rightNumber;
+			return compareConditionNumbers(leftNumber, rightNumber, (leftValue, rightValue) => leftValue <= rightValue);
+		case "is_between":
+			return compareConditionRange(leftNumber, rightNumber, rightEndNumber);
 		case "contains":
-			return leftText.includes(rightText);
+			return conditionResult(leftText.includes(rightText));
 		case "equals_ignore_case":
-			return leftText.toLowerCase() === rightText.toLowerCase();
+			return conditionResult(leftText.toLowerCase() === rightText.toLowerCase());
 		case "contains_ignore_case":
-			return leftText.toLowerCase().includes(rightText.toLowerCase());
-		case "does_not_contain":
-			return !leftText.includes(rightText);
+			return conditionResult(leftText.toLowerCase().includes(rightText.toLowerCase()));
 		case "starts_with":
-			return leftText.startsWith(rightText);
+			return conditionResult(leftText.startsWith(rightText));
 		case "ends_with":
-			return leftText.endsWith(rightText);
+			return conditionResult(leftText.endsWith(rightText));
 		case "regex_match":
 			return safeRegexMatch(leftText, rightText);
 		case "is_empty":
-			return isConditionValueEmpty(left);
-		case "is_null":
-			return left === null;
+			return conditionResult(isConditionValueEmpty(left));
 		case "is_true":
-			return left === true;
+			return conditionResult(left === true);
 		case "is_false":
-			return left === false;
+			return conditionResult(left === false);
 		case "is_numeric":
-			return conditionNumber(left) !== undefined;
-		case "is_text":
-			return typeof left === "string";
+			return conditionResult(conditionNumber(left) !== undefined);
+		case "is_string":
+			return conditionResult(typeof left === "string");
 		case "is_boolean":
-			return typeof left === "boolean";
+			return conditionResult(typeof left === "boolean");
 		case "is_list":
-			return Array.isArray(left);
+			return conditionResult(Array.isArray(left));
 		case "is_object":
-			return left !== null && typeof left === "object" && !Array.isArray(left);
-		case "is_not_empty":
-			return !isConditionValueEmpty(left);
+			return conditionResult(left !== null && typeof left === "object" && !Array.isArray(left));
 		case "has_key":
-			return left !== null && typeof left === "object" && !Array.isArray(left) && Object.hasOwn(left, rightText);
+			return conditionResult(
+				left !== null && typeof left === "object" && !Array.isArray(left) && Object.hasOwn(left, rightText),
+			);
 		case "contains_item":
-			return Array.isArray(left) && left.some((item) => conditionValuesEqual(item, right));
-		case "length_equals":
-			return compareConditionLength(left, right, (length, target) => length === target);
-		case "length_greater_than":
-			return compareConditionLength(left, right, (length, target) => length > target);
-		case "length_less_than":
-			return compareConditionLength(left, right, (length, target) => length < target);
+			return conditionResult(Array.isArray(left) && left.some((item) => conditionValuesEqual(item, right)));
+		case "is_null_or_missing":
+			return { error: "null or missing checks require an unresolved variable expression" };
 		default:
-			return false;
+			return { error: `unsupported comparison operator ${operator}` };
 	}
+}
+
+function compareConditionRange(
+	value: number | undefined,
+	start: number | undefined,
+	end: number | undefined,
+): ConditionEvaluationResult {
+	if (value === undefined || start === undefined || end === undefined) {
+		return { error: "between comparison requires numeric input, start, and end values" };
+	}
+	if (start > end) {
+		return { error: "between comparison start must be less than or equal to end" };
+	}
+
+	return conditionResult(value >= start && value <= end);
+}
+
+function conditionResult(value: boolean): ConditionEvaluationResult {
+	return { value };
+}
+
+function compareConditionNumbers(
+	left: number | undefined,
+	right: number | undefined,
+	compare: (leftValue: number, rightValue: number) => boolean,
+): ConditionEvaluationResult {
+	if (left === undefined || right === undefined) {
+		return { error: "numeric comparison requires numeric values" };
+	}
+
+	return conditionResult(compare(left, right));
 }
 
 function conditionValueToText(value: JsonValue) {
@@ -126,42 +167,21 @@ function isConditionValueEmpty(value: JsonValue) {
 	return typeof value === "object" && Object.keys(value).length === 0;
 }
 
-function compareConditionLength(
-	value: JsonValue,
-	targetValue: JsonValue,
-	compare: (length: number, target: number) => boolean,
-) {
-	const length = conditionValueLength(value);
-	const target = conditionNumber(targetValue);
-	return (
-		length !== undefined && target !== undefined && Number.isInteger(target) && target >= 0 && compare(length, target)
-	);
-}
-
-function conditionValueLength(value: JsonValue) {
-	if (typeof value === "string") {
-		return Array.from(value).length;
-	}
-
-	if (Array.isArray(value)) {
-		return value.length;
-	}
-
-	if (value !== null && typeof value === "object") {
-		return Object.keys(value).length;
-	}
-
-	return undefined;
-}
-
 function safeRegexMatch(value: string, pattern: string) {
-	if (pattern.length > MAX_REGEX_PATTERN_LENGTH || UNSAFE_REGEX_PATTERN.test(pattern)) {
-		return false;
+	if (pattern.length > MAX_REGEX_PATTERN_LENGTH) {
+		return {
+			error: `regex pattern exceeds ${MAX_REGEX_PATTERN_LENGTH} characters`,
+		} satisfies ConditionEvaluationResult;
+	}
+	if (UNSAFE_REGEX_PATTERN.test(pattern)) {
+		return { error: "regex pattern is unsafe to simulate" } satisfies ConditionEvaluationResult;
 	}
 
 	try {
-		return new RegExp(pattern).test(value);
-	} catch {
-		return false;
+		return conditionResult(new RegExp(pattern).test(value));
+	} catch (error) {
+		return {
+			error: `invalid regex pattern: ${error instanceof Error ? error.message : "unknown syntax error"}`,
+		} satisfies ConditionEvaluationResult;
 	}
 }

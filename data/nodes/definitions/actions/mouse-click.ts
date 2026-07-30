@@ -37,7 +37,7 @@ export const mouseClickNode = defineNode({
 	icon: MousePointer,
 	kind: "action",
 	label: "Mouse Click",
-	permission: { name: "mouse_control", risk: "high" },
+	permission: { name: "mouse.control", risk: "high" },
 	risk: "high",
 	runnerType: "mouse_click",
 	supportedTargetRuntimes: ["Windows Desktop"],

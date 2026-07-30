@@ -6,6 +6,7 @@ import type {
 	LogEntry,
 	ProjectSettings,
 	ScriptNodeData,
+	ScriptSetting,
 	SimulationOverride,
 	SimulationTraceEntry,
 	SimulationTriggerPayload,
@@ -21,6 +22,7 @@ export type SimulationRunOptions = {
 	) => Promise<SimulationSideEffectResult[] | undefined> | SimulationSideEffectResult[] | undefined;
 	overrides: SimulationOverride[];
 	projectSettings: ProjectSettings;
+	scriptSettings?: ScriptSetting[];
 	defaultVariables?: DefaultVariable[];
 	globalVariables?: Record<string, JsonValue>;
 	persistentVariables?: Record<string, JsonValue>;

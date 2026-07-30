@@ -19,7 +19,7 @@ export const writeFileNode = defineNode({
 	icon: FileText,
 	kind: "action",
 	label: "Write File",
-	permission: { name: "file_write_limited", risk: "high" },
+	permission: { name: "file.write.limited", risk: "high" },
 	permissionPathRules: [{ access: "write", configKey: "path" }],
 	risk: "high",
 	runnerType: "write_file",

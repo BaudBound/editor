@@ -760,6 +760,19 @@ function getInvalidDefaultVariables(
 				`${location}: scope "${variable.scope}" and type "${variable.type}" do not match the Variable Operation definition with scope "${configured.scope}" and type "${configured.type}".`,
 			);
 		}
+		for (const node of nodes) {
+			if (
+				node.data.actionType === "runtime.set_variable" &&
+				["clear", "delete"].includes(configString(node, "operation")) &&
+				normalizeVariableReferenceName(configString(node, "name")) === variable.name &&
+				configString(node, "scope") !== variable.scope
+			) {
+				const operation = configString(node, "operation");
+				errors.push(
+					`${location}: scope "${variable.scope}" does not match the ${operation === "clear" ? "Clear" : "Delete Variable"} operation at ${getNodeLocation(node)} with scope "${configString(node, "scope")}".`,
+				);
+			}
+		}
 	}
 
 	return errors;

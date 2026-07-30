@@ -19,7 +19,7 @@ export const playSoundNode = defineNode({
 	icon: Volume2,
 	kind: "action",
 	label: "Play Sound",
-	permission: { name: "play_sound", risk: "medium" },
+	permission: { name: "sound.play", risk: "medium" },
 	risk: "medium",
 	runnerType: "play_sound",
 	validateConfig: (config) => {

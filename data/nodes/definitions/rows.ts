@@ -7,6 +7,7 @@ export type ConditionRow = {
 	combinator?: string;
 	operator: string;
 	right: string;
+	rightEnd?: string;
 };
 
 export type SwitchCaseRow = {
@@ -94,6 +95,7 @@ export function isConditionRow(value: JsonValue): value is ConditionRow {
 		typeof value.left === "string" &&
 		typeof value.operator === "string" &&
 		typeof value.right === "string" &&
+		(typeof value.rightEnd === "string" || value.rightEnd === undefined) &&
 		(typeof value.invert === "boolean" || value.invert === undefined) &&
 		(typeof value.combinator === "string" || value.combinator === undefined)
 	);

@@ -33,7 +33,7 @@ export const processStatusNode = defineNode({
 	icon: BadgeInfo,
 	kind: "action",
 	label: "Process Status",
-	permission: { name: "process_query", risk: "medium" },
+	permission: { name: "process.query", risk: "medium" },
 	risk: "medium",
 	runtimeOutputs: fallible(processStatusRuntimeOutputs()),
 	runnerType: "process_status",

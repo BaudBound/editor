@@ -51,13 +51,13 @@ export function calculatePermissions(
 		}
 	}
 	if (secretDeclarations.length > 0) {
-		permissions.set("read_secret", { name: "read_secret", risk: "high" });
+		permissions.set("secret.read", { name: "secret.read", risk: "high" });
 	}
 	if (defaultVariables.some((variable) => variable.scope === "runtime")) {
-		permissions.set("set_local_variable", { name: "set_local_variable", risk: "low" });
+		permissions.set("variable.local.set", { name: "variable.local.set", risk: "low" });
 	}
 	if (defaultVariables.some((variable) => variable.scope === "persistent")) {
-		permissions.set("set_persistent_variable", { name: "set_persistent_variable", risk: "medium" });
+		permissions.set("variable.persistent.set", { name: "variable.persistent.set", risk: "medium" });
 	}
 
 	return [...permissions.values()].sort(

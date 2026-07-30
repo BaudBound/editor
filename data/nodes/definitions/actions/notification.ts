@@ -17,7 +17,7 @@ export const notificationNode = defineNode({
 	icon: Bell,
 	kind: "action",
 	label: "Show Notification",
-	permission: { name: "show_notification", risk: "medium" },
+	permission: { name: "notification.show", risk: "medium" },
 	risk: "medium",
 	runnerType: "show_notification",
 	validateConfig: (config) =>

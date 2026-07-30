@@ -8,7 +8,6 @@ export const variableTypes = [
 	"boolean",
 	"object",
 	"list",
-	"http_response",
 	"datetime",
 	"duration",
 	"file_path",
@@ -16,19 +15,38 @@ export const variableTypes = [
 
 export type VariableType = (typeof variableTypes)[number];
 
+export const listItemTypes = ["string", "number", "boolean", "object", "datetime", "duration", "file_path"] as const;
+
+export type ListItemType = (typeof listItemTypes)[number];
+
+export const durationUnits = ["milliseconds", "seconds", "minutes", "hours", "days"] as const;
+
+export type DurationUnit = (typeof durationUnits)[number];
+
 export const variableScopes = ["runtime", "persistent", "global"] as const;
 
 export type VariableScope = (typeof variableScopes)[number];
 
-export const variableOperations = ["set", "increment", "append_list", "set_object_field", "clear"] as const;
+export const variableOperations = [
+	"set",
+	"increment",
+	"toggle_boolean",
+	"append_list",
+	"remove_list_items",
+	"set_object_field",
+	"remove_object_field",
+	"merge_object",
+	"clear",
+	"delete",
+] as const;
 
 export type VariableOperation = (typeof variableOperations)[number];
 
 export const reservedVariablePrefixes = ["manifest_", "system_"] as const;
 
-export type EditorVariableScope = VariableScope | "secret" | "manifest" | "system" | "node_output";
+export type EditorVariableScope = VariableScope | "secret" | "setting" | "manifest" | "system" | "node_output";
 
-export type EditorVariableSource = "user" | "built_in" | "node_output" | "secret";
+export type EditorVariableSource = "user" | "built_in" | "node_output" | "secret" | "setting";
 
 export type EditorVariable<TValue extends JsonValue | undefined = JsonValue | undefined> = {
 	description?: string;
@@ -66,15 +84,6 @@ export const variableTypeDefinitions: Record<VariableType, { description: string
 		description: "A JSON array.",
 		example: formatJson(["api", "db", "cache"]),
 	},
-	http_response: {
-		description: "A JSON HTTP response object with status, headers, and body.",
-		example: formatJson({
-			type: "http_response",
-			status: 200,
-			headers: { "content-type": "application/json" },
-			body: "{}",
-		}),
-	},
 	datetime: {
 		description: "A JSON datetime object with an ISO-8601 value.",
 		example: formatJson({ type: "datetime", value: "2026-07-02T12:00:00Z" }),
@@ -109,20 +118,45 @@ export const variableOperationDefinitions: Record<
 		valueLabel: "Amount",
 		description: "Add a numeric amount to an existing or newly created number variable.",
 	},
+	toggle_boolean: {
+		label: "Toggle boolean",
+		valueLabel: "Toggle value",
+		description: "Change true to false or false to true. A missing variable starts as false and becomes true.",
+	},
 	append_list: {
 		label: "Append list",
 		valueLabel: "Item",
 		description: "Append one item to a list variable. The target variable type must be list.",
+	},
+	remove_list_items: {
+		label: "Remove matching list items",
+		valueLabel: "Matching item",
+		description: "Remove the first or every list item that exactly matches the provided value.",
 	},
 	set_object_field: {
 		label: "Set object field",
 		valueLabel: "Field value",
 		description: "Set a nested field inside an object variable. Missing object fields may be created by the runner.",
 	},
+	remove_object_field: {
+		label: "Remove object field",
+		valueLabel: "Field value",
+		description: "Remove a nested field or list position using an object field path.",
+	},
+	merge_object: {
+		label: "Merge object",
+		valueLabel: "Object to merge",
+		description: "Shallow merge an object into the variable. Incoming fields replace fields with the same name.",
+	},
 	clear: {
 		label: "Clear",
 		valueLabel: "Clear value",
-		description: "Reset the variable to the empty value for its type.",
+		description: "Reset an existing variable to the empty value derived from its current type.",
+	},
+	delete: {
+		label: "Delete variable",
+		valueLabel: "Delete value",
+		description: "Remove the variable completely instead of keeping an empty value.",
 	},
 };
 
@@ -131,47 +165,19 @@ export function getVariableOperationFixedType(operation: VariableOperation): Var
 		return "number";
 	}
 
-	if (operation === "append_list") {
+	if (operation === "toggle_boolean") {
+		return "boolean";
+	}
+
+	if (operation === "append_list" || operation === "remove_list_items") {
 		return "list";
 	}
 
-	if (operation === "set_object_field") {
+	if (operation === "set_object_field" || operation === "remove_object_field" || operation === "merge_object") {
 		return "object";
 	}
 
 	return null;
-}
-
-export function getClearedVariableValue(type: VariableType) {
-	if (type === "number") {
-		return "0";
-	}
-
-	if (type === "boolean") {
-		return "false";
-	}
-
-	if (type === "list") {
-		return "[]";
-	}
-
-	if (type === "object") {
-		return "{}";
-	}
-
-	if (type === "duration") {
-		return formatJson({ type: "duration", unit: "seconds", value: 0 });
-	}
-
-	if (type === "datetime") {
-		return formatJson({ type: "datetime", value: "1970-01-01T00:00:00.000Z" });
-	}
-
-	if (type === "http_response") {
-		return formatJson({ type: "http_response", status: 0, headers: {}, body: "" });
-	}
-
-	return "";
 }
 
 export function validateVariableOperationValue(
@@ -179,8 +185,11 @@ export function validateVariableOperationValue(
 	type: VariableType,
 	value: string,
 	path = "",
+	itemType?: ListItemType,
+	fieldValueType?: VariableType,
+	fieldItemType?: ListItemType,
 ) {
-	if (operation === "clear") {
+	if (operation === "clear" || operation === "delete" || operation === "toggle_boolean") {
 		return "";
 	}
 
@@ -193,16 +202,30 @@ export function validateVariableOperationValue(
 		return validateVariableValue("number", value).replace("Number variables", "Increment amount");
 	}
 
-	if (operation === "append_list") {
-		return validateJsonCompatibleValue(value);
+	if (operation === "append_list" || operation === "remove_list_items") {
+		return "";
+	}
+
+	if (operation === "remove_object_field") {
+		return validateObjectFieldPath(path);
 	}
 
 	if (operation === "set_object_field") {
 		const pathMessage = validateObjectFieldPath(path);
-		return pathMessage || validateJsonCompatibleValue(value);
+		if (pathMessage) {
+			return pathMessage;
+		}
+		if (!fieldValueType) {
+			return "Select the object field value type.";
+		}
+		return validateVariableValue(fieldValueType, value, fieldItemType);
 	}
 
-	return validateVariableValue(type, value);
+	if (operation === "merge_object") {
+		return validateVariableValue("object", value);
+	}
+
+	return validateVariableValue(type, value, itemType);
 }
 
 export function validateVariableOperationType(operation: VariableOperation, type: VariableType) {
@@ -210,8 +233,8 @@ export function validateVariableOperationType(operation: VariableOperation, type
 		return "Increment can only be used with number variables.";
 	}
 
-	if (operation === "append_list" && type !== "list") {
-		return "Append list can only be used with list variables.";
+	if ((operation === "append_list" || operation === "remove_list_items") && type !== "list") {
+		return `${variableOperationDefinitions[operation].label} can only be used with list variables.`;
 	}
 
 	const fixedType = getVariableOperationFixedType(operation);
@@ -238,7 +261,7 @@ export function normalizeVariableOperation(value: string): VariableOperation {
 	return variableOperations.includes(value as VariableOperation) ? (value as VariableOperation) : "set";
 }
 
-export function validateVariableValue(type: VariableType, value: string) {
+export function validateVariableValue(type: VariableType, value: string, itemType?: ListItemType): string {
 	const trimmed = value.trim();
 
 	if (isTemplateReference(trimmed)) {
@@ -269,7 +292,19 @@ export function validateVariableValue(type: VariableType, value: string) {
 	}
 
 	if (type === "list") {
-		return Array.isArray(parsed.value) ? "" : "List variables must be a JSON array.";
+		if (!Array.isArray(parsed.value)) {
+			return "List variables must be a JSON array.";
+		}
+		if (!itemType || !listItemTypes.includes(itemType)) {
+			return "Select the type used by every list item.";
+		}
+		for (const [index, item] of parsed.value.entries()) {
+			const itemError = validateListItemValue(itemType, item as JsonValue);
+			if (itemError) {
+				return `List item ${index + 1}: ${itemError}`;
+			}
+		}
+		return "";
 	}
 
 	if (type === "object") {
@@ -295,16 +330,30 @@ export function validateVariableValue(type: VariableType, value: string) {
 			: "Datetime variables must include type and a valid ISO-8601 value field.";
 	}
 
-	if (type === "http_response") {
-		return parsed.value.type === "http_response" &&
-			typeof parsed.value.status === "number" &&
-			isRecord(parsed.value.headers) &&
-			"body" in parsed.value
-			? ""
-			: "HTTP response variables must include type, status, headers, and body fields.";
-	}
-
 	return "";
+}
+
+function validateListItemValue(type: ListItemType, value: JsonValue): string {
+	if (type === "string") {
+		return typeof value === "string" ? "" : "Enter a text value.";
+	}
+	if (type === "file_path") {
+		return typeof value === "string" && value.trim() ? "" : "Enter a file path.";
+	}
+	if (type === "number") {
+		return typeof value === "number" &&
+			Number.isFinite(value) &&
+			!validateNumericConfigValue(String(value), runtimeNumberContract)
+			? ""
+			: "Enter a finite number within the supported runtime range.";
+	}
+	if (type === "boolean") {
+		return typeof value === "boolean" ? "" : "Select true or false.";
+	}
+	if (type === "object") {
+		return isRecord(value) ? "" : "Enter a JSON object.";
+	}
+	return validateVariableValue(type, JSON.stringify(value));
 }
 
 export function validateVariableName(name: string) {
@@ -316,6 +365,10 @@ export function validateVariableName(name: string) {
 
 	if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) {
 		return "Variable names must start with a letter or underscore and only use letters, numbers, or underscores.";
+	}
+
+	if (trimmed === "settings") {
+		return 'The name "settings" is reserved for Script Settings.';
 	}
 
 	const reservedPrefix = reservedVariablePrefixes.find((prefix) => trimmed.startsWith(prefix));
@@ -465,7 +518,11 @@ export function createConfiguredVariableDefinitions(nodes: Node<ScriptNodeData>[
 		}
 
 		const operation = normalizeVariableOperation(configString(node.data.config.operation));
+		if (operation === "clear" || operation === "delete") {
+			continue;
+		}
 
+		const fixedType = getVariableOperationFixedType(operation);
 		variables.set(name, {
 			description: `Written by Variable Operation node ${node.id} using ${variableOperationDefinitions[operation].label}.`,
 			name,
@@ -473,7 +530,7 @@ export function createConfiguredVariableDefinitions(nodes: Node<ScriptNodeData>[
 			scope: normalizeVariableScope(configString(node.data.config.scope)),
 			source: "user",
 			token: `{{${name}}}`,
-			type: normalizeVariableType(configString(node.data.config.valueType)),
+			type: fixedType ?? normalizeVariableType(configString(node.data.config.valueType)),
 			value: undefined,
 		});
 	}
@@ -609,28 +666,6 @@ function normalizeVariableType(value: string): VariableType {
 	return variableTypes.includes(value as VariableType) ? (value as VariableType) : "string";
 }
 
-function validateJsonCompatibleValue(value: string) {
-	const trimmed = value.trim();
-
-	if (isTemplateReference(trimmed)) {
-		return "";
-	}
-
-	if (!trimmed) {
-		return "";
-	}
-
-	if (trimmed === "true" || trimmed === "false" || trimmed === "null" || Number.isFinite(Number(trimmed))) {
-		return "";
-	}
-
-	if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-		return parseJson(trimmed).ok ? "" : "Value must be valid JSON.";
-	}
-
-	return "";
-}
-
 function parseJson(value: string): { ok: true; value: unknown } | { ok: false } {
 	try {
 		return { ok: true, value: JSON.parse(value) };
@@ -644,14 +679,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function canContainNestedValues(type: EditorVariable["type"], value: JsonValue | undefined) {
-	return (
-		type === "list" ||
-		type === "object" ||
-		type === "http_response" ||
-		type === "http_headers" ||
-		Array.isArray(value) ||
-		isRecord(value)
-	);
+	return type === "list" || type === "object" || type === "http_headers" || Array.isArray(value) || isRecord(value);
 }
 
 function parseVariableReferencePath(path: string): Array<number | string> | null {

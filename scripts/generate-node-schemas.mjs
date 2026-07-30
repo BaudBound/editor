@@ -16,9 +16,13 @@ const editorKeyboardContractPath = join(appRoot, "data", "nodes", "windows-key-c
 const runnerKeyboardContractPath = join(contractsRoot, "runner", "windows-keyboard-keys.json");
 const publicSchemaRoot = "https://schemas.baudbound.app";
 const programSchemaUrl = `${publicSchemaRoot}/program.schema.json`;
+const conditionRowsRef = `${programSchemaUrl}#/$defs/conditionRows`;
+const whileConditionRowsRef = `${programSchemaUrl}#/$defs/whileConditionRows`;
 const jsonValueRef = `${programSchemaUrl}#/$defs/jsonValue`;
 const runtimeOutputRef = `${programSchemaUrl}#/$defs/runtimeOutput`;
 const checkMode = process.argv.includes("--check");
+const userValueTypes = ["string", "number", "boolean", "object", "list", "datetime", "duration", "file_path"];
+const listItemTypes = userValueTypes.filter((type) => type !== "list");
 
 assert.ok(
 	existsSync(join(contractsRoot, "contract.json")),
@@ -238,6 +242,10 @@ function createNodeSchema(definition) {
 }
 
 function createConfigSchema(definition) {
+	if (definition.actionType === "runtime.set_variable") {
+		return createVariableOperationConfigSchema(definition);
+	}
+
 	const fieldsByKey = new Map(definition.configFields.map((field) => [field.key, field]));
 	const keys = new Set(["customName", ...definition.defaultConfigKeys, ...fieldsByKey.keys()]);
 	const properties = {};
@@ -251,11 +259,15 @@ function createConfigSchema(definition) {
 
 		const field = fieldsByKey.get(key);
 		properties[key] =
-			definition.actionType === "action.text.format" && key === "operations"
-				? createTextTransformOperationsSchema()
-				: field
-					? createConfigFieldSchema(field)
-					: { $ref: jsonValueRef };
+			definition.actionType === "control.if" && key === "conditions"
+				? { $ref: conditionRowsRef }
+				: definition.actionType === "control.while" && key === "conditions"
+					? { $ref: whileConditionRowsRef }
+					: definition.actionType === "action.text.format" && key === "operations"
+						? createTextTransformOperationsSchema()
+						: field
+							? createConfigFieldSchema(field)
+							: { $ref: jsonValueRef };
 		if (field && field.required !== false) {
 			required.push(key);
 		}
@@ -269,6 +281,115 @@ function createConfigSchema(definition) {
 		additionalProperties: false,
 		...(required.length > 0 ? { required: required.sort() } : {}),
 		properties,
+	};
+}
+
+function createVariableOperationConfigSchema(definition) {
+	const fieldsByKey = new Map(definition.configFields.map((field) => [field.key, field]));
+	const keys = new Set(["customName", ...definition.defaultConfigKeys, ...fieldsByKey.keys()]);
+	const properties = {};
+	const required = [];
+
+	for (const key of [...keys].sort()) {
+		if (key === "customName") {
+			properties[key] = { type: "string" };
+			continue;
+		}
+
+		const field = fieldsByKey.get(key);
+		properties[key] =
+			key === "valueType" || key === "fieldValueType"
+				? stringEnum(userValueTypes)
+				: key === "itemType" || key === "fieldItemType"
+					? stringEnum(listItemTypes)
+					: key === "removeMode"
+						? stringEnum(["first", "all"])
+						: field
+							? createConfigFieldSchema(field)
+							: { $ref: jsonValueRef };
+		if (field && field.required !== false) {
+			required.push(key);
+		}
+	}
+
+	return {
+		type: "object",
+		additionalProperties: false,
+		...(required.length > 0 ? { required: required.sort() } : {}),
+		properties,
+		allOf: [
+			{
+				if: {
+					properties: {
+						operation: { const: "set" },
+					},
+					required: ["operation"],
+				},
+				// biome-ignore lint/suspicious/noThenProperty: JSON Schema conditionals use the then keyword.
+				then: {
+					required: ["valueType"],
+				},
+			},
+			{
+				if: {
+					properties: {
+						operation: { const: "set" },
+						valueType: { const: "list" },
+					},
+					required: ["operation", "valueType"],
+				},
+				// biome-ignore lint/suspicious/noThenProperty: JSON Schema conditionals use the then keyword.
+				then: {
+					required: ["itemType"],
+				},
+			},
+			{
+				if: {
+					properties: {
+						operation: { enum: ["set_object_field", "remove_object_field"] },
+					},
+				},
+				// biome-ignore lint/suspicious/noThenProperty: JSON Schema conditionals use the then keyword.
+				then: {
+					required: ["fieldPath"],
+				},
+			},
+			{
+				if: {
+					properties: {
+						operation: { const: "set_object_field" },
+					},
+				},
+				// biome-ignore lint/suspicious/noThenProperty: JSON Schema conditionals use the then keyword.
+				then: {
+					required: ["fieldValueType"],
+				},
+			},
+			{
+				if: {
+					properties: {
+						operation: { const: "set_object_field" },
+						fieldValueType: { const: "list" },
+					},
+					required: ["fieldValueType"],
+				},
+				// biome-ignore lint/suspicious/noThenProperty: JSON Schema conditionals use the then keyword.
+				then: {
+					required: ["fieldItemType"],
+				},
+			},
+			{
+				if: {
+					properties: {
+						operation: { const: "remove_list_items" },
+					},
+				},
+				// biome-ignore lint/suspicious/noThenProperty: JSON Schema conditionals use the then keyword.
+				then: {
+					required: ["removeMode"],
+				},
+			},
+		],
 	};
 }
 
@@ -338,6 +459,13 @@ function createTextTransformOperationsSchema() {
 function createConfigFieldSchema(field) {
 	if (field.type === "text" || field.type === "textarea") {
 		return { type: "string" };
+	}
+
+	if (field.type === "string-list") {
+		return {
+			type: "array",
+			items: { type: "string" },
+		};
 	}
 
 	if (field.type === "switch") {
@@ -510,8 +638,8 @@ function readPermissionPathRules(initializer, actionType) {
 			throw new Error(`${actionType} permissionPathRules entries must be object literals.`);
 		}
 		const access = getRequiredStringProperty(element, "access", actionType);
-		if (access !== "read" && access !== "write") {
-			throw new Error(`${actionType} permission path access must be read or write.`);
+		if (access !== "delete" && access !== "read" && access !== "write") {
+			throw new Error(`${actionType} permission path access must be delete, read, or write.`);
 		}
 		return {
 			access,

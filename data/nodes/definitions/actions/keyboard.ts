@@ -29,7 +29,7 @@ export const keyboardNode = defineNode({
 	icon: Keyboard,
 	kind: "action",
 	label: "Keyboard",
-	permission: { name: "keyboard_control", risk: "high" },
+	permission: { name: "keyboard.control", risk: "high" },
 	risk: "high",
 	runnerType: "press_key",
 	supportedTargetRuntimes: ["Windows Desktop"],

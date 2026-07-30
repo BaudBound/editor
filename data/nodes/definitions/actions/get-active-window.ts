@@ -15,7 +15,7 @@ export const getActiveWindowNode = defineNode({
 	icon: AppWindow,
 	kind: "action",
 	label: "Get Active Window",
-	permission: { name: "window_query", risk: "medium" },
+	permission: { name: "window.query", risk: "medium" },
 	risk: "medium",
 	supportedTargetRuntimes: ["Windows Desktop"],
 	runtimeOutputs: fallible([

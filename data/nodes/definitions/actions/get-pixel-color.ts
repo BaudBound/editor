@@ -43,7 +43,7 @@ export const getPixelColorNode = defineNode({
 	icon: Pipette,
 	kind: "action",
 	label: "Get Pixel Color",
-	permission: { name: "screen_pixel_read", risk: "medium" },
+	permission: { name: "screen.pixel.read", risk: "medium" },
 	risk: "medium",
 	supportedTargetRuntimes: ["Windows Desktop"],
 	runtimeOutputs: fallible([

@@ -22,6 +22,12 @@ export const hotkeyTriggerNode = defineNode({
 			description: "Captured hotkey expression.",
 			example: "n-mr3zyt6f-4.key",
 		},
+		{
+			name: "timestamp",
+			type: "string",
+			description: "Unix timestamp in milliseconds when the hotkey was pressed.",
+			example: "n-mr3zyt6f-4.timestamp",
+		},
 	],
 	runnerType: "hotkey",
 	supportedTargetRuntimes: ["Windows Desktop"],
@@ -37,7 +43,10 @@ export const hotkeyTriggerNode = defineNode({
 	simulation: {
 		createOutput: ({ api, context, node }) => ({
 			failed: false,
-			outputData: { key: context.triggerPayload.key || api.getConfigString(node, "key") },
+			outputData: {
+				key: context.triggerPayload.key || api.getConfigString(node, "key"),
+				timestamp: context.triggerPayload.timestamp || Date.now().toString(),
+			},
 		}),
 	},
 });

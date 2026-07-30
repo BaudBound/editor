@@ -41,57 +41,57 @@ export function SecretReferenceManager({
 	const [editingName, setEditingName] = useState<string | null>(null);
 	const [draft, setDraft] = useState<SecretDeclaration>(emptyDeclaration);
 	const [dialogOpen, setDialogOpen] = useState(false);
-	const [visibleValues, setVisibleValues] = useState<Set<string>>(new Set());
+	const [hasSimulationValue, setHasSimulationValue] = useState(false);
+	const [rawSimulationValue, setRawSimulationValue] = useState("");
+	const [simulationValueVisible, setSimulationValueVisible] = useState(false);
 	const nameInputId = useId();
 	const descriptionInputId = useId();
+	const simulationInputId = useId();
 	const declarationError = useMemo(
 		() => validateSecretDeclaration(draft, declarations, editingName ?? undefined, reservedVariableNames),
 		[draft, declarations, editingName, reservedVariableNames],
 	);
+	const simulationValueError =
+		hasSimulationValue && rawSimulationValue === ""
+			? "Enter a simulation override."
+			: secretSimulationValueError(draft.type, rawSimulationValue);
 
 	const openCreate = () => {
 		setEditingName(null);
 		setDraft(emptyDeclaration);
+		setHasSimulationValue(false);
+		setRawSimulationValue("");
+		setSimulationValueVisible(false);
 		setDialogOpen(true);
 	};
 	const openEdit = (declaration: SecretDeclaration) => {
 		setEditingName(declaration.name);
 		setDraft(declaration);
+		setHasSimulationValue(simulationValues[declaration.name] !== undefined);
+		setRawSimulationValue(simulationValues[declaration.name] ?? "");
+		setSimulationValueVisible(false);
 		setDialogOpen(true);
 	};
 	const save = () => {
-		if (declarationError) return;
+		if (declarationError || simulationValueError) return;
 		const normalized = { ...draft, name: draft.name.trim(), description: draft.description.trim() };
 		if (editingName) {
 			onDeclarationsChange(
 				declarations.map((secret) => (secret.name === editingName ? normalized : secret)),
 				editingName !== normalized.name ? { from: editingName, to: normalized.name } : undefined,
 			);
-			if (editingName !== normalized.name && simulationValues[editingName] !== undefined) {
-				onSimulationValueChange(normalized.name, simulationValues[editingName]);
+			if (editingName !== normalized.name) {
 				onSimulationValueChange(editingName, "");
-			}
-			if (editingName !== normalized.name && visibleValues.has(editingName)) {
-				setVisibleValues((current) => {
-					const next = new Set(current);
-					next.delete(editingName);
-					next.add(normalized.name);
-					return next;
-				});
 			}
 		} else {
 			onDeclarationsChange([...declarations, normalized].sort((a, b) => a.name.localeCompare(b.name)));
 		}
+		onSimulationValueChange(normalized.name, hasSimulationValue ? rawSimulationValue : "");
 		setDialogOpen(false);
 	};
 	const remove = (name: string) => {
 		onDeclarationsChange(declarations.filter((secret) => secret.name !== name));
 		onSimulationValueChange(name, "");
-		setVisibleValues((current) => {
-			const next = new Set(current);
-			next.delete(name);
-			return next;
-		});
 	};
 
 	return (
@@ -118,10 +118,7 @@ export function SecretReferenceManager({
 			{declarations.length > 0 && (
 				<div className="mt-2.5 grid gap-1.5">
 					{declarations.map((declaration) => {
-						const rawValue = simulationValues[declaration.name] ?? "";
-						const valueError = secretSimulationValueError(declaration.type, rawValue);
-						const visible = visibleValues.has(declaration.name);
-						const inputId = `secret-simulation-${declaration.name}`;
+						const hasOverride = simulationValues[declaration.name] !== undefined;
 						return (
 							<article
 								key={declaration.name}
@@ -164,41 +161,13 @@ export function SecretReferenceManager({
 										</Button>
 									</div>
 								</div>
-								<div className="mt-2 border-t border-baud-border/80 pt-1.5">
-									<label
-										htmlFor={inputId}
-										className="mb-0.5 block text-[10px] font-semibold tracking-[0.08em] text-baud-muted uppercase"
-									>
-										Simulation value
-									</label>
-									<div className="flex gap-1">
-										<Input
-											id={inputId}
-											className="h-7 px-2"
-											type={visible ? "text" : "password"}
-											value={rawValue}
-											aria-invalid={Boolean(valueError)}
-											placeholder="Simulation value"
-											onChange={(event) => onSimulationValueChange(declaration.name, event.target.value)}
-										/>
-										<Button
-											type="button"
-											aria-label={visible ? "Hide simulation secret" : "Show simulation secret"}
-											size="icon-sm"
-											variant="ghost"
-											className="text-baud-muted hover:bg-baud-blue/15 hover:text-baud-blue [&_svg]:transition-transform hover:[&_svg]:scale-110"
-											onClick={() =>
-												setVisibleValues((current) => {
-													const next = new Set(current);
-													visible ? next.delete(declaration.name) : next.add(declaration.name);
-													return next;
-												})
-											}
-										>
-											{visible ? <EyeOff size={13} /> : <Eye size={13} />}
-										</Button>
-									</div>
-									{valueError && <div className="mt-1 text-xs text-baud-danger">{valueError}</div>}
+								<div className="mt-2 flex items-center justify-between gap-2 border-t border-baud-border/80 pt-1.5">
+									<span className="text-[10px] font-semibold tracking-[0.08em] text-baud-muted uppercase">
+										Simulation override
+									</span>
+									<Badge variant={hasOverride ? "low" : "outline"}>
+										{hasOverride ? "Override configured" : "Not set"}
+									</Badge>
 								</div>
 							</article>
 						);
@@ -244,12 +213,64 @@ export function SecretReferenceManager({
 							onCheckedChange={(required) => setDraft((current) => ({ ...current, required }))}
 						/>
 					</div>
+					<div className="grid gap-2 rounded border border-baud-border p-2">
+						<div className="flex items-center justify-between gap-3">
+							<div>
+								<label htmlFor={`${simulationInputId}-enabled`} className="text-sm text-baud-text">
+									Simulation override
+								</label>
+								<p className="text-xs leading-4 text-baud-muted">
+									Use a browser session only value while testing. It is never saved or exported.
+								</p>
+							</div>
+							<Switch
+								id={`${simulationInputId}-enabled`}
+								aria-label="Use Simulation override"
+								checked={hasSimulationValue}
+								onCheckedChange={setHasSimulationValue}
+							/>
+						</div>
+						{hasSimulationValue && (
+							<div className="grid gap-1">
+								<label htmlFor={simulationInputId} className="text-xs text-baud-muted">
+									Simulation override
+								</label>
+								<div className="flex min-w-0 gap-1">
+									<Input
+										id={simulationInputId}
+										className="min-w-0 flex-1"
+										type={simulationValueVisible ? "text" : "password"}
+										autoComplete="new-password"
+										value={rawSimulationValue}
+										aria-invalid={Boolean(simulationValueError)}
+										onChange={(event) => setRawSimulationValue(event.target.value)}
+									/>
+									<Button
+										type="button"
+										aria-label={simulationValueVisible ? "Hide simulation secret" : "Show simulation secret"}
+										size="icon-sm"
+										variant="ghost"
+										className="shrink-0 text-baud-muted hover:bg-baud-blue/15 hover:text-baud-blue"
+										onClick={() => setSimulationValueVisible((visible) => !visible)}
+									>
+										{simulationValueVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+									</Button>
+								</div>
+							</div>
+						)}
+						{simulationValueError && <div className="text-xs text-baud-danger">{simulationValueError}</div>}
+					</div>
 					{declarationError && <div className="text-xs text-baud-danger">{declarationError}</div>}
 					<DialogFooter>
 						<Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
 							Cancel
 						</Button>
-						<Button type="button" variant="primary" disabled={Boolean(declarationError)} onClick={save}>
+						<Button
+							type="button"
+							variant="primary"
+							disabled={Boolean(declarationError || simulationValueError)}
+							onClick={save}
+						>
 							Save
 						</Button>
 					</DialogFooter>
