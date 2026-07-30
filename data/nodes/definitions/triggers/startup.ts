@@ -9,13 +9,13 @@ export const startupTriggerNode = defineNode({
 	icon: Power,
 	kind: "trigger",
 	label: "Startup",
-	permission: { name: "startup_trigger", risk: "high" },
+	permission: { name: "trigger.startup", risk: "high" },
 	risk: "high",
 	runtimeOutputs: [
 		{
 			name: "timestamp",
 			type: "string",
-			description: "Runner timestamp when startup triggered the script.",
+			description: "Unix timestamp in milliseconds when startup triggered the script.",
 			example: "n-mr3zyt6f-6.timestamp",
 		},
 		{
@@ -30,7 +30,7 @@ export const startupTriggerNode = defineNode({
 		createOutput: ({ context }) => ({
 			failed: false,
 			outputData: {
-				timestamp: new Date().toISOString(),
+				timestamp: Date.now().toString(),
 				reason: context.triggerPayload.reason || "runner_startup",
 			},
 		}),

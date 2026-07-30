@@ -24,7 +24,7 @@ export const messageBoxNode = defineNode({
 	icon: MessageSquareWarning,
 	kind: "action",
 	label: "MessageBox",
-	permission: { name: "show_message_box", risk: "medium" },
+	permission: { name: "messageBox.show", risk: "medium" },
 	risk: "medium",
 	runtimeOutputs: [
 		{

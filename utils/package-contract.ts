@@ -11,7 +11,12 @@ import {
 	validateNodeConfig,
 } from "@/data/nodes/registry";
 import { targetRuntimes } from "@/data/project/runtimes";
-import { variableTypes } from "@/data/project/variables";
+import {
+	getVariableOperationFixedType,
+	listItemTypes,
+	normalizeVariableOperation,
+	variableTypes,
+} from "@/data/project/variables";
 import type { ActionType, JsonValue, PermissionSummary, RiskLevel, TargetRuntime } from "@/lib/types";
 import { isSelfConnection } from "@/utils/editor-graph";
 
@@ -66,46 +71,47 @@ export const canonicalPermissions = [
 	"beep",
 	"math",
 	"calculate",
-	"text_transform",
-	"value_conversion",
-	"parse_url",
-	"set_local_variable",
-	"set_persistent_variable",
-	"set_global_variable",
-	"read_secret",
-	"read_runtime_data",
-	"show_notification",
-	"show_message_box",
-	"http_request",
-	"download_file",
-	"file_read",
-	"file_copy",
-	"file_move",
-	"write_clipboard",
-	"open_application",
-	"window_query",
-	"process_query",
-	"serial_write",
-	"keyboard_control",
-	"mouse_control",
-	"screen_pixel_read",
-	"play_sound",
-	"file_write_limited",
-	"run_process",
-	"run_shell_command",
-	"delete_file",
-	"read_sensitive_file",
-	"write_any_file",
-	"read_clipboard",
-	"startup_trigger",
-	"webhook_public_bind",
-	"webhook_response",
-	"websocket_public_bind",
-	"websocket_write",
-	"serial_input",
-	"window_focus",
-	"process_kill",
-	"sub_script_run",
+	"text.transform",
+	"value.convert",
+	"url.parse",
+	"variable.local.set",
+	"variable.persistent.set",
+	"variable.global.set",
+	"secret.read",
+	"runtime.data.read",
+	"notification.show",
+	"messageBox.show",
+	"http.request",
+	"file.download",
+	"file.read",
+	"file.copy",
+	"file.move",
+	"clipboard.write",
+	"application.open",
+	"window.query",
+	"process.query",
+	"serial.write",
+	"keyboard.control",
+	"mouse.control",
+	"screen.pixel.read",
+	"sound.play",
+	"file.write.limited",
+	"process.run",
+	"process.shell",
+	"file.delete.limited",
+	"file.delete.any",
+	"file.read.any",
+	"file.write.any",
+	"clipboard.read",
+	"trigger.startup",
+	"network.webhook",
+	"webhook.response",
+	"network.websocket",
+	"websocket.write",
+	"serial.input",
+	"window.focus",
+	"process.kill",
+	"script.run",
 ] as const;
 
 const capabilitySet = new Set<string>(canonicalCapabilities);
@@ -129,10 +135,12 @@ const manifestFields = new Set([
 	"assets",
 	"variables",
 	"secrets",
+	"settings",
 ]);
 const assetFields = new Set(["id", "kind", "media_type", "name", "path", "size"]);
-const variableFields = new Set(["name", "scope", "type", "description", "value"]);
+const variableFields = new Set(["name", "scope", "type", "item_type", "description", "value"]);
 const secretFields = new Set(["name", "type", "description", "required"]);
+const settingFields = new Set(["name", "type", "item_type", "description", "required", "default_value"]);
 const maximumDefaultValueBytes = 1_048_576;
 const riskWeight: Record<RiskLevel, number> = {
 	low: 1,
@@ -306,7 +314,7 @@ export function validateManifestContract(value: unknown) {
 				}
 				if (!variableTypes.includes(type)) {
 					errors.push(`manifest.json variable "${name}" has invalid type "${String(variable.type)}".`);
-				} else if (!defaultValueMatchesType(type, variable.value)) {
+				} else if (!defaultValueMatchesType(type, variable.value, variable.item_type)) {
 					errors.push(`manifest.json variable "${name}" value does not match type "${type}".`);
 				}
 				if (variable.description !== undefined && typeof variable.description !== "string") {
@@ -316,6 +324,44 @@ export function validateManifestContract(value: unknown) {
 				}
 				if (serializedByteLength(variable.value) > maximumDefaultValueBytes) {
 					errors.push(`manifest.json variable "${name}" default value exceeds ${maximumDefaultValueBytes} bytes.`);
+				}
+			}
+		}
+	}
+	if (manifest.settings !== undefined) {
+		if (!Array.isArray(manifest.settings)) {
+			errors.push("manifest.json settings must be an array when present.");
+		} else {
+			if (manifest.settings.length > 256) errors.push("manifest.json settings cannot contain more than 256 entries.");
+			const names = new Set<string>();
+			for (const value of manifest.settings) {
+				const setting = asRecord(value);
+				if (!setting) {
+					errors.push("manifest.json Script Setting declarations must be objects.");
+					continue;
+				}
+				errors.push(...validateKnownFields(setting, settingFields, "manifest.json Script Setting"));
+				const name = typeof setting.name === "string" ? setting.name : "";
+				const type = setting.type as (typeof variableTypes)[number];
+				if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+					errors.push(`manifest.json Script Setting name "${name}" is invalid.`);
+				}
+				if (names.has(name)) errors.push(`manifest.json contains duplicate Script Setting name "${name}".`);
+				names.add(name);
+				if (!variableTypes.includes(type)) {
+					errors.push(`manifest.json Script Setting "${name}" has invalid type "${String(setting.type)}".`);
+				} else if (
+					setting.default_value !== undefined &&
+					!defaultValueMatchesType(type, setting.default_value, setting.item_type, true)
+				) {
+					errors.push(`manifest.json Script Setting "${name}" default does not match type "${type}".`);
+				}
+				if (typeof setting.required !== "boolean") {
+					errors.push(`manifest.json Script Setting "${name}" required must be boolean.`);
+				}
+				validateManifestText(errors, "Script Setting description", setting.description, 1024, true, false);
+				if (serializedByteLength(setting.default_value) > maximumDefaultValueBytes) {
+					errors.push(`manifest.json Script Setting "${name}" default exceeds ${maximumDefaultValueBytes} bytes.`);
 				}
 			}
 		}
@@ -442,29 +488,57 @@ function validateDefaultVariableProgramContract(manifestValue: unknown, programV
 		const config = asRecord(step?.config);
 		if (step?.action_type !== "runtime.set_variable" || typeof config?.name !== "string") return [];
 		const variable = defaults.get(config.name);
-		if (!variable || (variable.scope === config.scope && variable.type === config.valueType)) return [];
-		return [`manifest.json variable "${config.name}" must match its Variable Operation scope and type.`];
+		const operation = normalizeVariableOperation(typeof config.operation === "string" ? config.operation : "set");
+		const declaredType =
+			operation === "set"
+				? typeof config.valueType === "string"
+					? config.valueType
+					: undefined
+				: getVariableOperationFixedType(operation);
+		const itemTypesMatch = operation !== "set" || variable?.type !== "list" || variable.item_type === config.itemType;
+		const typeMatches = declaredType === null || (variable?.type === declaredType && itemTypesMatch);
+		if (!variable || (variable.scope === config.scope && typeMatches)) {
+			return [];
+		}
+		return [
+			declaredType === null
+				? `manifest.json variable "${config.name}" must match its ${operation === "clear" ? "Clear" : "Delete Variable"} operation scope.`
+				: `manifest.json variable "${config.name}" must match its Variable Operation scope, type, and list item type.`,
+		];
 	});
 }
 
-function defaultValueMatchesType(type: (typeof variableTypes)[number], value: unknown) {
-	if (type === "string") return typeof value === "string" && value.trim().length > 0;
+function defaultValueMatchesType(
+	type: (typeof variableTypes)[number],
+	value: unknown,
+	itemType?: unknown,
+	allowEmptyString = false,
+): boolean {
+	if (type === "string") return typeof value === "string" && (allowEmptyString || value.trim().length > 0);
 	if (type === "file_path") return typeof value === "string" && value.trim().length > 0;
 	if (type === "number") return typeof value === "number" && Number.isFinite(value);
 	if (type === "boolean") return typeof value === "boolean";
-	if (type === "list") return Array.isArray(value) && value.every(isJsonValue);
-	if (type === "object") return isJsonObject(value);
-	const object = asRecord(value);
-	if (type === "http_response") {
+	if (type === "list") {
 		return (
-			object?.type === "http_response" &&
-			typeof object.status === "number" &&
-			isJsonObject(object.headers) &&
-			"body" in object
+			typeof itemType === "string" &&
+			listItemTypes.includes(itemType as (typeof listItemTypes)[number]) &&
+			Array.isArray(value) &&
+			value.every((item) => defaultValueMatchesType(itemType as (typeof listItemTypes)[number], item, undefined, true))
 		);
 	}
-	if (type === "datetime") return object?.type === "datetime" && typeof object.value === "string";
-	return object?.type === "duration" && typeof object.unit === "string" && typeof object.value === "number";
+	if (type === "object") return isJsonObject(value);
+	const object = asRecord(value);
+	if (type === "datetime") {
+		return object?.type === "datetime" && typeof object.value === "string" && !Number.isNaN(Date.parse(object.value));
+	}
+	return (
+		object?.type === "duration" &&
+		typeof object.unit === "string" &&
+		["milliseconds", "seconds", "minutes", "hours", "days"].includes(object.unit) &&
+		typeof object.value === "number" &&
+		Number.isFinite(object.value) &&
+		object.value >= 0
+	);
 }
 
 export function validateProgramContract(value: unknown) {
@@ -844,16 +918,16 @@ export function recalculateProgramDeclarations(programValue: unknown, manifestVa
 	const manifest = asRecord(manifestValue);
 	if (Array.isArray(manifest?.secrets) && manifest.secrets.length > 0) {
 		capabilities.add("runtime.secrets");
-		permissions.set("read_secret", { name: "read_secret", risk: "high" });
+		permissions.set("secret.read", { name: "secret.read", risk: "high" });
 	}
 	if (Array.isArray(manifest?.variables) && manifest.variables.length > 0) {
 		capabilities.add("runtime.variables");
 		if (manifest.variables.some((value) => asRecord(value)?.scope === "runtime")) {
-			permissions.set("set_local_variable", { name: "set_local_variable", risk: "low" });
+			permissions.set("variable.local.set", { name: "variable.local.set", risk: "low" });
 		}
 		if (manifest.variables.some((value) => asRecord(value)?.scope === "persistent")) {
 			capabilities.add("runtime.persistent_storage");
-			permissions.set("set_persistent_variable", { name: "set_persistent_variable", risk: "medium" });
+			permissions.set("variable.persistent.set", { name: "variable.persistent.set", risk: "medium" });
 		}
 	}
 

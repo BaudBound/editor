@@ -2,6 +2,7 @@ import type { Edge, Node } from "@xyflow/react";
 import { GripVertical, Info, Plus, Trash2, X } from "lucide-react";
 import { Fragment, type ReactNode, type PointerEvent as ReactPointerEvent, useEffect, useId, useState } from "react";
 import { CopyTextButton } from "@/components/common/copy-text-button";
+import { TypedValueEditor } from "@/components/common/typed-value-editor";
 import { ColorConfigInput } from "@/components/inspector/color-config-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +14,7 @@ import {
 	combinatorOptions,
 	comparisonOperatorOptions,
 	ifElseComparisonOperatorOptions,
+	isBetweenConditionOperator,
 	isUnaryConditionOperator,
 	playSoundSourceOptions,
 	type SelectOption,
@@ -39,9 +41,12 @@ import type { NodeConfigField } from "@/data/nodes/node-definition";
 import { createDefaultNodeConfig, getNodeConfigFields } from "@/data/nodes/registry";
 import { builtInVariableNames } from "@/data/project/built-in-variables";
 import { createSerialDeviceOptions, serialLineEndingOptions } from "@/data/project/serial";
+import { createEmptyTypedValue, normalizeListItemType, validateTypedValue } from "@/data/project/typed-values";
 import {
 	type EditorVariable,
 	getVariableOperationFixedType,
+	type ListItemType,
+	listItemTypes,
 	normalizeVariableOperation,
 	type VariableType,
 	validateObjectFieldPath,
@@ -434,6 +439,13 @@ function ConfigField({
 					<span className="text-sm text-baud-text">{value === true || value === "true" ? "Enabled" : "Disabled"}</span>
 					<Switch checked={value === true || value === "true"} onCheckedChange={(checked) => onChange(checked)} />
 				</div>
+			) : field.type === "string-list" ? (
+				<StringListField
+					label={field.label}
+					value={value}
+					variableCompletions={variableCompletions}
+					onChange={onChange}
+				/>
 			) : field.type === "textarea" && field.usesVariables ? (
 				<VariableCodeInput
 					ariaLabel={field.label}
@@ -459,6 +471,54 @@ function ConfigField({
 				/>
 			)}
 			{field.help && <p className="mt-1 text-xs leading-4 text-baud-muted">{field.help}</p>}
+		</div>
+	);
+}
+
+function StringListField({
+	label,
+	value,
+	variableCompletions,
+	onChange,
+}: {
+	label: string;
+	value: JsonValue | undefined;
+	variableCompletions: VariableCompletion[];
+	onChange: (value: JsonValue) => void;
+}) {
+	const items = Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+	const updateItem = (index: number, nextValue: string) => {
+		onChange(items.map((item, itemIndex) => (itemIndex === index ? nextValue : item)));
+	};
+
+	return (
+		<div className="space-y-2">
+			{items.map((item, index) => (
+				<div className="flex items-start gap-2" key={`${index}-${items.length}`}>
+					<div className="min-w-0 flex-1">
+						<VariableCodeInput
+							ariaLabel={`${label} ${index + 1}`}
+							value={item}
+							variables={variableCompletions}
+							onChange={(nextValue) => updateItem(index, nextValue)}
+						/>
+					</div>
+					<Button
+						type="button"
+						aria-label={`Remove ${label.toLowerCase()} ${index + 1}`}
+						title={`Remove ${label.toLowerCase()} ${index + 1}`}
+						size="icon"
+						variant="destructive"
+						onClick={() => onChange(items.filter((_, itemIndex) => itemIndex !== index))}
+					>
+						<Trash2 size={15} />
+					</Button>
+				</div>
+			))}
+			<Button type="button" size="sm" variant="secondary" onClick={() => onChange([...items, ""])}>
+				<Plus size={14} />
+				Add argument
+			</Button>
 		</div>
 	);
 }
@@ -540,7 +600,11 @@ function IfElseConfigPanel({
 											updateCondition(
 												conditions,
 												condition.id,
-												isUnaryConditionOperator(value) ? { operator: value, right: "" } : { operator: value },
+												isUnaryConditionOperator(value)
+													? { operator: value, right: "", rightEnd: "" }
+													: isBetweenConditionOperator(value)
+														? { operator: value }
+														: { operator: value, rightEnd: "" },
 												onChange,
 											)
 										}
@@ -549,7 +613,24 @@ function IfElseConfigPanel({
 										checked={condition.invert === true}
 										onChange={(checked) => updateCondition(conditions, condition.id, { invert: checked }, onChange)}
 									/>
-									{!isUnaryConditionOperator(condition.operator) && (
+									{isBetweenConditionOperator(condition.operator) ? (
+										<>
+											<TextInput
+												label="Start value"
+												value={condition.right}
+												usesVariables
+												variableCompletions={variableCompletions}
+												onChange={(value) => updateCondition(conditions, condition.id, { right: value }, onChange)}
+											/>
+											<TextInput
+												label="End value"
+												value={condition.rightEnd ?? ""}
+												usesVariables
+												variableCompletions={variableCompletions}
+												onChange={(value) => updateCondition(conditions, condition.id, { rightEnd: value }, onChange)}
+											/>
+										</>
+									) : !isUnaryConditionOperator(condition.operator) ? (
 										<TextInput
 											label="Target"
 											value={condition.right}
@@ -557,7 +638,7 @@ function IfElseConfigPanel({
 											variableCompletions={variableCompletions}
 											onChange={(value) => updateCondition(conditions, condition.id, { right: value }, onChange)}
 										/>
-									)}
+									) : null}
 								</fieldset>
 							</li>
 						</Fragment>
@@ -909,6 +990,9 @@ function VariableOperationConfigPanel({
 	const operation = normalizeVariableOperation(valueToInputString(config.operation));
 	const fixedType = getVariableOperationFixedType(operation);
 	const selectedType = fixedType ?? normalizeVariableType(valueToInputString(config.valueType));
+	const itemType = normalizeListItemType(config.itemType) ?? "string";
+	const fieldValueType = normalizeVariableType(valueToInputString(config.fieldValueType));
+	const fieldItemType = normalizeListItemType(config.fieldItemType) ?? "string";
 	const scope = normalizeScope(valueToInputString(config.scope));
 	const savedName = valueToInputString(config.name);
 	const savedValue = valueToInputString(config.value);
@@ -925,29 +1009,61 @@ function VariableOperationConfigPanel({
 
 	const nameValidationMessage = validateWritableVariableName(draftName, builtInVariableNames);
 	const typeCompatibilityMessage = validateVariableOperationType(operation, selectedType);
-	const validationMessage = validateVariableOperationValue(operation, selectedType, draftValue, draftFieldPath);
+	const validationMessage = validateVariableOperationValue(
+		operation,
+		selectedType,
+		draftValue,
+		draftFieldPath,
+		itemType,
+		fieldValueType,
+		fieldItemType,
+	);
 	const definition = variableTypeDefinitions[selectedType];
 	const operationDefinition = variableOperationDefinitions[operation];
 
 	const handleTypeChange = (value: string) => {
 		const nextType = normalizeVariableType(value);
 		onChange("valueType", nextType);
-		onChange("value", "");
-		setDraftValue("");
+		if (nextType === "list") {
+			onChange("itemType", "string");
+		}
+		const nextValue = createEmptyVariableOperationInput(nextType);
+		onChange("value", nextValue);
+		setDraftValue(nextValue);
 	};
 
 	const handleOperationChange = (value: string) => {
 		const nextOperation = normalizeVariableOperation(value);
 		const nextType = getVariableOperationFixedType(nextOperation) ?? selectedType;
 		onChange("operation", nextOperation);
-		onChange("valueType", nextType);
-		onChange("value", "");
-		setDraftValue("");
+		if (nextOperation === "set") {
+			onChange("valueType", nextType);
+		}
+		if (nextOperation === "set" && nextType === "list") {
+			onChange("itemType", itemType);
+		}
+		if (nextOperation === "set_object_field") {
+			onChange("fieldValueType", fieldValueType);
+		}
+		const inputType = getVariableOperationInputType(nextOperation, nextType, fieldValueType);
+		const nextValue = variableOperationNeedsValue(nextOperation) ? createEmptyVariableOperationInput(inputType) : "";
+		onChange("value", nextValue);
+		setDraftValue(nextValue);
 	};
 
 	const handleValueChange = (value: string) => {
 		setDraftValue(value);
-		if (!validateVariableOperationValue(operation, selectedType, value, draftFieldPath)) {
+		if (
+			!validateVariableOperationValue(
+				operation,
+				selectedType,
+				value,
+				draftFieldPath,
+				itemType,
+				fieldValueType,
+				fieldItemType,
+			)
+		) {
 			onChange("value", value);
 		}
 	};
@@ -992,17 +1108,7 @@ function VariableOperationConfigPanel({
 				onChange={(value) => onChange("scope", value)}
 			/>
 			<p className="text-xs leading-4 text-baud-muted">{variableScopeDefinitions[normalizeScope(scope)]}</p>
-			{fixedType ? (
-				<div>
-					<span className="mb-1 block font-mono text-sm text-baud-muted">Variable type</span>
-					<div className="rounded border border-baud-border bg-baud-soft px-3 py-2 font-mono text-sm text-baud-text">
-						{fixedType}
-					</div>
-					<p className="mt-1 text-xs leading-4 text-baud-muted">
-						This operation only supports {fixedType} variables, so the type is locked.
-					</p>
-				</div>
-			) : (
+			{operation === "set" && (
 				<ComboboxField
 					label="Variable type"
 					value={selectedType}
@@ -1011,8 +1117,8 @@ function VariableOperationConfigPanel({
 				/>
 			)}
 			{typeCompatibilityMessage && <p className="text-xs leading-4 text-baud-danger">{typeCompatibilityMessage}</p>}
-			{operation === "set_object_field" && (
-				<div>
+			{(operation === "set_object_field" || operation === "remove_object_field") && (
+				<div className="space-y-3">
 					<TextInput
 						label="Object field path"
 						value={draftFieldPath}
@@ -1025,40 +1131,244 @@ function VariableOperationConfigPanel({
 					{validateObjectFieldPath(draftFieldPath) && (
 						<p className="mt-1 text-xs leading-4 text-baud-danger">{validateObjectFieldPath(draftFieldPath)}</p>
 					)}
+					{operation === "set_object_field" && (
+						<ComboboxField
+							label="Field value type"
+							value={fieldValueType}
+							options={variableTypeOptions}
+							onChange={(value) => {
+								const nextType = normalizeVariableType(value);
+								onChange("fieldValueType", nextType);
+								if (nextType === "list") {
+									onChange("fieldItemType", "string");
+								}
+								const nextValue = createEmptyVariableOperationInput(nextType);
+								onChange("value", nextValue);
+								setDraftValue(nextValue);
+							}}
+						/>
+					)}
 				</div>
 			)}
+			{operation === "set" && selectedType === "list" && (
+				<ComboboxField
+					label="List item type"
+					value={itemType}
+					options={listItemTypes.map((type) => ({ label: type, value: type }))}
+					onChange={(value) => {
+						const nextType = normalizeListItemType(value) ?? "string";
+						onChange("itemType", nextType);
+						const nextValue = createEmptyVariableOperationInput("list");
+						onChange("value", nextValue);
+						setDraftValue(nextValue);
+					}}
+				/>
+			)}
+			{operation === "set_object_field" && fieldValueType === "list" && (
+				<ComboboxField
+					label="Field list item type"
+					value={fieldItemType}
+					options={listItemTypes.map((type) => ({ label: type, value: type }))}
+					onChange={(value) => {
+						const nextType = normalizeListItemType(value) ?? "string";
+						onChange("fieldItemType", nextType);
+						const nextValue = serializeTypedConfigValue([], "list");
+						onChange("value", nextValue);
+						setDraftValue(nextValue);
+					}}
+				/>
+			)}
+			{operation === "remove_list_items" && (
+				<ComboboxField
+					label="Remove"
+					value={valueToInputString(config.removeMode) || "all"}
+					options={[
+						{ label: "First match", value: "first" },
+						{ label: "All matches", value: "all" },
+					]}
+					onChange={(value) => onChange("removeMode", value)}
+				/>
+			)}
 			<div>
-				<span className="mb-1 block font-mono text-sm text-baud-muted">{operationDefinition.valueLabel}</span>
-				{operation === "clear" ? (
+				{!variableOperationNeedsValue(operation) ? (
 					<div className="rounded border border-baud-border bg-baud-soft p-3 text-sm leading-5 text-baud-muted">
-						This operation clears the variable to the empty value for its type. No manual value is required.
+						{operationDefinition.description} No manual value is required.
 					</div>
-				) : selectedType === "boolean" ? (
-					<OptionCombobox
-						ariaLabel={operationDefinition.valueLabel}
-						value={draftValue}
-						options={[
-							{ label: "true", value: "true" },
-							{ label: "false", value: "false" },
-						]}
-						placeholder="Select a value"
-						onChange={handleValueChange}
-					/>
 				) : (
-					<VariableCodeInput
+					<VariableOperationValueInput
+						key={`${operation}:${getVariableOperationInputType(operation, selectedType, fieldValueType)}`}
 						ariaLabel={operationDefinition.valueLabel}
+						id={`${savedName || "variable"}-value`}
+						itemType={
+							operation === "set_object_field"
+								? fieldValueType === "list"
+									? fieldItemType
+									: undefined
+								: operation === "set" && selectedType === "list"
+									? itemType
+									: undefined
+						}
+						type={getVariableOperationInputType(operation, selectedType, fieldValueType)}
 						value={draftValue}
-						multiline
 						hasError={!!validationMessage}
 						variables={variableCompletions}
 						onChange={handleValueChange}
 					/>
 				)}
-				<p className="mt-1 text-xs leading-4 text-baud-muted">{definition.description}</p>
+				{operation === "set" && <p className="mt-1 text-xs leading-4 text-baud-muted">{definition.description}</p>}
 				{validationMessage && <p className="mt-1 text-xs leading-4 text-baud-danger">{validationMessage}</p>}
 			</div>
 		</div>
 	);
+}
+
+function VariableOperationValueInput({
+	ariaLabel,
+	id,
+	hasError,
+	itemType,
+	type,
+	value,
+	variables,
+	onChange,
+}: {
+	ariaLabel: string;
+	id: string;
+	hasError: boolean;
+	itemType?: ListItemType;
+	type: VariableType;
+	value: string;
+	variables: VariableCompletion[];
+	onChange: (value: string) => void;
+}) {
+	const fullTemplate = isFullTemplateReference(value);
+	const [source, setSource] = useState<"literal" | "raw">(fullTemplate ? "raw" : "literal");
+
+	if (type === "string" || type === "number" || type === "object" || type === "file_path") {
+		return (
+			<div>
+				<span className="mb-1 block font-mono text-sm text-baud-muted">{ariaLabel}</span>
+				<VariableCodeInput
+					ariaLabel={ariaLabel}
+					value={value}
+					multiline
+					hasError={hasError}
+					variables={variables}
+					onChange={onChange}
+				/>
+			</div>
+		);
+	}
+
+	const typedValue = parseTypedConfigValue(value, type, itemType);
+
+	return (
+		<div className="grid gap-2">
+			<ComboboxField
+				label="Value source"
+				value={source}
+				options={[
+					{ label: "Literal value", value: "literal" },
+					{ label: "Raw value", value: "raw" },
+				]}
+				onChange={(next) => {
+					const nextSource = next === "raw" ? "raw" : "literal";
+					setSource(nextSource);
+					onChange(nextSource === "raw" ? "" : createEmptyVariableOperationInput(type, itemType));
+				}}
+			/>
+			{source === "raw" ? (
+				<div>
+					<span className="mb-1 block font-mono text-sm text-baud-muted">{ariaLabel}</span>
+					<VariableCodeInput
+						ariaLabel={ariaLabel}
+						value={value}
+						multiline
+						hasError={hasError}
+						variables={variables}
+						onChange={onChange}
+					/>
+				</div>
+			) : (
+				<div>
+					<span className="mb-1 block font-mono text-sm text-baud-muted">{ariaLabel}</span>
+					<TypedValueEditor
+						ariaLabel={ariaLabel}
+						id={id}
+						itemType={itemType}
+						showListItemType={false}
+						type={type}
+						value={typedValue}
+						onChange={(next) => onChange(serializeTypedConfigValue(next, type))}
+					/>
+				</div>
+			)}
+		</div>
+	);
+}
+
+function getVariableOperationInputType(
+	operation: ReturnType<typeof normalizeVariableOperation>,
+	targetType: VariableType,
+	fieldValueType: VariableType,
+) {
+	if (operation === "append_list") {
+		return "string";
+	}
+	if (operation === "remove_list_items") {
+		return "string";
+	}
+	if (operation === "set_object_field") {
+		return fieldValueType;
+	}
+	if (operation === "merge_object") {
+		return "object";
+	}
+	if (operation === "increment") {
+		return "number";
+	}
+	return targetType;
+}
+
+function variableOperationNeedsValue(operation: ReturnType<typeof normalizeVariableOperation>) {
+	return !["clear", "delete", "toggle_boolean", "remove_object_field"].includes(operation);
+}
+
+function parseTypedConfigValue(value: string, type: VariableType, itemType?: ListItemType): JsonValue {
+	if (type === "string" || type === "file_path") {
+		return value;
+	}
+	if (type === "number") {
+		if (!value.trim()) {
+			return "";
+		}
+		const parsed = Number(value);
+		return Number.isFinite(parsed) ? parsed : "";
+	}
+	if (type === "boolean") {
+		return value.trim().toLowerCase() === "true";
+	}
+	try {
+		const parsed = JSON.parse(value) as JsonValue;
+		return validateTypedValue(type, parsed, itemType) ? createEmptyTypedValue(type, itemType) : parsed;
+	} catch {
+		return createEmptyTypedValue(type, itemType);
+	}
+}
+
+function serializeTypedConfigValue(value: JsonValue, type: VariableType) {
+	return type === "string" || type === "file_path" ? String(value) : JSON.stringify(value);
+}
+
+function createEmptyVariableOperationInput(type: VariableType, itemType?: ListItemType) {
+	if (type === "string" || type === "file_path" || type === "number") {
+		return "";
+	}
+	return serializeTypedConfigValue(createEmptyTypedValue(type, itemType), type);
+}
+
+function isFullTemplateReference(value: string) {
+	return /^\{\{\s*[^{}]+\s*\}\}$/.test(value.trim());
 }
 
 function HttpHeadersPanel({
@@ -1433,7 +1743,14 @@ function FloatingConditionCard({ condition, drag }: { condition: ConditionRow; d
 			</div>
 			<GhostField label="Value" value={condition.left} />
 			<GhostField label="Expression" value={condition.operator} />
-			{!isUnaryConditionOperator(condition.operator) && <GhostField label="Target" value={condition.right} />}
+			{isBetweenConditionOperator(condition.operator) ? (
+				<>
+					<GhostField label="Start value" value={condition.right} />
+					<GhostField label="End value" value={condition.rightEnd ?? ""} />
+				</>
+			) : (
+				!isUnaryConditionOperator(condition.operator) && <GhostField label="Target" value={condition.right} />
+			)}
 		</FloatingReorderCard>
 	);
 }
@@ -1454,7 +1771,7 @@ function FloatingSwitchCaseCard({ switchCase, drag }: { switchCase: SwitchCaseRo
 function FloatingReorderCard({ drag, children }: { drag: ActiveReorderDragState; children: ReactNode }) {
 	return (
 		<div
-			className="pointer-events-none fixed z-9999 space-y-2 rounded border border-baud-purple bg-baud-panel p-2 opacity-95 shadow-[0_18px_42px_rgba(0,0,0,0.38)]"
+			className="pointer-events-none fixed z-9999 space-y-2 rounded border border-baud-red bg-baud-panel p-2 opacity-95 shadow-[0_18px_42px_rgba(0,0,0,0.38)]"
 			style={{
 				left: drag.pointerX - drag.pointerOffsetX,
 				minHeight: drag.cardHeight,
@@ -1671,6 +1988,9 @@ function createSerializableConditionRow(condition: ConditionRow, combinator: str
 		operator: condition.operator,
 		right: condition.right,
 	};
+	if (isBetweenConditionOperator(condition.operator)) {
+		row.rightEnd = condition.rightEnd ?? "";
+	}
 
 	if (condition.invert === true) {
 		row.invert = true;

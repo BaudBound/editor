@@ -45,6 +45,7 @@ import { defaultEditorEdgeStyle, type EditorEdgeStyle, toReactFlowEdgeType } fro
 import { createSwitchOutputPorts, getSwitchCaseRowsFromValue } from "@/data/nodes/definitions/rows";
 import { createDevelopmentEditorNodes, isDevelopmentGraphEnabled } from "@/data/nodes/development-graph";
 import { createNodeFromPaletteItem, getFlatPaletteItems, getRuntimeDataOutputs } from "@/data/nodes/registry";
+import { getScriptSettingSimulationProblems } from "@/data/project/script-settings";
 import { createSimulationSecretValues, getSecretSimulationProblems } from "@/data/project/secrets";
 import { getProjectHistoryCoalesceKey } from "@/data/projects/history";
 import type { EditorProject } from "@/data/projects/model";
@@ -62,6 +63,7 @@ import type {
 	LogEntry,
 	PaletteItem,
 	ProjectSettings,
+	ScriptSetting,
 	SecretDeclaration,
 	SimulationOverride,
 	SimulationOverrideOutcome,
@@ -249,6 +251,7 @@ export function EditorPage({
 	const [assets, setAssets] = useState<EditorAsset[]>(initialProject.assets);
 	const [defaultVariables, setDefaultVariables] = useState<DefaultVariable[]>(initialProject.defaultVariables);
 	const [secretDeclarations, setSecretDeclarations] = useState<SecretDeclaration[]>(initialProject.secretDeclarations);
+	const [scriptSettings, setScriptSettings] = useState<ScriptSetting[]>(initialProject.scriptSettings);
 	const [simulationSecretValues, setSimulationSecretValues] = useState<Record<string, string>>({});
 	const [edgeStyle, setEdgeStyle] = useState<EditorEdgeStyle>(initialProject.edgeStyle ?? defaultEditorEdgeStyle);
 	const [viewportCenter, setViewportCenter] = useState<XYPosition | null>(null);
@@ -366,8 +369,9 @@ export function EditorPage({
 				simulationVariables,
 				secretDeclarations,
 				defaultVariables,
+				scriptSettings,
 			),
-		[projectSettings, scriptNodes, simulationVariables, secretDeclarations, defaultVariables],
+		[projectSettings, scriptNodes, simulationVariables, secretDeclarations, defaultVariables, scriptSettings],
 	);
 	const normalizedProjectSettings = {
 		...projectSettings,
@@ -388,6 +392,7 @@ export function EditorPage({
 			revision: persistedProject.revision,
 			schemaVersion: persistedProject.schemaVersion,
 			secretDeclarations,
+			scriptSettings,
 			settings: projectSettings,
 			updatedAt: persistedProject.updatedAt,
 		}),
@@ -401,6 +406,7 @@ export function EditorPage({
 			projectSettings,
 			scriptNodes,
 			secretDeclarations,
+			scriptSettings,
 		],
 	);
 	const currentSignature = useMemo(() => projectContentSignature(currentProject), [currentProject]);
@@ -445,6 +451,7 @@ export function EditorPage({
 			setAssets(project.assets);
 			setDefaultVariables(project.defaultVariables);
 			setSecretDeclarations(project.secretDeclarations);
+			setScriptSettings(project.scriptSettings);
 			setEdgeStyle(project.edgeStyle);
 			setNodes([
 				...(project.nodes as ScriptFlowNode[]),
@@ -561,6 +568,7 @@ export function EditorPage({
 			edgeStyle,
 			secretDeclarations,
 			defaultVariables,
+			scriptSettings,
 		});
 	};
 
@@ -680,9 +688,15 @@ export function EditorPage({
 			setSimulationEdgeIds(new Set());
 			setSimulationNodeIds(new Set());
 			const secretProblems = getSecretSimulationProblems(secretDeclarations, simulationSecretValues);
-			if (secretProblems.length > 0) {
+			const settingProblems = getScriptSettingSimulationProblems(scriptSettings);
+			if (secretProblems.length > 0 || settingProblems.length > 0) {
 				setSimulationStatus("failed");
-				appendSimulationLogs(secretProblems.map((message) => ({ level: "error", message: `[Simulation] ${message}` })));
+				appendSimulationLogs(
+					[...secretProblems, ...settingProblems].map((message) => ({
+						level: "error",
+						message: `[Simulation] ${message}`,
+					})),
+				);
 				completeSimulationLifecycle(runId);
 				return;
 			}
@@ -697,6 +711,7 @@ export function EditorPage({
 					overrides: simulationOverrides,
 					projectSettings,
 					defaultVariables,
+					scriptSettings,
 					globalVariables: simulationGlobalVariablesRef.current,
 					persistentVariables: simulationPersistentVariablesRef.current,
 					secretValues: createSimulationSecretValues(secretDeclarations, simulationSecretValues),
@@ -732,6 +747,7 @@ export function EditorPage({
 			projectSettings,
 			defaultVariables,
 			secretDeclarations,
+			scriptSettings,
 			scriptNodes,
 			simulationSecretValues,
 			simulationOverrides,
@@ -1030,27 +1046,31 @@ export function EditorPage({
 	}, [abortSimulationLifecycle, appendSystemLogs, defaultVariables]);
 
 	const handleDefaultVariablesChange = useCallback(
-		(nextVariables: DefaultVariable[], rename?: VariableRename) => {
-			if (rename) {
-				setNodes((currentNodes) => renameNodeVariableReferences(currentNodes, rename, true));
+		(nextVariables: DefaultVariable[], renames: VariableRename[] = []) => {
+			if (renames.length > 0) {
+				setNodes((currentNodes) =>
+					renames.reduce((nextNodes, rename) => renameNodeVariableReferences(nextNodes, rename, true), currentNodes),
+				);
 
-				const nextDeclaration = nextVariables.find((variable) => variable.name === rename.to);
-				const currentStoredValues = simulationPersistentVariablesRef.current;
-				const nextStoredValues = { ...currentStoredValues };
-				const previousStoredValue = currentStoredValues[rename.from];
-				const hadStoredValue = Object.hasOwn(currentStoredValues, rename.from);
-				delete nextStoredValues[rename.from];
-				if (nextDeclaration?.scope === "persistent") {
-					nextStoredValues[rename.to] = hadStoredValue ? previousStoredValue : structuredClone(nextDeclaration.value);
+				for (const rename of renames) {
+					const nextDeclaration = nextVariables.find((variable) => variable.name === rename.to);
+					const currentStoredValues = simulationPersistentVariablesRef.current;
+					const nextStoredValues = { ...currentStoredValues };
+					const previousStoredValue = currentStoredValues[rename.from];
+					const hadStoredValue = Object.hasOwn(currentStoredValues, rename.from);
+					delete nextStoredValues[rename.from];
+					if (nextDeclaration?.scope === "persistent") {
+						nextStoredValues[rename.to] = hadStoredValue ? previousStoredValue : structuredClone(nextDeclaration.value);
+					}
+					simulationPersistentVariablesRef.current = nextStoredValues;
+
+					appendSystemLogs([
+						{
+							level: "info",
+							message: `Renamed default variable "${rename.from}" to "${rename.to}" and updated its node references.`,
+						},
+					]);
 				}
-				simulationPersistentVariablesRef.current = nextStoredValues;
-
-				appendSystemLogs([
-					{
-						level: "info",
-						message: `Renamed default variable "${rename.from}" to "${rename.to}" and updated its node references.`,
-					},
-				]);
 			}
 
 			setDefaultVariables(nextVariables);
@@ -1059,18 +1079,38 @@ export function EditorPage({
 	);
 
 	const handleSecretDeclarationsChange = useCallback(
-		(nextDeclarations: SecretDeclaration[], rename?: VariableRename) => {
-			if (rename) {
-				setNodes((currentNodes) => renameNodeVariableReferences(currentNodes, rename, false));
-				appendSystemLogs([
-					{
-						level: "info",
+		(nextDeclarations: SecretDeclaration[], renames: VariableRename[] = []) => {
+			if (renames.length > 0) {
+				setNodes((currentNodes) =>
+					renames.reduce((nextNodes, rename) => renameNodeVariableReferences(nextNodes, rename, false), currentNodes),
+				);
+				appendSystemLogs(
+					renames.map((rename) => ({
+						level: "info" as const,
 						message: `Renamed secret reference "${rename.from}" to "${rename.to}" and updated its node references.`,
-					},
-				]);
+					})),
+				);
 			}
 
 			setSecretDeclarations(nextDeclarations);
+		},
+		[appendSystemLogs, setNodes],
+	);
+
+	const handleScriptSettingsChange = useCallback(
+		(nextSettings: ScriptSetting[], renames: VariableRename[] = []) => {
+			if (renames.length > 0) {
+				setNodes((currentNodes) =>
+					renames.reduce((nextNodes, rename) => renameNodeVariableReferences(nextNodes, rename, false), currentNodes),
+				);
+				appendSystemLogs(
+					renames.map((rename) => ({
+						level: "info" as const,
+						message: `Renamed Script Setting "${rename.from}" to "${rename.to}" and updated its node references.`,
+					})),
+				);
+			}
+			setScriptSettings(nextSettings);
 		},
 		[appendSystemLogs, setNodes],
 	);
@@ -1457,27 +1497,12 @@ export function EditorPage({
 						systemLogs={systemLogs}
 						simulationLogs={simulationLogs}
 						variables={variableEntries}
-						defaultVariables={defaultVariables}
-						secretDeclarations={secretDeclarations}
-						simulationSecretValues={simulationSecretValues}
 						height={sizes.bottom}
 						onClearTab={handleClearBottomPanelTab}
 						onFollowChange={handleFollowBottomPanelTab}
 						onResetStoredValues={handleResetStoredSimulationValues}
 						onTabChange={setBottomPanelTab}
 						onToggle={() => togglePanel("bottom")}
-						onDefaultVariablesChange={handleDefaultVariablesChange}
-						onSecretDeclarationsChange={handleSecretDeclarationsChange}
-						onSimulationSecretValueChange={(name, value) =>
-							setSimulationSecretValues((current) => {
-								if (value === "") {
-									const next = { ...current };
-									delete next[name];
-									return next;
-								}
-								return { ...current, [name]: value };
-							})
-						}
 					/>
 				</main>
 
@@ -1565,8 +1590,16 @@ export function EditorPage({
 				open={projectSettingsOpen}
 				projectId={persistedProject.identity.id}
 				settings={projectSettings}
+				defaultVariables={defaultVariables}
+				secretDeclarations={secretDeclarations}
+				scriptSettings={scriptSettings}
+				simulationSecretValues={simulationSecretValues}
 				onClose={() => setProjectSettingsOpen(false)}
 				onSave={handleSaveProjectSettings}
+				onDefaultVariablesChange={handleDefaultVariablesChange}
+				onSecretDeclarationsChange={handleSecretDeclarationsChange}
+				onScriptSettingsChange={handleScriptSettingsChange}
+				onSimulationSecretValuesChange={setSimulationSecretValues}
 			/>
 			<AssetEditorModal
 				assets={assets}

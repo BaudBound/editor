@@ -14,7 +14,7 @@ export const clipboardNode = defineNode({
 	icon: Clipboard,
 	kind: "action",
 	label: "Set Clipboard",
-	permission: { name: "write_clipboard", risk: "medium" },
+	permission: { name: "clipboard.write", risk: "medium" },
 	risk: "medium",
 	runtimeOutputs: fallible([
 		{ name: "value", type: "string", description: "Text written to the clipboard.", example: "n-mr3zyt6f-20.value" },

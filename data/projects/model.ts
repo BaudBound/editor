@@ -6,10 +6,11 @@ import type {
 	EditorComment,
 	ProjectSettings,
 	ScriptNodeData,
+	ScriptSetting,
 	SecretDeclaration,
 } from "@/lib/types";
 
-export const editorProjectSchemaVersion = 4;
+export const editorProjectSchemaVersion = 6;
 
 export type ProjectIdentity = {
 	createdAt: string;
@@ -27,6 +28,7 @@ export type EditorProject = {
 	revision: number;
 	schemaVersion: typeof editorProjectSchemaVersion;
 	secretDeclarations: SecretDeclaration[];
+	scriptSettings: ScriptSetting[];
 	settings: ProjectSettings;
 	updatedAt: string;
 };

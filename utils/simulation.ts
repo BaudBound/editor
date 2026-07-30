@@ -1,10 +1,11 @@
 import type { Edge, Node } from "@xyflow/react";
-import { compareConditionValues, conditionValuesEqual } from "@/data/nodes/condition-comparison";
+import { conditionValuesEqual, evaluateConditionValues } from "@/data/nodes/condition-comparison";
 import { isConditionRow, isSwitchCaseRow } from "@/data/nodes/definitions/rows";
 import type { NodeSimulationApi } from "@/data/nodes/node-definition";
 import { numericContractApplies, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
 import { fallibleActionTypes, getNodeDefinition } from "@/data/nodes/registry";
 import { createSimulationBuiltInVariableValues } from "@/data/project/built-in-variables";
+import { createSimulationScriptSettingValues } from "@/data/project/script-settings";
 import type {
 	JsonValue,
 	LogEntry,
@@ -97,6 +98,7 @@ export async function createSimulationRun({
 	overrides,
 	persistentVariables = {},
 	projectSettings,
+	scriptSettings = [],
 	secretValues = {},
 	signal,
 	stepDelayMs = 0,
@@ -124,6 +126,7 @@ export async function createSimulationRun({
 		},
 		runtimeVariables: {
 			...createSimulationBuiltInVariableValues(projectSettings),
+			settings: createSimulationScriptSettingValues(scriptSettings),
 			...Object.fromEntries(
 				defaultVariables
 					.filter((variable) => variable.scope === "runtime")
@@ -371,11 +374,31 @@ async function executeNodeFrame(
 
 	if (node.data.actionType === "control.for_each") {
 		const items = getForEachItems(node, context);
+		if (typeof items === "string") {
+			context.failed = true;
+			await pushStep(context, {
+				level: "error",
+				message: `[Simulation] For Each (${node.id}) failed: ${items}.`,
+			});
+			return;
+		}
 		frames.push({ kind: "for_each", nodeId: node.id, index: 0, items });
 		return;
 	}
 
-	const handle = await determineOutputHandle(node, context, outcome);
+	let handle: string;
+	try {
+		handle = await determineOutputHandle(node, context, outcome);
+	} catch (error) {
+		context.failed = true;
+		await pushStep(context, {
+			level: "error",
+			message: `[Simulation] ${node.data.label} (${node.id}) failed: ${
+				error instanceof Error ? error.message : "condition evaluation failed"
+			}.`,
+		});
+		return;
+	}
 	if (!handle) {
 		await pushStep(context, {
 			level: "warn",
@@ -475,7 +498,19 @@ async function processWhileFrame(
 		return;
 	}
 
-	const conditionPassed = evaluateIfNode(node, context);
+	let conditionPassed: boolean;
+	try {
+		conditionPassed = evaluateIfNode(node, context);
+	} catch (error) {
+		context.failed = true;
+		await pushStep(context, {
+			level: "error",
+			message: `[Simulation] While (${node.id}) failed: ${
+				error instanceof Error ? error.message : "condition evaluation failed"
+			}.`,
+		});
+		return;
+	}
 	if (!conditionPassed) {
 		await pushStep(context, {
 			level: "info",
@@ -625,16 +660,16 @@ function evaluateIfNode(node: Node<ScriptNodeData>, context: SimulationContext) 
 	}
 
 	return rows.reduce((result, row, index) => {
+		const left = resolveTemplate(row.left, context);
 		const compared =
-			row.operator === "is_defined"
-				? isTemplateDefined(row.left, context)
-				: row.operator === "is_missing"
-					? !isTemplateDefined(row.left, context)
-					: compareConditionValues(
-							resolveTemplate(row.left, context),
-							row.operator,
-							resolveTemplate(row.right, context),
-						);
+			row.operator === "is_null_or_missing"
+				? !isTemplateDefined(row.left, context) || left === null
+				: getConditionEvaluationValue(
+						left,
+						row.operator,
+						resolveTemplate(row.right, context),
+						resolveTemplate(row.rightEnd ?? "", context),
+					);
 		const rowResult = row.invert === true ? !compared : compared;
 
 		if (index === 0) {
@@ -717,24 +752,28 @@ function validateResolvedNumericNode(node: Node<ScriptNodeData>, context: Simula
 	return "";
 }
 
-function getForEachItems(node: Node<ScriptNodeData>, context: SimulationContext): JsonValue[] {
-	const value = resolveJsonCompatibleInput(getConfigString(node, "items"), context);
+function getConditionEvaluationValue(left: JsonValue, operator: string, right: JsonValue, rightEnd: JsonValue) {
+	const result = evaluateConditionValues(left, operator, right, rightEnd);
+	if ("error" in result) {
+		throw new Error(result.error);
+	}
+	return result.value;
+}
+
+function getForEachItems(node: Node<ScriptNodeData>, context: SimulationContext): JsonValue[] | string {
+	const value = resolveTemplate(getConfigString(node, "items"), context);
 	if (Array.isArray(value)) {
 		return value;
 	}
 
-	if (value && typeof value === "object") {
-		return Object.values(value);
-	}
-
 	if (typeof value === "string" && value.trim()) {
-		return value
-			.split(/\r?\n|,/)
-			.map((item) => item.trim())
-			.filter(Boolean);
+		const parsed = parseJsonValue(value.trim());
+		if (Array.isArray(parsed)) {
+			return parsed;
+		}
 	}
 
-	return [];
+	return `items must resolve to a list, found ${getValueType(value)}`;
 }
 
 function createSimulatedPixelColorOutput(x: number, y: number): Record<string, JsonValue> {
@@ -871,11 +910,24 @@ async function executeHttpRequestNode(
 	node: Node<ScriptNodeData>,
 	context: SimulationContext,
 ): Promise<NodeExecutionResult> {
-	const method = normalizeHttpMethod(getConfigString(node, "method"));
-	const url = String(resolveTemplate(getConfigString(node, "url"), context)).trim();
-	const timeoutSeconds = Number(getConfigString(node, "timeoutSeconds"));
-	const headers = createHttpHeaders(node, context);
 	const startedAt = performance.now();
+	let method = getConfigString(node, "method");
+	let url = getConfigString(node, "url");
+	let headers: Headers;
+	try {
+		method = normalizeHttpMethod(method);
+		url = String(resolveTemplate(url, context)).trim();
+		headers = createHttpHeaders(node, context);
+	} catch (error) {
+		return {
+			failed: true,
+			outputData: {
+				error: createHttpErrorObject(error, url, method, Math.round(performance.now() - startedAt)),
+			},
+		};
+	}
+
+	const timeoutSeconds = Number(getConfigString(node, "timeoutSeconds"));
 	const abortController = new AbortController();
 	const forwardAbort = () => abortController.abort(context.signal?.reason);
 	const timeoutId = window.setTimeout(() => abortController.abort("timeout"), timeoutSeconds * 1000);
@@ -975,19 +1027,39 @@ function createHttpHeaders(node: Node<ScriptNodeData>, context: SimulationContex
 				continue;
 			}
 
-			const name = String(resolveTemplate(header.name, context)).trim();
-			const value = String(resolveTemplate(header.value, context));
-			if (name && name.toLowerCase() !== "user-agent") {
-				try {
-					headers.set(name, value);
-				} catch {
-					// Browsers reject invalid or forbidden request headers. The runner can validate these more strictly.
-				}
-			}
+			setSimulatedHttpHeader(headers, header.name, header.value, context);
+		}
+	} else if (configHeaders && typeof configHeaders === "object") {
+		for (const [name, value] of Object.entries(configHeaders)) {
+			setSimulatedHttpHeader(headers, name, formatValue(value), context);
 		}
 	}
 
 	return headers;
+}
+
+function setSimulatedHttpHeader(
+	headers: Headers,
+	nameTemplate: string,
+	valueTemplate: string,
+	context: SimulationContext,
+) {
+	const name = String(resolveTemplate(nameTemplate, context)).trim();
+	if (!name) {
+		return;
+	}
+	if (!isHttpToken(name)) {
+		throw new Error(`invalid HTTP header name ${name}`);
+	}
+
+	const value = String(resolveTemplate(valueTemplate, context));
+	if (/[\0\r\n]/.test(value)) {
+		throw new Error(`invalid HTTP header value for ${name}`);
+	}
+
+	if (name.toLowerCase() !== "user-agent") {
+		headers.set(name, value);
+	}
 }
 
 function getResponseHeaders(headers: Headers): Record<string, JsonValue> {
@@ -1122,7 +1194,7 @@ function resolveTemplate(value: string, context: SimulationContext): JsonValue {
 }
 
 function isTemplateDefined(value: string, context: SimulationContext) {
-	const exactReference = value.trim().match(/^\{\{\s*([^}]+?)\s*\}\}$/);
+	const exactReference = value.match(/^\{\{\s*([^}]+?)\s*\}\}$/);
 	return exactReference ? tryGetReferenceValue(exactReference[1].trim(), context) !== undefined : true;
 }
 
@@ -1200,9 +1272,12 @@ function getPathValue(value: JsonValue, path: string): JsonValue | undefined {
 		return value;
 	}
 
-	const parts = path.match(/[^.[\]]+|\[(?:0|[1-9][0-9]*)\]|\["([^"]+)"\]|\['([^']+)'\]/g) ?? [];
-	return parts.reduce<JsonValue | undefined>((currentValue, part) => {
-		const key = getPathPartKey(part);
+	const parts = parseValuePath(path);
+	if (!parts) {
+		return undefined;
+	}
+
+	return parts.reduce<JsonValue | undefined>((currentValue, key) => {
 		if (key.startsWith("$")) {
 			return getDerivedValueMetadata(currentValue, key);
 		}
@@ -1220,16 +1295,120 @@ function getPathValue(value: JsonValue, path: string): JsonValue | undefined {
 	}, value);
 }
 
-function getPathPartKey(part: string) {
-	if (!part.startsWith("[")) {
-		return part;
+function parseValuePath(path: string): string[] | undefined {
+	const parts: string[] = [];
+	let index = 0;
+
+	while (index < path.length) {
+		if (path[index] === ".") {
+			const start = ++index;
+			while (index < path.length && path[index] !== "." && path[index] !== "[") {
+				index += 1;
+			}
+			if (index === start) {
+				return undefined;
+			}
+			parts.push(path.slice(start, index));
+			continue;
+		}
+
+		if (path[index] !== "[") {
+			const start = index;
+			while (index < path.length && path[index] !== "." && path[index] !== "[") {
+				index += 1;
+			}
+			if (index === start) {
+				return undefined;
+			}
+			parts.push(path.slice(start, index));
+			continue;
+		}
+
+		const bracket = parseBracketAccessor(path, index + 1);
+		if (!bracket) {
+			return undefined;
+		}
+		parts.push(bracket.key);
+		index = bracket.nextIndex;
 	}
 
-	if (/^\[(?:0|[1-9][0-9]*)\]$/.test(part)) {
-		return part.slice(1, -1);
+	return parts;
+}
+
+function parseBracketAccessor(path: string, start: number): { key: string; nextIndex: number } | undefined {
+	let quote = "";
+	let escaped = false;
+	let index = start;
+	for (; index < path.length; index += 1) {
+		const character = path[index];
+		if (escaped) {
+			escaped = false;
+			continue;
+		}
+		if (character === "\\" && quote) {
+			escaped = true;
+			continue;
+		}
+		if (quote) {
+			if (character === quote) {
+				quote = "";
+			}
+			continue;
+		}
+		if (character === '"' || character === "'") {
+			quote = character;
+			continue;
+		}
+		if (character === "]") {
+			break;
+		}
 	}
 
-	return part.slice(2, -2);
+	if (index >= path.length || quote || escaped) {
+		return undefined;
+	}
+
+	const accessor = path.slice(start, index).trim();
+	let key: string;
+	if (/^(?:0|[1-9][0-9]*)$/.test(accessor)) {
+		key = accessor;
+	} else if (accessor.startsWith('"')) {
+		try {
+			const parsed = JSON.parse(accessor);
+			if (typeof parsed !== "string") {
+				return undefined;
+			}
+			key = parsed;
+		} catch {
+			return undefined;
+		}
+	} else if (accessor.startsWith("'") && accessor.endsWith("'")) {
+		const parsed = parseSingleQuotedAccessor(accessor.slice(1, -1));
+		if (parsed === undefined) {
+			return undefined;
+		}
+		key = parsed;
+	} else {
+		return undefined;
+	}
+
+	return { key, nextIndex: index + 1 };
+}
+
+function parseSingleQuotedAccessor(value: string): string | undefined {
+	let output = "";
+	let escaped = false;
+	for (const character of value) {
+		if (escaped) {
+			output += character;
+			escaped = false;
+		} else if (character === "\\") {
+			escaped = true;
+		} else {
+			output += character;
+		}
+	}
+	return escaped ? undefined : output;
 }
 
 function getDerivedValueMetadata(value: JsonValue | undefined, key: string): JsonValue | undefined {
@@ -1540,9 +1719,14 @@ function isHeaderLike(value: JsonValue): value is { name: string; value: string 
 
 function normalizeHttpMethod(value: string) {
 	const method = value.trim().toUpperCase();
-	const allowedMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
+	if (!method || !isHttpToken(method)) {
+		throw new Error(`invalid HTTP method ${value}`);
+	}
+	return method;
+}
 
-	return allowedMethods.has(method) ? method : "GET";
+function isHttpToken(value: string) {
+	return /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(value);
 }
 
 function parseJsonValue(value: string): JsonValue | undefined {

@@ -27,7 +27,7 @@ export const formatTextNode = defineNode({
 	icon: TextCursorInput,
 	kind: "action",
 	label: "Text Transform",
-	permission: { name: "text_transform", risk: "low" },
+	permission: { name: "text.transform", risk: "low" },
 	risk: "low",
 	runtimeOutputs: withFailureErrorOutput([
 		{

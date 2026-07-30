@@ -27,7 +27,7 @@ export const websocketWriteNode = defineNode({
 	icon: Send,
 	kind: "action",
 	label: "WebSocket Write",
-	permission: { name: "websocket_write", risk: "medium" },
+	permission: { name: "websocket.write", risk: "medium" },
 	risk: "medium",
 	runtimeOutputs: fallible([
 		{

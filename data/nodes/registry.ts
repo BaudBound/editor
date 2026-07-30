@@ -11,7 +11,11 @@ import {
 	Terminal,
 	Zap,
 } from "lucide-react";
-import { createReadFilePermission, createWriteFilePermission } from "@/data/project/file-permissions";
+import {
+	createDeleteFilePermission,
+	createReadFilePermission,
+	createWriteFilePermission,
+} from "@/data/project/file-permissions";
 import type {
 	ActionType,
 	EditorAsset,
@@ -511,16 +515,19 @@ export function getNodePermissions(actionType: ActionType, config: Record<string
 	const pathRules = definition.permissionPathRules ?? [];
 	const replacesBasePermission = pathRules.some(
 		(rule) =>
-			(rule.access === "read" && definition.permission?.name === "file_read") ||
-			(rule.access === "write" && definition.permission?.name === "file_write_limited"),
+			(rule.access === "delete" && definition.permission?.name === "file.delete.any") ||
+			(rule.access === "read" && definition.permission?.name === "file.read") ||
+			(rule.access === "write" && definition.permission?.name === "file.write.limited"),
 	);
 	const permissions = definition.permission && !replacesBasePermission ? [definition.permission] : [];
 	for (const rule of pathRules) {
-		permissions.push(
-			rule.access === "read"
-				? createReadFilePermission(config[rule.configKey])
-				: createWriteFilePermission(config[rule.configKey]),
-		);
+		const permission =
+			rule.access === "delete"
+				? createDeleteFilePermission(config[rule.configKey])
+				: rule.access === "read"
+					? createReadFilePermission(config[rule.configKey])
+					: createWriteFilePermission(config[rule.configKey]);
+		permissions.push(permission);
 	}
 
 	return [...new Map(permissions.map((permission) => [permission.name, permission])).values()];
@@ -617,6 +624,10 @@ function validateDeclaredConfigFields(fields: NodeConfigField[], config: Record<
 
 		if ((field.type === "text" || field.type === "textarea") && typeof value !== "string") {
 			return [`Invalid value for ${field.key}: expected string.`];
+		}
+
+		if (field.type === "string-list" && (!Array.isArray(value) || value.some((item) => typeof item !== "string"))) {
+			return [`Invalid value for ${field.key}: expected an array of strings.`];
 		}
 
 		if (field.type === "select" && field.options && typeof value === "string") {

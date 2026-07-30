@@ -10,6 +10,7 @@ import type {
 	DefaultVariable,
 	ProjectSettings,
 	ScriptNodeData,
+	ScriptSetting,
 	SecretDeclaration,
 	SimulationVariableSnapshot,
 } from "@/lib/types";
@@ -20,8 +21,16 @@ export function createVariablePanelEntries(
 	snapshots: SimulationVariableSnapshot[],
 	secretDeclarations: SecretDeclaration[] = [],
 	defaultVariables: DefaultVariable[] = [],
+	scriptSettings: ScriptSetting[] = [],
 ): EditorVariable[] {
-	return createEditorVariableRegistry(projectSettings, nodes, snapshots, secretDeclarations, defaultVariables);
+	return createEditorVariableRegistry(
+		projectSettings,
+		nodes,
+		snapshots,
+		secretDeclarations,
+		defaultVariables,
+		scriptSettings,
+	);
 }
 
 export function createEditorVariableRegistry(
@@ -30,6 +39,7 @@ export function createEditorVariableRegistry(
 	snapshots: SimulationVariableSnapshot[] = [],
 	secretDeclarations: SecretDeclaration[] = [],
 	defaultVariables: DefaultVariable[] = [],
+	scriptSettings: ScriptSetting[] = [],
 ): EditorVariable[] {
 	const variables = new Map<string, EditorVariable>();
 
@@ -63,6 +73,35 @@ export function createEditorVariableRegistry(
 			type: secret.type,
 		});
 	}
+	const settingsValue = Object.fromEntries(
+		scriptSettings.map((setting) => [
+			setting.name,
+			structuredClone(setting.simulationValue ?? setting.defaultValue ?? null),
+		]),
+	);
+	variables.set("settings", {
+		description: "Read-only values configured for this script.",
+		name: "settings",
+		read_only: true,
+		scope: "setting",
+		source: "setting",
+		token: "{{settings}}",
+		type: "object",
+		value: settingsValue,
+	});
+	for (const setting of scriptSettings) {
+		const name = `settings.${setting.name}`;
+		variables.set(name, {
+			description: setting.description,
+			name,
+			read_only: true,
+			scope: "setting",
+			source: "setting",
+			token: `{{${name}}}`,
+			type: setting.type,
+			value: structuredClone(setting.simulationValue ?? setting.defaultValue ?? null),
+		});
+	}
 
 	for (const snapshot of snapshots) {
 		const existing = variables.get(snapshot.name);
@@ -85,7 +124,7 @@ export function createEditorVariableRegistry(
 
 	const baseVariables = [...variables.values()];
 	for (const variable of createDerivedVariableMetadataDefinitions(
-		baseVariables.filter((variable) => variable.source !== "secret"),
+		baseVariables.filter((variable) => variable.source !== "secret" && variable.source !== "setting"),
 	)) {
 		variables.set(variable.name, variable);
 	}
@@ -107,8 +146,11 @@ function getVariableSourceOrder(variable: EditorVariable) {
 	if (variable.source === "secret") {
 		return 3;
 	}
+	if (variable.source === "setting") {
+		return 4;
+	}
 
-	return 4;
+	return 5;
 }
 
 function inferVariableType(value: SimulationVariableSnapshot["value"]): EditorVariable["type"] {

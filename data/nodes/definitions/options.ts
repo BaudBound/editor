@@ -53,17 +53,17 @@ export const killProcessMatchModeOptions: SelectOption[] = [
 
 export const comparisonOperatorOptions: SelectOption[] = [
 	{ label: "equals", value: "==" },
-	{ label: "does not equal", value: "!=" },
 	{ label: "greater than", value: ">" },
 	{ label: "greater than or equal", value: ">=" },
 	{ label: "less than", value: "<" },
 	{ label: "less than or equal", value: "<=" },
+	{ label: "Is between", value: "is_between" },
 	{ label: "contains", value: "contains" },
 	{ label: "starts with", value: "starts_with" },
 	{ label: "ends with", value: "ends_with" },
 	{ label: "regex match", value: "regex_match" },
 	{ label: "is empty", value: "is_empty" },
-	{ label: "is null", value: "is_null" },
+	{ label: "Is null or missing", value: "is_null_or_missing" },
 ];
 
 export const booleanConditionOperatorOptions: SelectOption[] = [
@@ -74,20 +74,13 @@ export const booleanConditionOperatorOptions: SelectOption[] = [
 export const ifElseAdditionalConditionOperatorOptions: SelectOption[] = [
 	{ label: "equals ignoring case", value: "equals_ignore_case" },
 	{ label: "contains ignoring case", value: "contains_ignore_case" },
-	{ label: "does not contain", value: "does_not_contain" },
 	{ label: "has key", value: "has_key" },
 	{ label: "contains item", value: "contains_item" },
-	{ label: "length equals", value: "length_equals" },
-	{ label: "length greater than", value: "length_greater_than" },
-	{ label: "length less than", value: "length_less_than" },
 	{ label: "Is numeric", value: "is_numeric" },
-	{ label: "Is text", value: "is_text" },
+	{ label: "Is string", value: "is_string" },
 	{ label: "Is boolean", value: "is_boolean" },
 	{ label: "Is list", value: "is_list" },
 	{ label: "Is object", value: "is_object" },
-	{ label: "Is defined", value: "is_defined" },
-	{ label: "Is missing", value: "is_missing" },
-	{ label: "Is not empty", value: "is_not_empty" },
 ];
 
 export const ifElseComparisonOperatorOptions: SelectOption[] = [
@@ -99,19 +92,14 @@ export const ifElseComparisonOperatorOptions: SelectOption[] = [
 export function isUnaryConditionOperator(operator: string) {
 	return (
 		operator === "is_empty" ||
-		operator === "is_null" ||
+		operator === "is_null_or_missing" ||
 		booleanConditionOperatorOptions.some((option) => option.value === operator) ||
-		[
-			"is_numeric",
-			"is_text",
-			"is_boolean",
-			"is_list",
-			"is_object",
-			"is_defined",
-			"is_missing",
-			"is_not_empty",
-		].includes(operator)
+		["is_numeric", "is_string", "is_boolean", "is_list", "is_object"].includes(operator)
 	);
+}
+
+export function isBetweenConditionOperator(operator: string) {
+	return operator === "is_between";
 }
 
 export const combinatorOptions: SelectOption[] = [

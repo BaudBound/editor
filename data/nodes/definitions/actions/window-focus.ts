@@ -33,7 +33,7 @@ export const windowFocusNode = defineNode({
 	icon: AppWindow,
 	kind: "action",
 	label: "Window Focus",
-	permission: { name: "window_focus", risk: "high" },
+	permission: { name: "window.focus", risk: "high" },
 	risk: "high",
 	supportedTargetRuntimes: ["Windows Desktop"],
 	runnerType: "focus_window",

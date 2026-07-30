@@ -50,7 +50,7 @@ export const processStartedTriggerNode = defineNode({
 		{
 			name: "timestamp",
 			type: "string",
-			description: "Runner timestamp when the process was detected.",
+			description: "Unix timestamp in milliseconds when the process was detected.",
 			example: "n-mr3zyt6f-7.timestamp",
 		},
 	],
@@ -74,7 +74,7 @@ export const processStartedTriggerNode = defineNode({
 				process_id: Number(context.triggerPayload.processId) || 4244,
 				executable_path: context.triggerPayload.executablePath || "",
 				window_title: context.triggerPayload.windowTitle || "",
-				timestamp: new Date().toISOString(),
+				timestamp: Date.now().toString(),
 			},
 		}),
 	},

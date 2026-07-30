@@ -22,6 +22,7 @@ import type {
 	ProjectSettings,
 	RiskLevel,
 	ScriptNodeData,
+	ScriptSetting,
 	SecretDeclaration,
 	TargetRuntime,
 } from "../lib/types";
@@ -47,6 +48,7 @@ export type ImportedBbsPackage = {
 	nodes: Node<ScriptNodeData>[];
 	identity: ProjectIdentity;
 	secretDeclarations: SecretDeclaration[];
+	scriptSettings: ScriptSetting[];
 };
 
 export type GeneratedBbsPackage = {
@@ -78,6 +80,7 @@ export async function buildBbsPackage(params: {
 	edgeStyle: EditorEdgeStyle;
 	secretDeclarations: SecretDeclaration[];
 	defaultVariables: DefaultVariable[];
+	scriptSettings: ScriptSetting[];
 }) {
 	const permissions = calculatePermissions(params.nodes, params.secretDeclarations, params.defaultVariables);
 	const capabilities = calculateCapabilities(params.nodes, params.secretDeclarations, params.defaultVariables);
@@ -118,9 +121,20 @@ export async function buildBbsPackage(params: {
 			name: variable.name,
 			scope: variable.scope,
 			type: variable.type,
+			...(variable.type === "list" ? { item_type: variable.itemType } : {}),
 			description: variable.description,
 			value: variable.value,
 		})),
+		settings: params.scriptSettings.map((setting) =>
+			compactObject({
+				name: setting.name,
+				type: setting.type,
+				item_type: setting.type === "list" ? setting.itemType : undefined,
+				description: setting.description,
+				required: setting.required,
+				default_value: setting.defaultValue,
+			}),
+		),
 	});
 	const programJson = toProgramJson(params.nodes, params.edges, params.projectSettings);
 	const editorJson = toEditorJson(params.nodes, params.comments, params.edgeStyle);
@@ -257,6 +271,7 @@ export async function importBbsPackage(file: File): Promise<ImportedBbsPackage> 
 	const edgeStyle = toEditorEdgeStyle(editorMetadata);
 	const secretDeclarations = toSecretDeclarations(manifest);
 	const defaultVariables = toDefaultVariables(manifest);
+	const scriptSettings = toScriptSettings(manifest);
 
 	return {
 		assets,
@@ -268,6 +283,7 @@ export async function importBbsPackage(file: File): Promise<ImportedBbsPackage> 
 		identity,
 		projectSettings,
 		secretDeclarations,
+		scriptSettings,
 	};
 }
 
@@ -306,6 +322,9 @@ function toDefaultVariables(manifest: Record<string, unknown>): DefaultVariable[
 				name: variable.name,
 				scope: variable.scope,
 				type: variable.type as DefaultVariable["type"],
+				...(variable.type === "list" && typeof variable.item_type === "string"
+					? { itemType: variable.item_type as DefaultVariable["itemType"] }
+					: {}),
 				value: variable.value,
 			},
 		];
@@ -337,6 +356,78 @@ function toSecretDeclarations(manifest: Record<string, unknown>): SecretDeclarat
 			},
 		];
 	});
+}
+
+function toScriptSettings(manifest: Record<string, unknown>): ScriptSetting[] {
+	if (!Array.isArray(manifest.settings)) {
+		return [];
+	}
+
+	return manifest.settings.flatMap((value) => {
+		const setting = isRecord(value) ? value : null;
+		if (
+			!setting ||
+			typeof setting.name !== "string" ||
+			!["string", "number", "boolean", "object", "list", "datetime", "duration", "file_path"].includes(
+				String(setting.type),
+			) ||
+			typeof setting.required !== "boolean" ||
+			(setting.default_value !== undefined &&
+				(!isJsonValue(setting.default_value) ||
+					!scriptSettingValueMatchesType(String(setting.type), setting.default_value)))
+		) {
+			return [];
+		}
+
+		return [
+			{
+				...(setting.default_value === undefined ? {} : { defaultValue: setting.default_value }),
+				description: typeof setting.description === "string" ? setting.description : "",
+				...(setting.type === "list" && typeof setting.item_type === "string"
+					? { itemType: setting.item_type as ScriptSetting["itemType"] }
+					: {}),
+				name: setting.name,
+				required: setting.required,
+				type: setting.type as ScriptSetting["type"],
+			},
+		];
+	});
+}
+
+function scriptSettingValueMatchesType(type: string, value: JsonValue) {
+	switch (type) {
+		case "string":
+		case "file_path":
+			return typeof value === "string";
+		case "number":
+			return typeof value === "number" && Number.isFinite(value);
+		case "boolean":
+			return typeof value === "boolean";
+		case "object":
+			return typeof value === "object" && value !== null && !Array.isArray(value);
+		case "list":
+			return Array.isArray(value);
+		case "datetime":
+			return (
+				typeof value === "object" &&
+				value !== null &&
+				!Array.isArray(value) &&
+				value.type === "datetime" &&
+				typeof value.value === "string" &&
+				!Number.isNaN(Date.parse(value.value))
+			);
+		case "duration":
+			return (
+				typeof value === "object" &&
+				value !== null &&
+				!Array.isArray(value) &&
+				value.type === "duration" &&
+				typeof value.value === "number" &&
+				typeof value.unit === "string"
+			);
+		default:
+			return false;
+	}
 }
 
 function compactObject(value: Record<string, unknown>) {

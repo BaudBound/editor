@@ -101,6 +101,7 @@ export function ProjectHome() {
 				nodes: project.nodes,
 				projectSettings: project.settings,
 				secretDeclarations: project.secretDeclarations,
+				scriptSettings: project.scriptSettings,
 			});
 			toast.success(`Exported ${project.settings.name}.`);
 		} catch (error) {
@@ -303,6 +304,7 @@ function importedToProject(imported: Awaited<ReturnType<typeof importBbsPackage>
 		revision: 1,
 		schemaVersion: editorProjectSchemaVersion,
 		secretDeclarations: imported.secretDeclarations,
+		scriptSettings: imported.scriptSettings,
 		settings: imported.projectSettings,
 		updatedAt: new Date().toISOString(),
 	};

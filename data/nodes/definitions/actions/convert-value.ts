@@ -31,7 +31,7 @@ export const convertValueNode = defineNode({
 	icon: ArrowRightLeft,
 	kind: "action",
 	label: "Convert Value",
-	permission: { name: "value_conversion", risk: "low" },
+	permission: { name: "value.convert", risk: "low" },
 	risk: "low",
 	runnerType: "convert_value",
 	deriveRuntimeOutputs: (config) =>

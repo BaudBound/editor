@@ -68,7 +68,7 @@ export const webhookTriggerNode = defineNode({
 	icon: Globe,
 	kind: "trigger",
 	label: "Webhook",
-	permission: { name: "webhook_public_bind", risk: "high" },
+	permission: { name: "network.webhook", risk: "high" },
 	risk: "high",
 	runtimeOutputs: [
 		{
@@ -114,6 +114,12 @@ export const webhookTriggerNode = defineNode({
 				"Webhook response state for this request, including whether the runner is waiting for a response node.",
 			example: "n-mr3zyt6f-3.response.waiting",
 		},
+		{
+			name: "trigger_id",
+			type: "string",
+			description: "Webhook trigger node id.",
+			example: "n-mr3zyt6f-3.trigger_id",
+		},
 	],
 	runnerType: "webhook",
 	validateConfig: (config) =>
@@ -133,7 +139,7 @@ export const webhookTriggerNode = defineNode({
 	},
 	simulation: {
 		createOutput: ({ api, context, node }) => {
-			const body = context.triggerPayload.body || '{"event":"simulation"}';
+			const body = context.triggerPayload.body ?? '{"event":"simulation"}';
 			const json = api.parseJsonValue(body);
 			const waitForResponse = isEnabled(node.data.config.waitForResponse);
 			const fallbackResponse = {
@@ -166,6 +172,7 @@ export const webhookTriggerNode = defineNode({
 								normalizePositiveNumber(api.getConfigString(node, "responseTimeoutSeconds"), 30),
 							)
 						: createImmediateResponseState(fallbackResponse),
+					trigger_id: context.triggerPayload.trigger_id || node.id,
 				},
 			};
 		},

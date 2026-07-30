@@ -32,7 +32,7 @@ export const shellCommandNode = defineNode({
 	icon: Terminal,
 	kind: "action",
 	label: "Shell Command",
-	permission: { name: "run_shell_command", risk: "dangerous" },
+	permission: { name: "process.shell", risk: "dangerous" },
 	risk: "dangerous",
 	runtimeOutputs: fallible([
 		{

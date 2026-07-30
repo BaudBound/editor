@@ -14,7 +14,7 @@ export const getClipboardNode = defineNode({
 	icon: ClipboardPaste,
 	kind: "action",
 	label: "Get Clipboard",
-	permission: { name: "read_clipboard", risk: "medium" },
+	permission: { name: "clipboard.read", risk: "medium" },
 	risk: "medium",
 	runtimeOutputs: fallible([
 		{ name: "text", type: "string", description: "Text read from the clipboard.", example: "n-mr3zyt6f-21.text" },

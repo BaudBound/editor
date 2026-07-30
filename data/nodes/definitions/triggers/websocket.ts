@@ -19,7 +19,7 @@ export const websocketTriggerNode = defineNode({
 	icon: Radio,
 	kind: "trigger",
 	label: "WebSocket",
-	permission: { name: "websocket_public_bind", risk: "high" },
+	permission: { name: "network.websocket", risk: "high" },
 	risk: "high",
 	runtimeOutputs: [
 		{
@@ -59,6 +59,12 @@ export const websocketTriggerNode = defineNode({
 			description: "Remote peer address when the runner exposes it.",
 			example: "n-mr3zyt6f-6.remote_address",
 		},
+		{
+			name: "trigger_id",
+			type: "string",
+			description: "WebSocket trigger node id.",
+			example: "n-mr3zyt6f-6.trigger_id",
+		},
 	],
 	runnerType: "websocket",
 	validateConfig: (config) => {
@@ -70,7 +76,7 @@ export const websocketTriggerNode = defineNode({
 	},
 	simulation: {
 		createOutput: ({ api, context, node }) => {
-			const message = context.triggerPayload.message || '{"event":"simulation"}';
+			const message = context.triggerPayload.message ?? '{"event":"simulation"}';
 			const json = api.parseJsonValue(message);
 
 			return {
@@ -83,6 +89,7 @@ export const websocketTriggerNode = defineNode({
 					message,
 					json: json ?? {},
 					remote_address: context.triggerPayload.remoteAddress || "127.0.0.1",
+					trigger_id: context.triggerPayload.trigger_id || node.id,
 				},
 			};
 		},

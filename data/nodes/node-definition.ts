@@ -53,7 +53,7 @@ export type NodeConfigField = NodeConfigFieldBase &
 	(
 		| { numeric: NumericConfigContract; numericWhen?: never; type: "number" }
 		| { numeric: NumericConfigContract; numericWhen: NumericConfigCondition; type: "text" }
-		| { numeric?: never; numericWhen?: never; type: "select" | "switch" | "text" | "textarea" }
+		| { numeric?: never; numericWhen?: never; type: "select" | "string-list" | "switch" | "text" | "textarea" }
 	);
 
 export type NodeDefinitionGroupId = "triggers" | "control" | "actions";
@@ -68,7 +68,7 @@ export type NodePortPolicy =
 	| { configKey: string; defaultOutput: string; kind: "switch-cases"; outputPrefix: string };
 
 export type NodePermissionPathRule = {
-	access: "read" | "write";
+	access: "delete" | "read" | "write";
 	configKey: string;
 };
 

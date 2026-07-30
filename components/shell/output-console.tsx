@@ -2,8 +2,6 @@ import { ChevronDown, RotateCcw, Search, Trash2 } from "lucide-react";
 import type { DependencyList, ReactNode } from "react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { CopyTextButton } from "@/components/common/copy-text-button";
-import { DefaultVariableManager } from "@/components/shell/default-variable-manager";
-import { SecretReferenceManager } from "@/components/shell/secret-reference-manager";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -18,8 +16,7 @@ import { Input } from "@/components/ui/input";
 import { logLevelClassName } from "@/data/editor/output-console";
 import { collapsedPanelSizes } from "@/data/editor/panel-layout";
 import type { EditorVariable } from "@/data/project/variables";
-import type { DefaultVariable, LogEntry, SecretDeclaration, SimulationTraceEntry } from "@/lib/types";
-import type { VariableRename } from "@/utils/variable-reference-renaming";
+import type { LogEntry, SimulationTraceEntry } from "@/lib/types";
 
 type OutputConsoleProps = {
 	activeTab: BottomPanelTab;
@@ -29,18 +26,12 @@ type OutputConsoleProps = {
 	systemLogs: LogEntry[];
 	simulationLogs: SimulationTraceEntry[];
 	variables: EditorVariable[];
-	defaultVariables: DefaultVariable[];
-	secretDeclarations: SecretDeclaration[];
-	simulationSecretValues: Record<string, string>;
 	height: number;
 	onClearTab: (tab: ClearableBottomPanelTab) => void;
 	onFollowChange: (tab: ClearableBottomPanelTab, enabled: boolean) => void;
 	onResetStoredValues: () => void;
 	onTabChange: (tab: BottomPanelTab) => void;
 	onToggle: () => void;
-	onDefaultVariablesChange: (variables: DefaultVariable[], rename?: VariableRename) => void;
-	onSecretDeclarationsChange: (declarations: SecretDeclaration[], rename?: VariableRename) => void;
-	onSimulationSecretValueChange: (name: string, value: string) => void;
 };
 
 export type BottomPanelTab = "system" | "output" | "simulation" | "variables";
@@ -63,18 +54,12 @@ export function OutputConsole({
 	systemLogs,
 	simulationLogs,
 	variables,
-	defaultVariables,
-	secretDeclarations,
-	simulationSecretValues,
 	height,
 	onClearTab,
 	onFollowChange,
 	onResetStoredValues,
 	onTabChange,
 	onToggle,
-	onDefaultVariablesChange,
-	onSecretDeclarationsChange,
-	onSimulationSecretValueChange,
 }: OutputConsoleProps) {
 	const handleTabClick = (tab: BottomPanelTab) => {
 		onTabChange(tab);
@@ -158,16 +143,7 @@ export function OutputConsole({
 						</LogPanel>
 					)}
 					{activeTab === "variables" && (
-						<VariablesTab
-							variables={variables}
-							defaultVariables={defaultVariables}
-							secretDeclarations={secretDeclarations}
-							simulationSecretValues={simulationSecretValues}
-							onSecretDeclarationsChange={onSecretDeclarationsChange}
-							onDefaultVariablesChange={onDefaultVariablesChange}
-							onResetStoredValues={onResetStoredValues}
-							onSimulationSecretValueChange={onSimulationSecretValueChange}
-						/>
+						<VariablesTab variables={variables} onResetStoredValues={onResetStoredValues} />
 					)}
 				</div>
 			)}
@@ -280,38 +256,22 @@ function LogLine({ log }: { log: LogEntry }) {
 
 function VariablesTab({
 	variables,
-	defaultVariables,
-	secretDeclarations,
-	simulationSecretValues,
-	onSecretDeclarationsChange,
-	onDefaultVariablesChange,
 	onResetStoredValues,
-	onSimulationSecretValueChange,
 }: {
 	variables: EditorVariable[];
-	defaultVariables: DefaultVariable[];
-	secretDeclarations: SecretDeclaration[];
-	simulationSecretValues: Record<string, string>;
-	onSecretDeclarationsChange: (declarations: SecretDeclaration[], rename?: VariableRename) => void;
-	onDefaultVariablesChange: (variables: DefaultVariable[], rename?: VariableRename) => void;
 	onResetStoredValues: () => void;
-	onSimulationSecretValueChange: (name: string, value: string) => void;
 }) {
 	const [resetDialogOpen, setResetDialogOpen] = useState(false);
 	const [sortUpdatedFirst, setSortUpdatedFirst] = useState(true);
 	const [showDerivedMetadata, setShowDerivedMetadata] = useState(false);
 	const [showBuiltInVariables, setShowBuiltInVariables] = useState(false);
 	const [showErrorVariables, setShowErrorVariables] = useState(false);
+	const [showOutputVariables, setShowOutputVariables] = useState(true);
 	const [showSystemVariables, setShowSystemVariables] = useState(false);
 	const [variableSearch, setVariableSearch] = useState("");
 	const previousSignaturesRef = useRef<Map<string, string>>(new Map());
 	const updatedOrderRef = useRef<Map<string, number>>(new Map());
 	const updateSequenceRef = useRef(0);
-	const reservedDefaultVariableNames = useMemo(
-		() => new Set(defaultVariables.map((variable) => variable.name)),
-		[defaultVariables],
-	);
-
 	useEffect(() => {
 		const nextSignatures = new Map<string, string>();
 		const currentNames = new Set<string>();
@@ -349,6 +309,10 @@ function VariablesTab({
 				return false;
 			}
 
+			if (!showOutputVariables && variable.source === "node_output") {
+				return false;
+			}
+
 			if (!showSystemVariables && isSystemVariable(variable)) {
 				return false;
 			}
@@ -374,6 +338,7 @@ function VariablesTab({
 		showBuiltInVariables,
 		showDerivedMetadata,
 		showErrorVariables,
+		showOutputVariables,
 		showSystemVariables,
 		sortUpdatedFirst,
 		variableSearch,
@@ -383,20 +348,6 @@ function VariablesTab({
 	return (
 		<div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_32px] overflow-hidden">
 			<div className="overflow-y-auto">
-				<div className="grid min-w-0 divide-y divide-baud-border border-b border-baud-border lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-					<SecretReferenceManager
-						declarations={secretDeclarations}
-						reservedVariableNames={reservedDefaultVariableNames}
-						simulationValues={simulationSecretValues}
-						onDeclarationsChange={onSecretDeclarationsChange}
-						onSimulationValueChange={onSimulationSecretValueChange}
-					/>
-					<DefaultVariableManager
-						secrets={secretDeclarations}
-						variables={defaultVariables}
-						onChange={onDefaultVariablesChange}
-					/>
-				</div>
 				<div className="px-4 py-3">
 					<div className="mb-3 flex items-center gap-2">
 						<div className="relative min-w-0 flex-1">
@@ -477,11 +428,13 @@ function VariablesTab({
 				showBuiltInVariables={showBuiltInVariables}
 				showDerivedMetadata={showDerivedMetadata}
 				showErrorVariables={showErrorVariables}
+				showOutputVariables={showOutputVariables}
 				showSystemVariables={showSystemVariables}
 				sortUpdatedFirst={sortUpdatedFirst}
 				onShowBuiltInVariablesChange={setShowBuiltInVariables}
 				onShowDerivedMetadataChange={setShowDerivedMetadata}
 				onShowErrorVariablesChange={setShowErrorVariables}
+				onShowOutputVariablesChange={setShowOutputVariables}
 				onShowSystemVariablesChange={setShowSystemVariables}
 				onSortUpdatedFirstChange={setSortUpdatedFirst}
 			/>
@@ -520,22 +473,26 @@ function VariablesFooter({
 	showBuiltInVariables,
 	showDerivedMetadata,
 	showErrorVariables,
+	showOutputVariables,
 	showSystemVariables,
 	sortUpdatedFirst,
 	onShowBuiltInVariablesChange,
 	onShowDerivedMetadataChange,
 	onShowErrorVariablesChange,
+	onShowOutputVariablesChange,
 	onShowSystemVariablesChange,
 	onSortUpdatedFirstChange,
 }: {
 	showBuiltInVariables: boolean;
 	showDerivedMetadata: boolean;
 	showErrorVariables: boolean;
+	showOutputVariables: boolean;
 	showSystemVariables: boolean;
 	sortUpdatedFirst: boolean;
 	onShowBuiltInVariablesChange: (enabled: boolean) => void;
 	onShowDerivedMetadataChange: (enabled: boolean) => void;
 	onShowErrorVariablesChange: (enabled: boolean) => void;
+	onShowOutputVariablesChange: (enabled: boolean) => void;
 	onShowSystemVariablesChange: (enabled: boolean) => void;
 	onSortUpdatedFirstChange: (enabled: boolean) => void;
 }) {
@@ -555,6 +512,11 @@ function VariablesFooter({
 					onCheckedChange={onShowBuiltInVariablesChange}
 				/>
 				<FooterCheckbox checked={showErrorVariables} label="Show errors" onCheckedChange={onShowErrorVariablesChange} />
+				<FooterCheckbox
+					checked={showOutputVariables}
+					label="Show outputs"
+					onCheckedChange={onShowOutputVariablesChange}
+				/>
 				<FooterCheckbox
 					checked={showSystemVariables}
 					label="Show system"

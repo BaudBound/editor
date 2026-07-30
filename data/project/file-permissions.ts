@@ -18,10 +18,12 @@ const sensitivePathMarkers = [
 	"/appdata/roaming/",
 ];
 
-export const fileReadPermission: PermissionSummary = { name: "file_read", risk: "medium" };
-export const readSensitiveFilePermission: PermissionSummary = { name: "read_sensitive_file", risk: "dangerous" };
-export const fileWriteLimitedPermission: PermissionSummary = { name: "file_write_limited", risk: "high" };
-export const writeAnyFilePermission: PermissionSummary = { name: "write_any_file", risk: "dangerous" };
+export const fileReadPermission: PermissionSummary = { name: "file.read", risk: "medium" };
+export const readSensitiveFilePermission: PermissionSummary = { name: "file.read.any", risk: "dangerous" };
+export const fileWriteLimitedPermission: PermissionSummary = { name: "file.write.limited", risk: "high" };
+export const writeAnyFilePermission: PermissionSummary = { name: "file.write.any", risk: "dangerous" };
+export const fileDeleteLimitedPermission: PermissionSummary = { name: "file.delete.limited", risk: "high" };
+export const deleteAnyFilePermission: PermissionSummary = { name: "file.delete.any", risk: "dangerous" };
 
 export function createReadFilePermission(path: JsonValue | undefined): PermissionSummary {
 	return isSensitiveOrUnboundedPath(configString(path)) ? readSensitiveFilePermission : fileReadPermission;
@@ -31,13 +33,22 @@ export function createWriteFilePermission(path: JsonValue | undefined): Permissi
 	return isUnboundedWritePath(configString(path)) ? writeAnyFilePermission : fileWriteLimitedPermission;
 }
 
+export function createDeleteFilePermission(path: JsonValue | undefined): PermissionSummary {
+	return isUnboundedWritePath(configString(path)) ? deleteAnyFilePermission : fileDeleteLimitedPermission;
+}
+
 export function isSensitiveOrUnboundedPath(path: string) {
 	const normalized = normalizePathForPolicy(path);
 	if (!normalized) {
 		return false;
 	}
 
-	return pathUsesRuntimeData(path) || isAbsolutePath(normalized) || isSensitivePath(normalized);
+	return (
+		pathUsesRuntimeData(path) ||
+		isAbsolutePath(normalized) ||
+		containsParentTraversal(normalized) ||
+		isSensitivePath(normalized)
+	);
 }
 
 export function isUnboundedWritePath(path: string) {
@@ -46,7 +57,12 @@ export function isUnboundedWritePath(path: string) {
 		return false;
 	}
 
-	return pathUsesRuntimeData(path) || isAbsolutePath(normalized) || isSensitivePath(normalized);
+	return (
+		pathUsesRuntimeData(path) ||
+		isAbsolutePath(normalized) ||
+		containsParentTraversal(normalized) ||
+		isSensitivePath(normalized)
+	);
 }
 
 function isSensitivePath(normalizedPath: string) {
@@ -62,8 +78,12 @@ function isAbsolutePath(normalizedPath: string) {
 	);
 }
 
+function containsParentTraversal(normalizedPath: string) {
+	return normalizedPath.split("/").some((component) => component === "..");
+}
+
 function pathUsesRuntimeData(path: string) {
-	return /\{\{[^}]+\}\}/.test(path);
+	return path.includes("{{") && path.includes("}}");
 }
 
 function normalizePathForPolicy(path: string) {

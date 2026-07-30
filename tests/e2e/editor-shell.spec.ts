@@ -135,6 +135,7 @@ test("project settings target runtimes can be selected together", async ({ page 
 	await page.getByRole("button", { name: "Open project settings" }).click();
 	await expect(page.getByRole("heading", { name: "Project Settings" })).toBeVisible();
 
+	await page.getByRole("tab", { name: "Runtime" }).click();
 	await page.getByRole("button", { name: "Target runtimes" }).click();
 	await page.getByRole("option", { name: "Linux Desktop" }).click();
 	await page.getByRole("button", { name: "Save Settings" }).click();
@@ -154,17 +155,24 @@ test("If / Else unary conditions hide the target field", async ({ page }) => {
 	await page.getByRole("button", { name: "Expression" }).click();
 	await page.getByRole("option", { name: "has key" }).click();
 	await expect(page.getByRole("textbox", { name: "Target" })).toBeVisible();
+
+	await page.getByRole("button", { name: "Expression" }).click();
+	await page.getByRole("option", { name: "Is between" }).click();
+	await expect(page.getByRole("textbox", { name: "Start value" })).toBeVisible();
+	await expect(page.getByRole("textbox", { name: "End value" })).toBeVisible();
+	await expect(page.getByRole("textbox", { name: "Target" })).toHaveCount(0);
 });
 
 test("text transform accepts a default variable with inactive optional numeric fields", async ({ page }) => {
 	await openEditor(page);
 
-	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await openProjectSettingsTab(page, "Default Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("test");
 	await variableDialog.getByRole("textbox", { name: "Default value" }).fill("lowercase_data");
 	await variableDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
 
 	await page.getByRole("button", { name: "Data & Variables" }).click();
 	await page.getByRole("button", { name: "Text Transform" }).click();
@@ -192,12 +200,13 @@ test("text transform accepts a default variable with inactive optional numeric f
 test("variable operation completes writable variable names without template braces", async ({ page }) => {
 	await openEditor(page);
 
-	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await openProjectSettingsTab(page, "Default Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("preferred_status");
 	await variableDialog.getByRole("textbox", { name: "Default value" }).fill("ready");
 	await variableDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
 
 	await page.getByRole("button", { name: "Data & Variables" }).click();
 	await page.getByRole("button", { name: "Variable Operation" }).click();
@@ -209,21 +218,101 @@ test("variable operation completes writable variable names without template brac
 	await expect(nameInput).not.toHaveValue("{{preferred_status}}");
 });
 
+test("Script Settings are available to autocomplete and simulation", async ({ page }) => {
+	await openEditor(page);
+
+	await openProjectSettingsTab(page, "Script Settings");
+	await page.getByRole("button", { name: "Add setting" }).click();
+	const settingDialog = page.getByRole("dialog");
+	await settingDialog.getByRole("textbox", { name: "Name" }).fill("Endpoint");
+	await settingDialog.getByRole("switch", { name: "Required Script Setting" }).click();
+	await settingDialog.getByRole("switch", { name: "Use Package default" }).click();
+	await settingDialog.getByRole("textbox", { name: "Package default" }).fill("https://default.example");
+	await settingDialog.getByRole("switch", { name: "Use Simulation override" }).click();
+	await settingDialog.getByRole("textbox", { name: "Simulation override" }).fill("https://simulation.example");
+	await settingDialog.getByRole("button", { name: "Save", exact: true }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
+	await page.getByRole("button", { name: "Manual" }).click();
+	await page.getByRole("button", { name: "Output & Timing" }).click();
+	await page.getByRole("button", { name: /^Log low/ }).click();
+	const message = page.getByRole("textbox", { name: "Message" });
+	await message.fill("{{settings.End");
+	await page.getByRole("button", { name: /\{\{settings\.Endpoint\}\}/ }).click();
+	await expect(message).toHaveValue("{{settings.Endpoint}}");
+
+	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
+	const logNode = page.locator(".react-flow__node").filter({ hasText: "Log" });
+	await manualNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
+	await logNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Simulation speed" }).click();
+	await page.getByRole("option", { name: "Instant" }).click();
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+	await page.getByRole("button", { name: "Output", exact: true }).click();
+	await expect(page.getByText(/https:\/\/simulation\.example/)).toBeVisible();
+
+	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await expect(page.locator('[data-variable-name="settings.Endpoint"] pre')).toHaveText("https://simulation.example");
+});
+
+test("Script Setting type and timezone menus stay anchored and scroll vertically", async ({ page }) => {
+	await openEditor(page);
+
+	await openProjectSettingsTab(page, "Script Settings");
+	await page.getByRole("button", { name: "Add setting" }).click();
+	const settingDialog = page.getByRole("dialog");
+	const typeTrigger = settingDialog.locator('[data-slot="select-trigger"]').first();
+	const typeTriggerBounds = await typeTrigger.boundingBox();
+	if (!typeTriggerBounds) throw new Error("Script Setting type trigger is not visible.");
+
+	await typeTrigger.click();
+	const typeMenu = page.locator('[data-slot="select-content"]');
+	await expect(typeMenu).toBeVisible();
+	const typeMenuBounds = await typeMenu.boundingBox();
+	if (!typeMenuBounds) throw new Error("Script Setting type menu is not visible.");
+	expect(typeMenuBounds.y).toBeGreaterThanOrEqual(typeTriggerBounds.y + typeTriggerBounds.height);
+	await expect(typeMenu).toHaveJSProperty("scrollWidth", await typeMenu.evaluate((element) => element.clientWidth));
+
+	await page.getByRole("option", { name: "datetime" }).click();
+	await settingDialog.getByRole("switch", { name: "Use Package default" }).click();
+	const timeZoneTrigger = settingDialog.getByRole("combobox", { name: "Datetime timezone" });
+	await timeZoneTrigger.click();
+	const timeZoneMenu = page.locator('[data-slot="select-content"]');
+	const timeZoneViewport = timeZoneMenu.locator('[data-position="popper"]');
+	await expect(timeZoneMenu).toBeVisible();
+	expect(await timeZoneMenu.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+	expect(await timeZoneViewport.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+
+	await timeZoneViewport.hover();
+	await page.mouse.wheel(0, 500);
+	await expect
+		.poll(() => timeZoneViewport.evaluate((element) => element.scrollTop), {
+			message: "Timezone menu should scroll down.",
+		})
+		.toBeGreaterThan(0);
+});
+
 test("renaming defaults and secrets updates every node reference", async ({ page }) => {
 	await openEditor(page);
 
-	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await openProjectSettingsTab(page, "Default Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	let variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("inventory");
 	await variableDialog.getByRole("textbox", { name: "Default value" }).fill("ready");
 	await variableDialog.getByRole("button", { name: "Save" }).click();
 
+	await page.getByRole("tab", { name: "Secrets" }).click();
 	await page.getByRole("button", { name: "Add secret" }).click();
 	let secretDialog = page.getByRole("dialog");
 	await secretDialog.getByRole("textbox", { name: "Name" }).fill("api_token");
+	await secretDialog.getByRole("switch", { name: "Use Simulation override" }).click();
+	await secretDialog.getByRole("textbox", { name: "Simulation override" }).fill("test-secret");
 	await secretDialog.getByRole("button", { name: "Save" }).click();
-	await page.getByRole("textbox", { name: "Simulation value" }).fill("test-secret");
+	await expect(page.getByText("Override configured")).toBeVisible();
+	await page.getByRole("button", { name: "Save Settings" }).click();
 
 	await page.getByRole("button", { name: "Data & Variables" }).click();
 	await page.getByRole("button", { name: "Variable Operation" }).click();
@@ -237,17 +326,21 @@ test("renaming defaults and secrets updates every node reference", async ({ page
 		.fill("{{inventory}} {{inventory.items[0]}} {{api_token}} {{api_token.value}} {{inventory_backup}}");
 	const logNode = page.locator(".react-flow__node").filter({ hasText: "Log" });
 
-	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await openProjectSettingsTab(page, "Default Variables");
 	await page.getByRole("button", { name: "Edit inventory" }).click();
 	variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("stock");
 	await variableDialog.getByRole("button", { name: "Save" }).click();
 
+	await page.getByRole("tab", { name: "Secrets" }).click();
 	await page.getByRole("button", { name: "Edit api_token" }).click();
 	secretDialog = page.getByRole("dialog");
 	await secretDialog.getByRole("textbox", { name: "Name" }).fill("access_token");
+	await expect(secretDialog.getByRole("switch", { name: "Use Simulation override" })).toBeChecked();
+	await expect(secretDialog.getByRole("textbox", { name: "Simulation override" })).toHaveValue("test-secret");
 	await secretDialog.getByRole("button", { name: "Save" }).click();
-	await expect(page.getByRole("textbox", { name: "Simulation value" })).toHaveValue("test-secret");
+	await expect(page.getByText("Override configured")).toBeVisible();
+	await page.getByRole("button", { name: "Save Settings" }).click();
 
 	await expect(variableNode).toContainText("stock");
 	await expect(logNode).toContainText(
@@ -264,13 +357,19 @@ test("variable search respects the error output visibility option", async ({ pag
 
 	const variableRows = page.locator("[data-variable-name]");
 	const showErrors = page.getByRole("checkbox", { name: "Show errors" });
+	const showOutputs = page.getByRole("checkbox", { name: "Show outputs" });
 	await expect(showErrors).not.toBeChecked();
+	await expect(showOutputs).toBeChecked();
 	await expect(page.locator('[data-variable-name*=".error"]')).toHaveCount(0);
 
 	const search = page.getByRole("textbox", { name: "Search variables" });
 	await search.fill("target_type");
 	await expect(variableRows).toHaveCount(1);
 	await expect(variableRows.first()).toHaveAttribute("data-variable-name", /\.target_type$/);
+	await showOutputs.uncheck();
+	await expect(variableRows).toHaveCount(0);
+	await showOutputs.check();
+	await expect(variableRows).toHaveCount(1);
 
 	await search.fill("retryable");
 	await expect(page.getByText("No variables match your search and display options.")).toBeVisible();
@@ -300,18 +399,20 @@ test("variable editors do not insert example values", async ({ page }) => {
 	await expect(page.getByRole("textbox", { name: "Object field path" })).toHaveValue("");
 	await expect(page.getByRole("textbox", { name: "Field value" })).toHaveValue("");
 
-	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await openProjectSettingsTab(page, "Default Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("combobox", { name: "Type" }).click();
 	await page.getByRole("option", { name: "file_path" }).click();
 	await expect(variableDialog.getByRole("textbox", { name: "Default value" })).toHaveValue("");
+	await variableDialog.getByRole("button", { name: "Cancel" }).click();
+	await page.keyboard.press("Escape");
 });
 
 test("persistent variable simulation carries changes into the next run", async ({ page }) => {
 	await openEditor(page);
 
-	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await openProjectSettingsTab(page, "Default Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("counter");
@@ -319,8 +420,9 @@ test("persistent variable simulation carries changes into the next run", async (
 	await page.getByRole("option", { name: "persistent" }).click();
 	await variableDialog.getByRole("combobox", { name: "Type" }).click();
 	await page.getByRole("option", { name: "number" }).click();
-	await variableDialog.getByRole("textbox", { name: "Default value" }).fill("0");
+	await variableDialog.getByRole("spinbutton", { name: "Default value" }).fill("0");
 	await variableDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
 
 	await page.getByRole("button", { name: "Manual" }).click();
 	await page.getByRole("button", { name: "Data & Variables" }).click();
@@ -341,6 +443,7 @@ test("persistent variable simulation carries changes into the next run", async (
 	await page.getByRole("button", { name: "Simulation speed" }).click();
 	await page.getByRole("option", { name: "Instant" }).click();
 	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+	await page.getByRole("button", { name: "Variables", exact: true }).click();
 	const counterValue = page.locator('[data-variable-name="counter"] pre');
 	await expect(counterValue).toHaveText("1");
 	await expect(page.locator(".react-flow__edge.baud-edge-simulated")).toHaveCount(1);
@@ -360,43 +463,6 @@ test("persistent variable simulation carries changes into the next run", async (
 	await page.getByRole("button", { name: "Trigger", exact: true }).click();
 	await page.getByRole("button", { name: "Variables", exact: true }).click();
 	await expect(counterValue).toHaveText("1");
-});
-
-test("Switch simulation follows the default output when no case matches", async ({ page }) => {
-	await openEditor(page);
-
-	await page.getByRole("button", { name: "Manual" }).click();
-	const blockSearch = page.getByRole("textbox", { name: "Search blocks" });
-	await blockSearch.fill("Switch");
-	await page.getByRole("button", { name: /^Switch low/ }).click();
-	await page.getByRole("textbox", { name: "Switch value" }).fill("missing");
-	const switchCases = page.getByRole("list", { name: "Switch cases" });
-	await switchCases.getByRole("textbox", { name: "Name" }).fill("Expected");
-	await switchCases.getByRole("textbox", { name: "Value" }).fill("matched");
-	await blockSearch.fill("Log");
-	await page.getByRole("button", { name: /^Log low/ }).click();
-	await page.getByRole("textbox", { name: "Message" }).fill("default path ran");
-
-	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
-	const switchNode = page.locator(".react-flow__node").filter({ hasText: "Switch" });
-	const logNode = page.locator(".react-flow__node").filter({ hasText: "Log" });
-	await manualNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
-	await switchNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
-	await switchNode
-		.locator('.react-flow__handle.source[data-handleid="default"]')
-		.dispatchEvent("click", { bubbles: true });
-	await logNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
-
-	await page.getByRole("button", { name: "Simulator" }).click();
-	await page.getByRole("button", { name: "Simulation speed" }).click();
-	await page.getByRole("option", { name: "Instant" }).click();
-	await page.getByRole("button", { name: "Trigger", exact: true }).click();
-	await page.getByRole("button", { name: "Simulation", exact: true }).click();
-
-	await expect(page.getByText(/matched no case and selected "default" output/)).toBeVisible();
-	await expect(page.getByText(/default path ran/)).toBeVisible();
-	await expect(switchNode.locator(".baud-script-node")).toHaveCSS("border-color", "rgb(46, 217, 143)");
-	await expect(logNode.locator(".baud-script-node")).toHaveCSS("border-color", "rgb(46, 217, 143)");
 });
 
 test("Switch simulation follows the default output when no case matches", async ({ page }) => {
@@ -1238,7 +1304,7 @@ test("exported package preserves editor metadata and imports back", async ({ pag
 	await openEditor(page);
 
 	await page.getByRole("button", { name: "Manual" }).click();
-	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await openProjectSettingsTab(page, "Default Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	await page.getByRole("textbox", { name: "Name" }).fill("counter");
 	await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
@@ -1246,8 +1312,9 @@ test("exported package preserves editor metadata and imports back", async ({ pag
 	await page.getByRole("option", { name: "persistent" }).click();
 	await page.getByRole("combobox", { name: "Type" }).click();
 	await page.getByRole("option", { name: "number" }).click();
-	await page.getByRole("textbox", { name: "Default value" }).fill("10");
+	await page.getByRole("spinbutton", { name: "Default value" }).fill("10");
 	await page.getByRole("button", { name: "Save", exact: true }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
 	await page.getByTitle("Add comment").click();
 	await page.getByPlaceholder("Write a note...").fill("Round-trip comment");
 	await page.getByRole("button", { name: "Edge style" }).click();
@@ -1297,8 +1364,7 @@ test("exported package preserves editor metadata and imports back", async ({ pag
 	await expect(page.getByText("saved", { exact: true })).toBeVisible();
 	await expect(page.getByPlaceholder("Write a note...")).toHaveValue("Round-trip comment");
 	await page.getByRole("button", { name: "Variables", exact: true }).click();
-	await expect(page.getByText("Default variables", { exact: true })).toBeVisible();
-	await expect(page.getByText("counter", { exact: true }).last()).toBeVisible();
+	await expect(page.locator('[data-variable-name="counter"]')).toBeVisible();
 
 	await page.getByRole("button", { name: "Return to projects" }).click();
 	await page.locator('input[type="file"]').setInputFiles(packagePath);
@@ -1398,6 +1464,11 @@ async function openEditor(page: Page) {
 	await page.getByRole("button", { name: "New project" }).click();
 	await page.getByRole("button", { name: "Create project" }).click();
 	await expect(page.getByRole("button", { name: "Open asset editor" })).toBeVisible();
+}
+
+async function openProjectSettingsTab(page: Page, tab: "Default Variables" | "Secrets" | "Script Settings") {
+	await page.getByRole("button", { name: "Open project settings" }).click();
+	await page.getByRole("tab", { name: tab }).click();
 }
 
 async function readPanelPreferences(page: Page) {

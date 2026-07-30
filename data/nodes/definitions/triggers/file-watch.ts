@@ -35,6 +35,12 @@ export const fileWatchTriggerNode = defineNode({
 			description: "File event type reported by the runner.",
 			example: "n-mr3zyt6f-2.event",
 		},
+		{
+			name: "watched_path",
+			type: "file_path",
+			description: "Configured file or directory path watched by the runner.",
+			example: "n-mr3zyt6f-2.watched_path",
+		},
 	],
 	runnerType: "file_watch",
 	validateConfig: (config) => [requiredStaticConfig(config, "path", "file watch path")].filter(Boolean),
@@ -44,6 +50,8 @@ export const fileWatchTriggerNode = defineNode({
 			outputData: {
 				path: context.triggerPayload.path || api.resolveTemplate(api.getConfigString(node, "path"), context),
 				event: context.triggerPayload.event || "modified",
+				watched_path:
+					context.triggerPayload.watched_path || api.resolveTemplate(api.getConfigString(node, "path"), context),
 			},
 		}),
 		describe: ({ api, context, node }) => {

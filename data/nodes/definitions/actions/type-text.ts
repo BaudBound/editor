@@ -15,7 +15,7 @@ export const typeTextNode = defineNode({
 	icon: TextCursorInput,
 	kind: "action",
 	label: "Type Text",
-	permission: { name: "keyboard_control", risk: "high" },
+	permission: { name: "keyboard.control", risk: "high" },
 	risk: "high",
 	runnerType: "type_text",
 	supportedTargetRuntimes: ["Windows Desktop"],

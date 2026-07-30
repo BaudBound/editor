@@ -39,7 +39,7 @@ export const webhookResponseNode = defineNode({
 	icon: Reply,
 	kind: "action",
 	label: "Webhook Response",
-	permission: { name: "webhook_response", risk: "low" },
+	permission: { name: "webhook.response", risk: "low" },
 	risk: "low",
 	runtimeOutputs: fallible([
 		{

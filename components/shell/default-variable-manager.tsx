@@ -1,6 +1,6 @@
 import { Database, Pencil, Plus, Trash2 } from "lucide-react";
 import { useId, useMemo, useState } from "react";
-import { VariableCodeInput, type VariableCompletion } from "@/components/inspector/variable-code-input";
+import { TypedValueEditor } from "@/components/common/typed-value-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,13 +13,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-	defaultValueError,
-	formatDefaultValue,
-	parseDefaultValue,
-	validateDefaultVariable,
-} from "@/data/project/default-variables";
-import { type VariableType, variableTypes } from "@/data/project/variables";
+import { formatDefaultValue, validateDefaultVariable } from "@/data/project/default-variables";
+import { createEmptyTypedValue, validateTypedValue } from "@/data/project/typed-values";
+import { type ListItemType, type VariableType, variableTypes } from "@/data/project/variables";
 import type { DefaultVariable, SecretDeclaration } from "@/lib/types";
 import type { VariableRename } from "@/utils/variable-reference-renaming";
 
@@ -28,8 +24,6 @@ type DefaultVariableManagerProps = {
 	variables: DefaultVariable[];
 	onChange: (variables: DefaultVariable[], rename?: VariableRename) => void;
 };
-
-const defaultValueCompletions: VariableCompletion[] = [];
 
 function emptyVariable(): DefaultVariable {
 	return {
@@ -45,7 +39,6 @@ export function DefaultVariableManager({ secrets, variables, onChange }: Default
 	const [dialogOpen, setDialogOpen] = useState(false);
 	const [editingName, setEditingName] = useState<string | null>(null);
 	const [draft, setDraft] = useState<DefaultVariable>(emptyVariable);
-	const [rawValue, setRawValue] = useState("");
 	const nameId = useId();
 	const scopeId = useId();
 	const typeId = useId();
@@ -55,33 +48,36 @@ export function DefaultVariableManager({ secrets, variables, onChange }: Default
 		() => validateDefaultVariable(draft, variables, secrets, editingName ?? undefined),
 		[draft, editingName, secrets, variables],
 	);
-	const valueError = defaultValueError(draft.type, rawValue);
+	const valueError =
+		draft.type === "string" && typeof draft.value === "string" && !draft.value.trim()
+			? "Default value is required."
+			: validateTypedValue(draft.type, draft.value, draft.itemType);
 
 	const openCreate = () => {
 		const variable = emptyVariable();
 		setEditingName(null);
 		setDraft(variable);
-		setRawValue("");
 		setDialogOpen(true);
 	};
 	const openEdit = (variable: DefaultVariable) => {
 		setEditingName(variable.name);
 		setDraft(structuredClone(variable));
-		setRawValue(formatDefaultValue(variable.type, variable.value));
 		setDialogOpen(true);
 	};
 	const changeType = (type: VariableType) => {
-		setDraft((current) => ({ ...current, type, value: "" }));
-		setRawValue("");
+		setDraft((current) => ({
+			...current,
+			type,
+			value: createEmptyTypedValue(type),
+			...(type === "list" ? { itemType: "string" as ListItemType } : { itemType: undefined }),
+		}));
 	};
 	const save = () => {
-		const value = parseDefaultValue(draft.type, rawValue);
-		if (declarationError || valueError || value === undefined) return;
+		if (declarationError || valueError) return;
 		const normalized: DefaultVariable = {
 			...draft,
 			description: draft.description.trim(),
 			name: draft.name.trim(),
-			value,
 		};
 		const next = editingName
 			? variables.map((variable) => (variable.name === editingName ? normalized : variable))
@@ -222,32 +218,18 @@ export function DefaultVariableManager({ secrets, variables, onChange }: Default
 							</SelectContent>
 						</Select>
 					</label>
-					<label htmlFor={valueId} className="grid gap-1 text-xs text-baud-muted">
+					<div className="grid gap-1 text-xs text-baud-muted">
 						Default value
-						{draft.type === "boolean" ? (
-							<Select value={rawValue} onValueChange={setRawValue}>
-								<SelectTrigger id={valueId} className="w-full">
-									<SelectValue placeholder="Select a value" />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="true">true</SelectItem>
-									<SelectItem value="false">false</SelectItem>
-								</SelectContent>
-							</Select>
-						) : (
-							<VariableCodeInput
-								id={valueId}
-								ariaLabel="Default value"
-								className="min-h-28 [&_pre]:min-h-28 [&_textarea]:min-h-28"
-								hasError={Boolean(valueError)}
-								multiline
-								placeholder="Enter a required default value"
-								value={rawValue}
-								variables={defaultValueCompletions}
-								onChange={setRawValue}
-							/>
-						)}
-					</label>
+						<TypedValueEditor
+							ariaLabel="Default value"
+							id={valueId}
+							type={draft.type}
+							itemType={draft.itemType}
+							value={draft.value}
+							onChange={(value) => setDraft((current) => ({ ...current, value }))}
+							onItemTypeChange={(itemType) => setDraft((current) => ({ ...current, itemType }))}
+						/>
+					</div>
 					<label htmlFor={descriptionId} className="grid gap-1 text-xs text-baud-muted">
 						Description
 						<Input

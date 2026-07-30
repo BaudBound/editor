@@ -20,7 +20,7 @@ export const moveFileNode = defineNode({
 	icon: MoveRight,
 	kind: "action",
 	label: "Move File",
-	permission: { name: "file_move", risk: "medium" },
+	permission: { name: "file.move", risk: "medium" },
 	permissionPathRules: [
 		{ access: "read", configKey: "sourcePath" },
 		{ access: "write", configKey: "destinationPath" },

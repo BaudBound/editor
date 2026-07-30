@@ -38,6 +38,7 @@ export function createEmptyEditorProject(settings: ProjectSettings, now = new Da
 		revision: 1,
 		schemaVersion: editorProjectSchemaVersion,
 		secretDeclarations: [],
+		scriptSettings: [],
 		settings,
 		updatedAt: identity.createdAt,
 	};

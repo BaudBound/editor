@@ -1,4 +1,7 @@
 import { AppWindow } from "lucide-react";
+import type { JsonValue } from "@/lib/types";
+import type { SimulationContext } from "@/utils/simulation-types";
+import type { NodeSimulationApi } from "../../node-definition";
 import { defineNode } from "../../node-definition";
 import { fallible } from "../runtime-outputs";
 import { actionWindow } from "../shared";
@@ -15,9 +18,9 @@ export const openApplicationNode = defineNode({
 			usesVariables: true,
 			help: "Use an app name, app id, bundle id, shortcut path, or desktop entry supported by the target runner.",
 		},
-		{ key: "arguments", label: "Arguments", type: "textarea", usesVariables: true },
+		{ key: "arguments", label: "Arguments", type: "string-list", usesVariables: true },
 	],
-	defaultConfig: () => ({ application: "", arguments: "" }),
+	defaultConfig: () => ({ application: "", arguments: [] }),
 	description: "Launch an installed desktop application without waiting for it or capturing its output.",
 	desktopOnly: true,
 	fallible: true,
@@ -25,7 +28,7 @@ export const openApplicationNode = defineNode({
 	icon: AppWindow,
 	kind: "action",
 	label: "Open Application",
-	permission: { name: "open_application", risk: "medium" },
+	permission: { name: "application.open", risk: "medium" },
 	risk: "medium",
 	runtimeOutputs: fallible([
 		{
@@ -51,8 +54,16 @@ export const openApplicationNode = defineNode({
 		describe: ({ api, context, node }) => [
 			{
 				level: "info",
-				message: `[Simulation] Open Application (${node.id}) succeeded. Would open application ${api.formatValue(api.resolveTemplate(api.getConfigString(node, "application"), context))}.`,
+				message: `[Simulation] Open Application (${node.id}) succeeded. Would open application ${api.formatValue(api.resolveTemplate(api.getConfigString(node, "application"), context))} with arguments ${api.formatValue(resolveArguments(node.data.config.arguments, context, api))}.`,
 			},
 		],
 	},
 });
+
+function resolveArguments(value: JsonValue | undefined, context: SimulationContext, api: NodeSimulationApi) {
+	return Array.isArray(value)
+		? value
+				.filter((argument): argument is string => typeof argument === "string")
+				.map((argument) => api.resolveTemplate(argument, context))
+		: [];
+}

@@ -24,7 +24,7 @@ export const downloadFileNode = defineNode({
 	icon: Download,
 	kind: "action",
 	label: "Download File",
-	permission: { name: "download_file", risk: "medium" },
+	permission: { name: "file.download", risk: "medium" },
 	permissionPathRules: [{ access: "write", configKey: "destinationPath" }],
 	risk: "medium",
 	runtimeOutputs: fallible([

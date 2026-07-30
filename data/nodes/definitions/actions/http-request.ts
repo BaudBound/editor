@@ -54,7 +54,7 @@ export const httpRequestNode = defineNode({
 	icon: Globe,
 	kind: "action",
 	label: "HTTP Request",
-	permission: { name: "http_request", risk: "medium" },
+	permission: { name: "http.request", risk: "medium" },
 	risk: "medium",
 	runtimeOutputs: fallible([
 		{
@@ -99,12 +99,22 @@ export const httpRequestNode = defineNode({
 		].filter(Boolean),
 	simulation: {
 		createOutput: ({ api, context, node }) => api.executeHttpRequest(node, context),
-		describe: ({ api, context, failed, node }) => [
-			{
-				level: failed ? "error" : "info",
-				message: `[Simulation] HTTP Request (${node.id}) ${failed ? "failed" : "succeeded"}. ${getHttpExecutionDetail(api, node, context)}`,
-			},
-		],
+		describe: ({ api, context, failed, node }) => {
+			const traces = [
+				{
+					level: failed ? ("error" as const) : ("info" as const),
+					message: `[Simulation] HTTP Request (${node.id}) ${failed ? "failed" : "succeeded"}. ${getHttpExecutionDetail(api, node, context)}`,
+				},
+			];
+			if (api.getConfigString(node, "userAgent").trim()) {
+				traces.push({
+					level: "info",
+					message:
+						"[Simulation limitation] Browsers do not allow this simulation to set User-Agent. The runner will send the configured User-Agent.",
+				});
+			}
+			return traces;
+		},
 	},
 });
 

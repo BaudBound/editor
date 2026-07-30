@@ -20,7 +20,7 @@ export const copyFileNode = defineNode({
 	icon: Copy,
 	kind: "action",
 	label: "Copy File",
-	permission: { name: "file_copy", risk: "medium" },
+	permission: { name: "file.copy", risk: "medium" },
 	permissionPathRules: [
 		{ access: "read", configKey: "sourcePath" },
 		{ access: "write", configKey: "destinationPath" },
