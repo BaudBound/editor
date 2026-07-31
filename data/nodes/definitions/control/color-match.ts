@@ -12,6 +12,7 @@ export const colorMatchNode = defineNode({
 			label: "Actual color",
 			type: "text",
 			usesVariables: true,
+			variableTypes: "color",
 			help: "Use #RRGGBB, rgb(r, g, b), or an RGB object variable such as a Get Pixel Color rgb output.",
 		},
 		{
@@ -20,6 +21,7 @@ export const colorMatchNode = defineNode({
 			label: "Expected color",
 			type: "text",
 			usesVariables: true,
+			variableTypes: "color",
 			help: "The color to compare against the actual color.",
 		},
 		{
@@ -36,6 +38,7 @@ export const colorMatchNode = defineNode({
 			label: "Tolerance (%)",
 			type: "number",
 			usesVariables: true,
+			variableTypes: "numeric",
 			numeric: {
 				kind: "float",
 				signed: false,

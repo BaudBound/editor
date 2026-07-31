@@ -35,6 +35,15 @@ export function validateWindowsKeyExpression(expression: string) {
 
 export const validateWindowsHotkey = validateWindowsKeyExpression;
 
+export function validateWindowsKeyTemplate(expression: string) {
+	let variableIndex = 0;
+	const staticExpression = expression.replace(/\{\{\s*[^{}]+\s*}}/g, () => `F${13 + (variableIndex++ % 12)}`);
+	if (staticExpression.includes("{{") || staticExpression.includes("}}")) {
+		return "key expression contains an invalid variable reference.";
+	}
+	return validateWindowsKeyExpression(staticExpression);
+}
+
 export function canonicalWindowsKey(key: string, code: string) {
 	const browserKey = key === "Meta" || key === "OS" ? "Windows" : key;
 	const modifierCandidate = modifierAliases.get(normalizeToken(browserKey));

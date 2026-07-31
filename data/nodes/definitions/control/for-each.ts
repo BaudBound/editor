@@ -1,12 +1,21 @@
 import { Repeat2 } from "lucide-react";
+import { validateListExpression } from "../../list-expression";
 import { defineNode } from "../../node-definition";
 import { validateLoopBodyDoesNotReturn } from "../shared";
-import { requiredConfig } from "../validators";
 
 export const forEachNode = defineNode({
 	actionType: "control.for_each",
 	capabilities: ["runtime.for_each"],
-	configFields: [{ key: "items", label: "Items", type: "textarea", usesVariables: true }],
+	configFields: [
+		{
+			key: "items",
+			label: "Items",
+			type: "textarea",
+			usesVariables: true,
+			variableTypes: "list",
+			validate: (config) => validateListExpression(config.items, "Items"),
+		},
+	],
 	controlType: "for_each",
 	defaultConfig: () => ({ items: "" }),
 	description: "Loop through every item in a list.",
@@ -30,6 +39,5 @@ export const forEachNode = defineNode({
 			example: "n-mr3zyt6f-8.index",
 		},
 	],
-	validateConfig: (config) => [requiredConfig(config, "items", "for-each items")].filter(Boolean),
 	validateGraph: ({ context, node }) => validateLoopBodyDoesNotReturn(node.id, context.edges, "loop"),
 });

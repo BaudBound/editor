@@ -11,14 +11,28 @@ export const runProcessNode = defineNode({
 	actionType: "action.process.run",
 	capabilities: actionProcess,
 	configFields: [
-		{ key: "executable", label: "Executable", type: "text", usesVariables: true },
-		{ key: "arguments", label: "Arguments", type: "string-list", usesVariables: true },
-		{ key: "workingDirectory", label: "Working directory", type: "text", usesVariables: true },
+		{
+			key: "executable",
+			label: "Executable",
+			type: "text",
+			usesVariables: true,
+			variableTypes: "file-path",
+			nonEmpty: true,
+		},
+		{ key: "arguments", label: "Arguments", type: "string-list", usesVariables: true, variableTypes: "text" },
+		{
+			key: "workingDirectory",
+			label: "Working directory",
+			type: "text",
+			usesVariables: true,
+			variableTypes: "file-path",
+		},
 		{
 			key: "timeoutSeconds",
 			label: "Timeout seconds",
 			type: "number",
 			usesVariables: true,
+			variableTypes: "numeric",
 			required: false,
 			numeric: {
 				kind: "float",

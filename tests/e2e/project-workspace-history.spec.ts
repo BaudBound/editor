@@ -8,8 +8,8 @@ test("undo and redo restore document changes", async ({ page }) => {
 	const logNodes = page.locator(".react-flow__node").filter({ hasText: "Log" });
 
 	await page.getByRole("textbox", { name: "Search blocks" }).fill("Log");
-	await page.getByRole("button", { name: /^Log/ }).click();
-	await page.getByRole("button", { name: /^Log/ }).click();
+	await page.getByRole("button", { name: /^Log low$/ }).click();
+	await page.getByRole("button", { name: /^Log low$/ }).click();
 	await expect(logNodes).toHaveCount(2);
 	await page.keyboard.press("Control+z");
 	await expect(logNodes).toHaveCount(1);
@@ -445,7 +445,7 @@ test("document history stays bounded to the most recent 100 transactions", async
 	test.setTimeout(120_000);
 	await createProject(page, "Bounded history");
 	await page.getByRole("textbox", { name: "Search blocks" }).fill("Log");
-	const addLog = page.getByRole("button", { name: /^Log/ });
+	const addLog = page.getByRole("button", { name: /^Log low$/ });
 	for (let index = 0; index < 105; index += 1) {
 		await addLog.click();
 	}

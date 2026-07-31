@@ -13,6 +13,7 @@ export const delayNode = defineNode({
 			label: "Amount",
 			type: "number",
 			usesVariables: true,
+			variableTypes: "numeric",
 			numeric: {
 				kind: "float",
 				signed: false,
@@ -21,6 +22,7 @@ export const delayNode = defineNode({
 				minimumInclusive: false,
 				maximumInclusive: true,
 			},
+			validate: (config) => staticPositiveDurationConfig(config, "amount", "unit", "delay duration", true),
 		},
 		{ key: "unit", label: "Unit", type: "select", options: timeUnitOptions },
 	],
@@ -34,8 +36,6 @@ export const delayNode = defineNode({
 	permission: { name: "delay", risk: "low" },
 	risk: "low",
 	runnerType: "delay",
-	validateConfig: (config) =>
-		[staticPositiveDurationConfig(config, "amount", "unit", "delay duration", true)].filter(Boolean),
 	simulation: {
 		createOutput: ({ api, context, node }) => {
 			const amount = api.resolveTemplate(api.getConfigString(node, "amount"), context);

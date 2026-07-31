@@ -1,4 +1,5 @@
 import { runtimeNumberContract, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
+import { validateWindowsHotkey } from "@/data/nodes/windows-key-contract";
 import {
 	type DurationUnit,
 	durationUnits,
@@ -6,14 +7,16 @@ import {
 	listItemTypes,
 	type VariableType,
 } from "@/data/project/variables";
-import type { JsonValue } from "@/lib/types";
+import type { JsonValue, ScriptSettingType } from "@/lib/types";
 
-export type TypedValueType = VariableType;
+export type TypedValueType = VariableType | Extract<ScriptSettingType, "hotkey" | "color">;
 
 export function createEmptyTypedValue(type: TypedValueType, itemType?: ListItemType): JsonValue {
 	switch (type) {
 		case "string":
 		case "file_path":
+		case "hotkey":
+		case "color":
 			return "";
 		case "number":
 			return 0;
@@ -38,6 +41,12 @@ export function validateTypedValue(type: TypedValueType, value: JsonValue, itemT
 			return typeof value === "string" ? null : "Enter a text value.";
 		case "file_path":
 			return typeof value === "string" && value.trim() ? null : "Enter a file path.";
+		case "hotkey":
+			return typeof value === "string" && !validateWindowsHotkey(value)
+				? null
+				: "Press a valid Windows key combination.";
+		case "color":
+			return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? null : "Select a color in #RRGGBB format.";
 		case "number":
 			return typeof value === "number" &&
 				Number.isFinite(value) &&

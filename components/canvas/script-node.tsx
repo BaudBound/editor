@@ -7,14 +7,24 @@ import { RiskBadge } from "../shell/risk-badge";
 
 type ScriptFlowNode = Node<ScriptNodeData, "scriptNode">;
 
-export const ScriptNodeSimulationContext = createContext<ReadonlySet<string>>(new Set());
+type ScriptNodeSimulationState = {
+	activeNodeId: string | null;
+	completedNodeIds: ReadonlySet<string>;
+};
+
+export const ScriptNodeSimulationContext = createContext<ScriptNodeSimulationState>({
+	activeNodeId: null,
+	completedNodeIds: new Set(),
+});
 
 const namedHeaderHeight = 58;
 const outputHandleSpacing = 30;
 const baseBodyHeight = 62;
 
 export function ScriptNode({ data, id, selected }: NodeProps<ScriptFlowNode>) {
-	const simulated = useContext(ScriptNodeSimulationContext).has(id);
+	const simulationState = useContext(ScriptNodeSimulationContext);
+	const active = simulationState.activeNodeId === id;
+	const completed = simulationState.completedNodeIds.has(id);
 	const customName = typeof data.config.customName === "string" ? data.config.customName.trim() : "";
 	const subtitle = customName || id;
 	const configEntries = Object.entries(sanitizeNodeConfig(data.actionType, data.config)).filter(
@@ -25,12 +35,15 @@ export function ScriptNode({ data, id, selected }: NodeProps<ScriptFlowNode>) {
 
 	return (
 		<div
+			data-simulation-state={active ? "active" : completed ? "completed" : undefined}
 			className={`baud-script-node nokey relative w-64 rounded border bg-baud-node shadow-[0_14px_40px_rgba(0,0,0,0.24)] ${
-				simulated
-					? "border-[#2ed98f] ring-2 ring-[#2ed98f]/35 shadow-[0_0_12px_rgba(46,217,143,0.28)]"
-					: selected
-						? "border-baud-red ring-2 ring-baud-red/35"
-						: "border-baud-border"
+				active
+					? "border-baud-amber ring-2 ring-baud-amber/40 shadow-[0_0_14px_rgba(245,185,66,0.32)]"
+					: completed
+						? "border-[#2ed98f] ring-2 ring-[#2ed98f]/35 shadow-[0_0_12px_rgba(46,217,143,0.28)]"
+						: selected
+							? "border-baud-red ring-2 ring-baud-red/35"
+							: "border-baud-border"
 			}`}
 		>
 			<div

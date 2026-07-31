@@ -10,6 +10,7 @@ import {
 	getTargetRuntimeCompatibilityErrors,
 	validateNodeConfig,
 } from "@/data/nodes/registry";
+import { validateWindowsHotkey } from "@/data/nodes/windows-key-contract";
 import { targetRuntimes } from "@/data/project/runtimes";
 import {
 	getVariableOperationFixedType,
@@ -17,7 +18,14 @@ import {
 	normalizeVariableOperation,
 	variableTypes,
 } from "@/data/project/variables";
-import type { ActionType, JsonValue, PermissionSummary, RiskLevel, TargetRuntime } from "@/lib/types";
+import {
+	type ActionType,
+	type JsonValue,
+	type PermissionSummary,
+	type RiskLevel,
+	scriptSettingTypes,
+	type TargetRuntime,
+} from "@/lib/types";
 import { isSelfConnection } from "@/utils/editor-graph";
 
 export const canonicalCapabilities = [
@@ -342,13 +350,13 @@ export function validateManifestContract(value: unknown) {
 				}
 				errors.push(...validateKnownFields(setting, settingFields, "manifest.json Script Setting"));
 				const name = typeof setting.name === "string" ? setting.name : "";
-				const type = setting.type as (typeof variableTypes)[number];
+				const type = setting.type as string;
 				if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
 					errors.push(`manifest.json Script Setting name "${name}" is invalid.`);
 				}
 				if (names.has(name)) errors.push(`manifest.json contains duplicate Script Setting name "${name}".`);
 				names.add(name);
-				if (!variableTypes.includes(type)) {
+				if (!scriptSettingTypes.includes(type as (typeof scriptSettingTypes)[number])) {
 					errors.push(`manifest.json Script Setting "${name}" has invalid type "${String(setting.type)}".`);
 				} else if (
 					setting.default_value !== undefined &&
@@ -508,14 +516,11 @@ function validateDefaultVariableProgramContract(manifestValue: unknown, programV
 	});
 }
 
-function defaultValueMatchesType(
-	type: (typeof variableTypes)[number],
-	value: unknown,
-	itemType?: unknown,
-	allowEmptyString = false,
-): boolean {
+function defaultValueMatchesType(type: string, value: unknown, itemType?: unknown, allowEmptyString = false): boolean {
 	if (type === "string") return typeof value === "string" && (allowEmptyString || value.trim().length > 0);
 	if (type === "file_path") return typeof value === "string" && value.trim().length > 0;
+	if (type === "hotkey") return typeof value === "string" && !validateWindowsHotkey(value);
+	if (type === "color") return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
 	if (type === "number") return typeof value === "number" && Number.isFinite(value);
 	if (type === "boolean") return typeof value === "boolean";
 	if (type === "list") {
@@ -523,7 +528,7 @@ function defaultValueMatchesType(
 			typeof itemType === "string" &&
 			listItemTypes.includes(itemType as (typeof listItemTypes)[number]) &&
 			Array.isArray(value) &&
-			value.every((item) => defaultValueMatchesType(itemType as (typeof listItemTypes)[number], item, undefined, true))
+			value.every((item) => defaultValueMatchesType(itemType, item, undefined, true))
 		);
 	}
 	if (type === "object") return isJsonObject(value);

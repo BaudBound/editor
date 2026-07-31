@@ -15,6 +15,7 @@ export const webhookResponseNode = defineNode({
 			label: "Status code",
 			type: "number",
 			usesVariables: true,
+			variableTypes: "numeric",
 			numeric: {
 				kind: "integer",
 				signed: false,
@@ -24,8 +25,15 @@ export const webhookResponseNode = defineNode({
 				maximumInclusive: true,
 			},
 		},
-		{ key: "contentType", label: "Content type", type: "text", usesVariables: true },
-		{ key: "body", label: "Body", type: "textarea", usesVariables: true },
+		{
+			key: "contentType",
+			label: "Content type",
+			type: "text",
+			usesVariables: true,
+			variableTypes: "string",
+			nonEmpty: true,
+		},
+		{ key: "body", label: "Body", type: "textarea", usesVariables: true, variableTypes: "text" },
 	],
 	defaultConfig: () => ({
 		statusCode: "200",

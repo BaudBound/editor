@@ -8,7 +8,7 @@ const MAX_SCRIPT_SETTING_CONTAINER_ITEMS = 4096;
 const MAX_SCRIPT_SETTING_VALUE_DEPTH = 32;
 
 export function formatScriptSettingValue(type: ScriptSettingType, value: JsonValue) {
-	if (type === "string" || type === "file_path") {
+	if (type === "string" || type === "file_path" || type === "hotkey" || type === "color") {
 		return typeof value === "string" ? value : "";
 	}
 	if (type === "number" || type === "boolean") {
@@ -18,7 +18,7 @@ export function formatScriptSettingValue(type: ScriptSettingType, value: JsonVal
 }
 
 export function parseScriptSettingValue(type: ScriptSettingType, rawValue: string): JsonValue | undefined {
-	if (type === "string" || type === "file_path") {
+	if (type === "string" || type === "file_path" || type === "hotkey" || type === "color") {
 		return rawValue;
 	}
 	if (type === "number") {
@@ -52,6 +52,12 @@ export function scriptSettingValueError(type: ScriptSettingType, rawValue: strin
 	}
 	if (type === "boolean") {
 		return "Select true or false.";
+	}
+	if (type === "hotkey") {
+		return "Press a valid Windows key combination.";
+	}
+	if (type === "color") {
+		return "Select a color in #RRGGBB format.";
 	}
 	return type === "list" ? "Enter a JSON list." : "Enter a JSON object.";
 }

@@ -6,6 +6,7 @@ import {
 	comparisonOperatorOptions,
 	ifElseAdditionalConditionOperatorOptions,
 	isBetweenConditionOperator,
+	isNumericConditionOperator,
 } from "./options";
 import { isConditionRow } from "./rows";
 
@@ -114,12 +115,31 @@ export function validateConditionRowsConfig(
 		if (index > 0 && !conditionCombinators.has(condition.combinator ?? "")) {
 			errors.push(`${rowLabel} combinator must be AND or OR.`);
 		}
-		if (isBetweenConditionOperator(condition.operator)) {
-			errors.push(...validateBetweenCondition(condition.right, condition.rightEnd ?? "", rowLabel));
+		if (isNumericConditionOperator(condition.operator)) {
+			if (condition.left.trim()) {
+				errors.push(...validateNumericCondition(condition.left, "value", rowLabel));
+			}
+			if (isBetweenConditionOperator(condition.operator)) {
+				errors.push(...validateBetweenCondition(condition.right, condition.rightEnd ?? "", rowLabel));
+			} else {
+				errors.push(...validateNumericCondition(condition.right, "target", rowLabel));
+			}
 		}
 
 		return errors;
 	});
+}
+
+function validateNumericCondition(value: string, fieldLabel: string, rowLabel: string) {
+	if (!value.trim()) {
+		return [`${rowLabel} ${fieldLabel} is required.`];
+	}
+	if (containsVariableReference(value)) {
+		return [];
+	}
+	return conditionNumber(value) === undefined
+		? [`${rowLabel} ${fieldLabel} must be a finite number or variable expression.`]
+		: [];
 }
 
 function validateBetweenCondition(start: string, end: string, rowLabel: string) {
@@ -150,7 +170,7 @@ function validateBetweenCondition(start: string, end: string, rowLabel: string) 
 }
 
 function containsVariableReference(value: string) {
-	return /\{\{[^{}]+}}/.test(value);
+	return /^\{\{\s*[^{}]+\s*}}$/.test(value.trim());
 }
 
 export const actionAudio = ["action.sound"];

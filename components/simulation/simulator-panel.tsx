@@ -13,6 +13,7 @@ export function SimulatorPanel({
 	settings,
 	status,
 	triggerInputDrafts,
+	variables,
 	onAddOverride,
 	onRemoveOverride,
 	onSettingsChange,
@@ -60,8 +61,10 @@ export function SimulatorPanel({
 
 			<section className="space-y-2 rounded border border-baud-border bg-baud-soft/60 p-3">
 				<div>
-					<h3 className="text-xs font-bold tracking-[0.18em] text-baud-muted uppercase">Simulation Speed</h3>
-					<p className="mt-1 text-xs leading-5 text-baud-muted">Controls how quickly simulator steps are played.</p>
+					<h3 className="text-xs font-bold tracking-[0.18em] text-baud-muted uppercase">Simulation Pacing</h3>
+					<p className="mt-1 text-xs leading-5 text-baud-muted">
+						Real time executes each streamed step without an added pause. Slowdown options pause after every step.
+					</p>
 				</div>
 				<OptionCombobox
 					ariaLabel="Simulation speed"
@@ -104,6 +107,7 @@ export function SimulatorPanel({
 								activeScheduleTriggerId={activeScheduleTriggerId}
 								status={status}
 								triggerNode={triggerNode}
+								variables={variables}
 								draft={triggerInputDrafts[triggerNode.id]}
 								onStartSchedule={onStartScheduleSimulation}
 								onStopSchedule={onStopScheduleSimulation}

@@ -11,6 +11,8 @@ export const scheduleTriggerNode = defineNode({
 			key: "every",
 			label: "Every",
 			type: "number",
+			usesVariables: true,
+			variableTypes: "numeric",
 			numeric: {
 				kind: "float",
 				signed: false,
@@ -19,6 +21,7 @@ export const scheduleTriggerNode = defineNode({
 				minimumInclusive: false,
 				maximumInclusive: true,
 			},
+			validate: (config) => staticPositiveDurationConfig(config, "every", "unit", "schedule interval", true),
 		},
 		{ key: "unit", label: "Unit", type: "select", options: timeUnitOptions },
 	],
@@ -56,8 +59,6 @@ export const scheduleTriggerNode = defineNode({
 		},
 	],
 	runnerType: "schedule",
-	validateConfig: (config) =>
-		[staticPositiveDurationConfig(config, "every", "unit", "schedule interval")].filter(Boolean),
 	simulation: {
 		createOutput: ({ api, context, node }) => {
 			const every = Number(api.getConfigString(node, "every"));

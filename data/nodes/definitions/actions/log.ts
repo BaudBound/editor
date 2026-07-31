@@ -8,7 +8,14 @@ export const logNode = defineNode({
 	capabilities: ["action.log"],
 	configFields: [
 		{ key: "level", label: "Log level", type: "select", options: logLevelOptions },
-		{ key: "message", label: "Message", type: "textarea", usesVariables: true },
+		{
+			key: "message",
+			label: "Message",
+			type: "textarea",
+			usesVariables: true,
+			variableTypes: "text",
+			nonEmpty: true,
+		},
 	],
 	defaultConfig: () => ({
 		level: "info",

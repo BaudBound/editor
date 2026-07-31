@@ -17,11 +17,12 @@ export function validateCalculationExpression(expression: string) {
 		return "Expression is required.";
 	}
 
-	if (containsTemplateReference(trimmed)) {
-		return "";
+	const staticExpression = replaceTemplateReferences(trimmed);
+	if (!staticExpression) {
+		return "Expression contains an invalid variable reference.";
 	}
 
-	const result = evaluateCalculationExpression(trimmed);
+	const result = evaluateCalculationExpression(staticExpression);
 	return result.ok ? "" : result.message;
 }
 
@@ -336,8 +337,9 @@ function evaluateFunction(name: string, args: number[]): CalculationResult {
 	}
 }
 
-function containsTemplateReference(value: string) {
-	return /\{\{\s*[^{}]+\s*\}\}/.test(value);
+function replaceTemplateReferences(value: string) {
+	const replaced = value.replace(/\{\{\s*[^{}]+\s*}}/g, "1");
+	return replaced.includes("{{") || replaced.includes("}}") ? "" : replaced;
 }
 
 function isOperator(value: string): value is OperatorTokenValue {

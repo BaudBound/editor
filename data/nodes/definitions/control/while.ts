@@ -15,6 +15,6 @@ export const whileNode = defineNode({
 	label: "While",
 	portPolicy: { kind: "fixed", inputs: ["input"], outputs: ["done", "loop"] },
 	risk: "low",
-	validateConfig: (config) => validateConditionRowsConfig(config, "while"),
+	validateConfig: (config) => validateConditionRowsConfig(config, "while", true),
 	validateGraph: ({ context, node }) => validateLoopBodyDoesNotReturn(node.id, context.edges, "loop"),
 });

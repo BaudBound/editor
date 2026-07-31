@@ -102,6 +102,10 @@ export function isBetweenConditionOperator(operator: string) {
 	return operator === "is_between";
 }
 
+export function isNumericConditionOperator(operator: string) {
+	return [">", ">=", "<", "<=", "is_between"].includes(operator);
+}
+
 export const combinatorOptions: SelectOption[] = [
 	{ label: "AND", value: "and" },
 	{ label: "OR", value: "or" },

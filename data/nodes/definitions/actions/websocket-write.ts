@@ -11,11 +11,20 @@ export const websocketWriteNode = defineNode({
 		{
 			key: "connectionId",
 			label: "Connection id",
+			nonEmpty: true,
 			type: "text",
 			usesVariables: true,
+			variableTypes: "string",
 			help: "Use the WebSocket Trigger connection_id output, for example {{node-id.connection_id}}.",
 		},
-		{ key: "message", label: "Message", type: "textarea", usesVariables: true },
+		{
+			key: "message",
+			label: "Message",
+			type: "textarea",
+			usesVariables: true,
+			variableTypes: "text",
+			nonEmpty: true,
+		},
 	],
 	defaultConfig: () => ({
 		connectionId: "",

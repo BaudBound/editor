@@ -9,8 +9,23 @@ export const downloadFileNode = defineNode({
 	actionType: "action.file.download",
 	capabilities: actionFile,
 	configFields: [
-		{ key: "url", label: "URL", type: "text", usesVariables: true },
-		{ key: "destinationPath", label: "Destination path", type: "text", usesVariables: true },
+		{
+			key: "url",
+			label: "URL",
+			nonEmpty: true,
+			type: "text",
+			usesVariables: true,
+			variableTypes: "string",
+			validate: (config) => staticHttpUrlConfig(config, "url", "Download URL"),
+		},
+		{
+			key: "destinationPath",
+			label: "Destination path",
+			type: "text",
+			usesVariables: true,
+			variableTypes: "file-path",
+			nonEmpty: true,
+		},
 		{ key: "overwrite", label: "Overwrite", type: "select", options: fileOverwriteOptions },
 	],
 	defaultConfig: () => ({
@@ -40,7 +55,6 @@ export const downloadFileNode = defineNode({
 	validateConfig: (config) =>
 		[
 			requiredConfig(config, "url", "download URL"),
-			staticHttpUrlConfig(config, "url", "download URL"),
 			requiredConfig(config, "destinationPath", "destination file path"),
 		].filter(Boolean),
 	simulation: {

@@ -1,4 +1,5 @@
 import type { Node } from "@xyflow/react";
+import type { EditorVariable } from "@/data/project/variables";
 import type {
 	ScriptNodeData,
 	SimulationOverride,
@@ -16,6 +17,7 @@ export type SimulatorPanelProps = {
 	settings: SimulationSettings;
 	status: SimulationRunStatus;
 	triggerInputDrafts: Record<string, SimulationTriggerInputDraft>;
+	variables: EditorVariable[];
 	onAddOverride: (nodeId: string) => void;
 	onRemoveOverride: (nodeId: string) => void;
 	onSettingsChange: (settings: SimulationSettings) => void;

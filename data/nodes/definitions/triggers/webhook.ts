@@ -9,13 +9,20 @@ export const webhookTriggerNode = defineNode({
 	capabilities: ["trigger.webhook"],
 	configFields: [
 		{ key: "method", label: "Method", type: "select", options: httpMethodOptions },
-		{ key: "hookName", label: "Hook name", type: "text" },
-		{ key: "waitForResponse", label: "Wait for response node", type: "switch", required: false },
+		{ key: "hookName", label: "Hook name", type: "text", nonEmpty: true },
+		{
+			key: "waitForResponse",
+			label: "Wait for response node",
+			type: "switch",
+			required: false,
+			help: "When disabled, the configured response is sent immediately. When enabled, it is used if no response node answers before the timeout.",
+		},
 		{
 			key: "responseTimeoutSeconds",
 			label: "Response timeout seconds",
 			type: "number",
 			required: false,
+			help: "Used while waiting for a response node. The runner validates this value when registering the webhook.",
 			numeric: {
 				kind: "float",
 				signed: false,
@@ -27,9 +34,10 @@ export const webhookTriggerNode = defineNode({
 		},
 		{
 			key: "timeoutResponseStatus",
-			label: "Fallback response status",
+			label: "Response status",
 			type: "number",
 			required: false,
+			help: "Sent immediately unless waiting is enabled, in which case this is the timeout fallback status.",
 			numeric: {
 				kind: "integer",
 				signed: false,
@@ -41,17 +49,21 @@ export const webhookTriggerNode = defineNode({
 		},
 		{
 			key: "timeoutResponseContentType",
-			label: "Fallback content type",
+			label: "Response content type",
 			type: "text",
 			usesVariables: true,
+			variableTypes: "string",
 			required: false,
+			help: "Sent immediately unless waiting is enabled, in which case this is the timeout fallback content type.",
 		},
 		{
 			key: "timeoutResponseBody",
-			label: "Fallback response body",
+			label: "Response body",
 			type: "textarea",
 			usesVariables: true,
+			variableTypes: "text",
 			required: false,
+			help: "Sent immediately unless waiting is enabled, in which case this is the timeout fallback body.",
 		},
 	],
 	defaultConfig: () => ({

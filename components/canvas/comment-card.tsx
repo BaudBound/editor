@@ -3,7 +3,9 @@
 import { type Node, type NodeProps, useReactFlow, type XYPosition } from "@xyflow/react";
 import { GripVertical, Trash2 } from "lucide-react";
 import { createContext, type PointerEvent, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { NumericField } from "@/components/common/numeric-field";
 import { Button } from "@/components/ui/button";
+import type { NumericConfigContract } from "@/data/nodes/node-definition";
 import type { CommentNodeData, EditorComment } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { createGraphElementId } from "@/utils/graph-element-id";
@@ -21,6 +23,14 @@ const MIN_COMMENT_WIDTH = 280;
 const MIN_COMMENT_HEIGHT = 156;
 const MIN_COMMENT_FONT_SIZE = 12;
 const MAX_COMMENT_FONT_SIZE = 72;
+const commentFontSizeContract: NumericConfigContract = {
+	kind: "integer",
+	signed: false,
+	minimum: String(MIN_COMMENT_FONT_SIZE),
+	maximum: String(MAX_COMMENT_FONT_SIZE),
+	minimumInclusive: true,
+	maximumInclusive: true,
+};
 export const DEFAULT_COMMENT_FONT_SIZE = 14;
 export const DEFAULT_COMMENT_SIZE = {
 	width: 320,
@@ -172,7 +182,6 @@ export function CommentCard({ data, id, selected }: NodeProps<CommentFlowNode>) 
 				</div>
 				<div className="flex h-12 min-w-0 items-center justify-between gap-2 px-2">
 					<CommentFontControls
-						fontSize={fontSize}
 						fontSizeDraft={fontSizeDraft}
 						onCommitDraft={commitFontSizeDraft}
 						onEditingChange={(editing) => {
@@ -243,14 +252,12 @@ export function CommentCard({ data, id, selected }: NodeProps<CommentFlowNode>) 
 }
 
 function CommentFontControls({
-	fontSize,
 	fontSizeDraft,
 	onCommitDraft,
 	onEditingChange,
 	onFontSizeDraftChange,
 	onUpdateFontSize,
 }: {
-	fontSize: number;
 	fontSizeDraft: string;
 	onCommitDraft: (nextDraft?: string) => void;
 	onEditingChange: (editing: boolean) => void;
@@ -258,65 +265,27 @@ function CommentFontControls({
 	onUpdateFontSize: (fontSize: number) => void;
 }) {
 	return (
-		<div
-			className="nodrag flex shrink-0 cursor-default items-center gap-0.5 rounded border border-white/10 bg-black/12 p-0.5"
-			onPointerDown={(event) => event.stopPropagation()}
-		>
-			<button
-				type="button"
-				className="grid size-8 cursor-pointer place-items-center rounded text-xs font-semibold text-baud-muted transition hover:bg-white/10 hover:text-baud-text disabled:cursor-not-allowed disabled:opacity-40"
-				title="Decrease comment font size"
-				aria-label="Decrease comment font size"
-				disabled={fontSize <= MIN_COMMENT_FONT_SIZE}
-				onClick={(event) => {
-					event.stopPropagation();
-					onUpdateFontSize(fontSize - 1);
-				}}
-			>
-				A-
-			</button>
-			<input
-				type="text"
-				inputMode="numeric"
-				pattern="[0-9]*"
-				className="size-8 cursor-text rounded border border-transparent bg-transparent px-1 text-center text-xs font-semibold tabular-nums text-baud-muted outline-none transition focus:border-baud-red/60 focus:bg-black/20 focus:text-baud-text"
-				aria-label="Comment font size"
-				title={`Comment font size (${MIN_COMMENT_FONT_SIZE}-${MAX_COMMENT_FONT_SIZE})`}
+		<div className="nodrag w-28 shrink-0 cursor-default" onPointerDown={(event) => event.stopPropagation()}>
+			<NumericField
+				ariaLabel="Comment font size"
+				compact
+				contract={commentFontSizeContract}
 				value={fontSizeDraft}
 				onBlur={() => {
 					onEditingChange(false);
 					onCommitDraft();
 				}}
-				onChange={(event) => {
-					const nextDraft = event.target.value.replace(/\D/g, "").slice(0, 3);
+				onChange={(nextDraft) => {
 					onFontSizeDraftChange(nextDraft);
+					const parsed = Number(nextDraft);
+					if (Number.isInteger(parsed) && parsed >= MIN_COMMENT_FONT_SIZE && parsed <= MAX_COMMENT_FONT_SIZE) {
+						onUpdateFontSize(parsed);
+					}
 				}}
 				onFocus={() => onEditingChange(true)}
-				onKeyDown={(event) => {
-					if (event.key === "Enter") {
-						event.currentTarget.blur();
-						return;
-					}
-
-					if (event.key === "Escape") {
-						onFontSizeDraftChange(String(fontSize));
-						event.currentTarget.blur();
-					}
-				}}
+				showError={false}
+				step="1"
 			/>
-			<button
-				type="button"
-				className="grid size-8 cursor-pointer place-items-center rounded text-xs font-semibold text-baud-muted transition hover:bg-white/10 hover:text-baud-text disabled:cursor-not-allowed disabled:opacity-40"
-				title="Increase comment font size"
-				aria-label="Increase comment font size"
-				disabled={fontSize >= MAX_COMMENT_FONT_SIZE}
-				onClick={(event) => {
-					event.stopPropagation();
-					onUpdateFontSize(fontSize + 1);
-				}}
-			>
-				A+
-			</button>
 		</div>
 	);
 }

@@ -52,6 +52,7 @@ export type CanvasNodeFocusRequest = {
 };
 
 type FlowCanvasProps = {
+	activeSimulationNodeId: string | null;
 	nodes: EditorFlowNode[];
 	edges: Edge[];
 	nodeFocusRequest: CanvasNodeFocusRequest | null;
@@ -83,6 +84,8 @@ type FlowCanvasProps = {
 	targetRuntimes: TargetRuntime[];
 };
 
+type FlowCanvasContentProps = Omit<FlowCanvasProps, "activeSimulationNodeId">;
+
 const nodeTypes = {
 	commentNode: CommentCard,
 	scriptNode: ScriptNode,
@@ -96,6 +99,7 @@ type ContextMenuEvent = {
 };
 
 export function FlowCanvas({
+	activeSimulationNodeId,
 	canPaste,
 	edges,
 	nodes,
@@ -126,8 +130,13 @@ export function FlowCanvas({
 	simulatedNodeIds,
 	targetRuntimes,
 }: FlowCanvasProps) {
+	const simulationState = useMemo(
+		() => ({ activeNodeId: activeSimulationNodeId, completedNodeIds: simulatedNodeIds }),
+		[activeSimulationNodeId, simulatedNodeIds],
+	);
+
 	return (
-		<ScriptNodeSimulationContext.Provider value={simulatedNodeIds}>
+		<ScriptNodeSimulationContext.Provider value={simulationState}>
 			<ReactFlowProvider>
 				<FlowCanvasContent
 					canPaste={canPaste}
@@ -194,7 +203,7 @@ function FlowCanvasContent({
 	onSpawnDevelopmentNodes,
 	showDevelopmentNodeSpawner,
 	onViewportCenterChange,
-}: FlowCanvasProps) {
+}: FlowCanvasContentProps) {
 	const { fitView, screenToFlowPosition } = useReactFlow<EditorFlowNode, Edge>();
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const initFrameRef = useRef<number | null>(null);

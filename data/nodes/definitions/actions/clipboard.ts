@@ -5,7 +5,7 @@ import { fallible } from "../runtime-outputs";
 export const clipboardNode = defineNode({
 	actionType: "action.clipboard.set",
 	capabilities: ["action.clipboard"],
-	configFields: [{ key: "value", label: "Value", type: "textarea", usesVariables: true }],
+	configFields: [{ key: "value", label: "Value", type: "textarea", usesVariables: true, variableTypes: "text" }],
 	defaultConfig: () => ({ value: "" }),
 	description: "Write text to the system clipboard.",
 	desktopOnly: true,

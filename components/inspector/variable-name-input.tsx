@@ -1,10 +1,10 @@
 "use client";
 
 import { type KeyboardEvent, useEffect, useId, useMemo, useState } from "react";
+import type { VariableCompletion } from "@/components/common/variable-code-input";
 import { Input } from "@/components/ui/input";
 import { validateVariableName } from "@/data/project/variables";
 import { cn } from "@/lib/utils";
-import type { VariableCompletion } from "./variable-code-input";
 
 type VariableNameInputProps = {
 	hasError?: boolean;

@@ -9,8 +9,13 @@ export const websocketTriggerNode = defineNode({
 		{
 			key: "path",
 			label: "Path",
+			nonEmpty: true,
 			type: "text",
 			help: "Runner-side WebSocket path, for example /events/messages. The runner decides host and port.",
+			validate: (config) => {
+				const path = configString(config, "path").trim();
+				return path && !path.startsWith("/") ? 'WebSocket path must start with "/".' : "";
+			},
 		},
 	],
 	defaultConfig: () => ({ path: "" }),
@@ -67,13 +72,7 @@ export const websocketTriggerNode = defineNode({
 		},
 	],
 	runnerType: "websocket",
-	validateConfig: (config) => {
-		const path = configString(config, "path").trim();
-		return [
-			requiredConfig(config, "path", "WebSocket path"),
-			path && !path.startsWith("/") ? 'WebSocket path must start with "/".' : "",
-		].filter(Boolean);
-	},
+	validateConfig: (config) => [requiredConfig(config, "path", "WebSocket path")].filter(Boolean),
 	simulation: {
 		createOutput: ({ api, context, node }) => {
 			const message = context.triggerPayload.message ?? '{"event":"simulation"}';

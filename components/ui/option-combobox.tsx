@@ -10,9 +10,11 @@ export type ComboboxOption = {
 };
 
 type OptionComboboxProps = {
+	ariaDescribedBy?: string;
 	ariaLabel?: string;
 	className?: string;
 	emptyMessage?: string;
+	hasError?: boolean;
 	options: ComboboxOption[];
 	placeholder?: string;
 	value: string;
@@ -20,9 +22,11 @@ type OptionComboboxProps = {
 };
 
 export function OptionCombobox({
+	ariaDescribedBy,
 	ariaLabel,
 	className,
 	emptyMessage = "No options.",
+	hasError = false,
 	options,
 	placeholder = "Select...",
 	value,
@@ -108,16 +112,19 @@ export function OptionCombobox({
 				aria-expanded={open}
 				aria-haspopup="listbox"
 				aria-label={ariaLabel}
+				aria-describedby={ariaDescribedBy}
+				aria-invalid={hasError || undefined}
 				aria-controls={open ? listboxId : undefined}
 				onClick={() => setOpen((currentOpen) => !currentOpen)}
 				onKeyDown={handleTriggerKeyDown}
 				className={cn(
-					"flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-baud-border bg-baud-soft px-3 py-1.5 font-mono text-sm text-baud-text shadow-none outline-none transition-[border-color,box-shadow] hover:border-baud-line focus-visible:border-baud-red/75 focus-visible:shadow-[0_0_0_2px_rgb(230_45_62_/_0.14)]",
+					"flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-baud-border bg-baud-soft px-3 py-0 font-mono text-sm leading-none text-baud-text shadow-none outline-none transition-[border-color,box-shadow] hover:border-baud-line focus-visible:border-baud-red/75 focus-visible:shadow-[0_0_0_2px_rgb(230_45_62_/_0.14)]",
+					hasError && "border-baud-danger shadow-[0_0_0_2px_rgb(224_92_92/0.14)]",
 					open && "border-baud-red/75",
 					className,
 				)}
 			>
-				<span className={cn("min-w-0 truncate", !selectedOption && "text-baud-muted")}>
+				<span className={cn("flex h-full min-w-0 items-center truncate", !selectedOption && "text-baud-muted")}>
 					{selectedOption?.label ?? placeholder}
 				</span>
 				<ChevronDownIcon className={cn("size-4 shrink-0 text-baud-muted transition-transform", open && "rotate-180")} />
@@ -145,12 +152,12 @@ export function OptionCombobox({
 									onClick={() => selectOption(option)}
 									onMouseEnter={() => setHighlightedIndex(index)}
 									className={cn(
-										"relative flex w-full cursor-pointer items-center rounded-md py-1.5 pr-8 pl-2 text-left text-sm outline-none select-none",
+										"relative flex min-h-8 w-full cursor-pointer items-center rounded-md py-0 pr-8 pl-2 text-left text-sm leading-none outline-none select-none",
 										highlighted && "bg-baud-soft text-baud-text",
 										selected ? "text-baud-text" : "text-baud-muted",
 									)}
 								>
-									<span className="min-w-0 truncate">{option.label}</span>
+									<span className="flex min-h-8 min-w-0 items-center truncate">{option.label}</span>
 									{selected && (
 										<span className="absolute right-2 flex size-4 items-center justify-center text-baud-red">
 											<CheckIcon className="size-4" />

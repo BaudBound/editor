@@ -98,7 +98,8 @@ export type RuntimeDataType =
 	| "duration_ms"
 	| "process_id"
 	| "exit_code"
-	| "keyboard_key";
+	| "keyboard_key"
+	| "color";
 
 export type RuntimeDataOutput = {
 	name: string;
@@ -194,6 +195,8 @@ export const scriptSettingTypes = [
 	"datetime",
 	"duration",
 	"file_path",
+	"hotkey",
+	"color",
 ] as const;
 
 export type ScriptSettingType = (typeof scriptSettingTypes)[number];
@@ -258,7 +261,7 @@ export type SimulationOverride = {
 	outcome: SimulationOverrideOutcome;
 };
 
-export type SimulationSpeed = "slow" | "normal" | "fast" | "instant";
+export type SimulationSpeed = "realtime" | "slowdown-100" | "slowdown-300" | "slowdown-700";
 
 export type SimulationSettings = {
 	speed: SimulationSpeed;

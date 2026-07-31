@@ -9,8 +9,15 @@ export const writeFileNode = defineNode({
 	capabilities: actionFile,
 	configFields: [
 		{ key: "mode", label: "Write mode", type: "select", options: fileWriteModeOptions },
-		{ key: "path", label: "Path", type: "text", usesVariables: true },
-		{ key: "content", label: "Content", type: "textarea", usesVariables: true },
+		{
+			key: "path",
+			label: "Path",
+			type: "text",
+			usesVariables: true,
+			variableTypes: "file-path",
+			nonEmpty: true,
+		},
+		{ key: "content", label: "Content", type: "textarea", usesVariables: true, variableTypes: "text" },
 	],
 	defaultConfig: () => ({ mode: "overwrite", path: "", content: "" }),
 	description: "Write to a file path.",

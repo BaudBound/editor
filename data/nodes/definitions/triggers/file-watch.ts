@@ -1,12 +1,19 @@
 import { FileText } from "lucide-react";
 import { defineNode } from "../../node-definition";
-import { requiredStaticConfig } from "../validators";
+import { requiredConfig } from "../validators";
 
 export const fileWatchTriggerNode = defineNode({
 	actionType: "trigger.file_watch",
 	capabilities: ["trigger.file_watch"],
 	configFields: [
-		{ key: "path", label: "Path", type: "text" },
+		{
+			key: "path",
+			label: "Path",
+			type: "text",
+			usesVariables: true,
+			variableTypes: "file-path",
+			nonEmpty: true,
+		},
 		{
 			key: "recursive",
 			label: "Include subdirectories",
@@ -43,7 +50,7 @@ export const fileWatchTriggerNode = defineNode({
 		},
 	],
 	runnerType: "file_watch",
-	validateConfig: (config) => [requiredStaticConfig(config, "path", "file watch path")].filter(Boolean),
+	validateConfig: (config) => [requiredConfig(config, "path", "file watch path")].filter(Boolean),
 	simulation: {
 		createOutput: ({ api, context, node }) => ({
 			failed: false,

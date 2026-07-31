@@ -2,7 +2,10 @@ import type { Edge, Node } from "@xyflow/react";
 import { GripVertical, Info, Plus, Trash2, X } from "lucide-react";
 import { Fragment, type ReactNode, type PointerEvent as ReactPointerEvent, useEffect, useId, useState } from "react";
 import { CopyTextButton } from "@/components/common/copy-text-button";
+import { FieldError } from "@/components/common/field-error";
+import { NumericField } from "@/components/common/numeric-field";
 import { TypedValueEditor } from "@/components/common/typed-value-editor";
+import { VariableCodeInput, type VariableCompletion } from "@/components/common/variable-code-input";
 import { ColorConfigInput } from "@/components/inspector/color-config-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,10 +14,18 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { inspectorTabs } from "@/data/editor/inspector-tabs";
 import {
+	filterCompatibleVariables,
+	getEffectiveVariableContract,
+	validateConfigField,
+	validateVariableReferences,
+	validateVariableReferenceTypes,
+} from "@/data/nodes/config-field-validation";
+import { validateTextTransformField } from "@/data/nodes/definitions/actions/format-text";
+import {
 	combinatorOptions,
-	comparisonOperatorOptions,
 	ifElseComparisonOperatorOptions,
 	isBetweenConditionOperator,
+	isNumericConditionOperator,
 	isUnaryConditionOperator,
 	playSoundSourceOptions,
 	type SelectOption,
@@ -37,8 +48,10 @@ import {
 	type SwitchCaseRow,
 	type TextTransformOperationRow,
 } from "@/data/nodes/definitions/rows";
-import type { NodeConfigField } from "@/data/nodes/node-definition";
+import type { NodeConfigField, NumericConfigContract, VariableInputContract } from "@/data/nodes/node-definition";
+import { numericContractApplies, runtimeNumberContract } from "@/data/nodes/numeric-validation";
 import { createDefaultNodeConfig, getNodeConfigFields } from "@/data/nodes/registry";
+import { validateSwitchCaseName, validateSwitchCaseValue } from "@/data/nodes/switch-validation";
 import { builtInVariableNames } from "@/data/project/built-in-variables";
 import { createSerialDeviceOptions, serialLineEndingOptions } from "@/data/project/serial";
 import { createEmptyTypedValue, normalizeListItemType, validateTypedValue } from "@/data/project/typed-values";
@@ -76,9 +89,7 @@ import { RiskBadge } from "../shell/risk-badge";
 import { SimulatorPanel } from "../simulation/simulator-panel";
 import { EdgeOrderPanel } from "./edge-order-panel";
 import { KeyCaptureInput } from "./key-capture-input";
-import { KeyReferencePanel } from "./key-reference-panel";
 import { RuntimeDataPanel } from "./runtime-data-panel";
-import { VariableCodeInput, type VariableCompletion } from "./variable-code-input";
 import { VariableNameInput } from "./variable-name-input";
 
 type InspectorProps = {
@@ -214,6 +225,7 @@ export function Inspector({
 						settings={simulationSettings}
 						status={simulationStatus}
 						triggerInputDrafts={simulationTriggerInputDrafts}
+						variables={variables}
 						onAddOverride={onAddSimulationOverride}
 						onRemoveOverride={onRemoveSimulationOverride}
 						onSettingsChange={onSimulationSettingsChange}
@@ -263,17 +275,20 @@ function PropertiesPanel({
 	const fields = getNodeConfigFields(selectedNode.data.actionType).filter(
 		(field) =>
 			!field.visibleWhen ||
-			valueToInputString(selectedNode.data.config[field.visibleWhen.key] ?? defaultConfig[field.visibleWhen.key]) ===
+			(selectedNode.data.config[field.visibleWhen.key] ?? defaultConfig[field.visibleWhen.key]) ===
 				field.visibleWhen.equals,
 	);
 	const variableCompletions = createVariableCompletions(variables);
+	const configVariableCompletions =
+		selectedNode.data.kind === "trigger"
+			? variableCompletions.filter((variable) => variable.preTrigger)
+			: variableCompletions;
 	const visibleFields =
 		selectedNode.data.actionType === "runtime.set_variable" || selectedNode.data.actionType === "action.text.format"
 			? []
 			: usesKeyReference(selectedNode.data.actionType)
 				? fields.filter((field) => field.key !== "key")
 				: fields;
-	const showsKeyReference = usesKeyReference(selectedNode.data.actionType);
 
 	return (
 		<div className="space-y-5 p-4">
@@ -322,7 +337,7 @@ function PropertiesPanel({
 						{selectedNode.data.actionType === "runtime.set_variable" && (
 							<VariableOperationConfigPanel
 								config={selectedNode.data.config}
-								variableCompletions={variableCompletions}
+								variableCompletions={configVariableCompletions}
 								onChange={(key, value) => onUpdateNodeConfig(selectedNode.id, key, value)}
 							/>
 						)}
@@ -336,12 +351,12 @@ function PropertiesPanel({
 						{usesKeyReference(selectedNode.data.actionType) && (
 							<KeyCaptureConfigPanel
 								config={selectedNode.data.config}
+								variableCompletions={configVariableCompletions}
 								onChange={(key, value) => onUpdateNodeConfig(selectedNode.id, key, value)}
 							/>
 						)}
 						{usesConditionRows(selectedNode.data.actionType) && (
 							<IfElseConfigPanel
-								actionType={selectedNode.data.actionType}
 								config={selectedNode.data.config}
 								variableCompletions={variableCompletions}
 								onChange={(key, value) => onUpdateNodeConfig(selectedNode.id, key, value)}
@@ -381,14 +396,18 @@ function PropertiesPanel({
 						{visibleFields.map((field) => (
 							<ConfigField
 								key={field.key}
+								config={selectedNode.data.config}
 								field={field}
+								numericContract={
+									field.numeric && numericContractApplies(field, selectedNode.data.config) ? field.numeric : undefined
+								}
 								value={
 									selectedNode.data.config[field.key] ??
 									(selectedNode.data.actionType === "action.http" && field.key === "bodyFormat"
 										? defaultConfig[field.key]
 										: undefined)
 								}
-								variableCompletions={variableCompletions}
+								variableCompletions={configVariableCompletions}
 								onChange={(value) => onUpdateNodeConfig(selectedNode.id, field.key, value)}
 							/>
 						))}
@@ -397,13 +416,6 @@ function PropertiesPanel({
 			</section>
 
 			<RuntimeDataPanel selectedNode={selectedNode} />
-
-			{showsKeyReference && (
-				<KeyReferencePanel
-					value={getConfiguredKey(selectedNode.data.config)}
-					onChange={(value) => onUpdateNodeConfig(selectedNode.id, "key", value)}
-				/>
-			)}
 
 			<div className="rounded border border-baud-border bg-baud-soft p-3 text-xs leading-5 text-baud-muted">
 				{selectedNode.data.kind === "trigger" && "Entry point. Defines when the script starts."}
@@ -415,78 +427,160 @@ function PropertiesPanel({
 }
 
 function ConfigField({
+	config,
 	field,
+	numericContract,
 	value,
 	variableCompletions,
 	onChange,
 }: {
+	config: Record<string, JsonValue>;
 	field: NodeConfigField;
+	numericContract?: NumericConfigContract;
 	value: JsonValue | undefined;
 	variableCompletions: VariableCompletion[];
 	onChange: (value: JsonValue) => void;
 }) {
+	const inputId = useId();
+	const errorId = `${inputId}-error`;
 	const inputValue = valueToInputString(value);
+	const validationConfig = value === undefined ? config : { ...config, [field.key]: value };
+	const error = validateConfigField(field, validationConfig, variableCompletions);
+	const compatibleVariables = field.usesVariables
+		? filterCompatibleVariables(variableCompletions, getEffectiveVariableContract(field, validationConfig))
+		: [];
 
 	return (
 		<div>
 			<span className="mb-1 block font-mono text-sm text-baud-muted">{field.label}</span>
-			{field.colorPicker ? (
-				<ColorConfigInput label={field.label} value={inputValue} variables={variableCompletions} onChange={onChange} />
+			{numericContract ? (
+				<NumericField
+					allowVariables={field.usesVariables}
+					ariaLabel={field.label}
+					contract={numericContract}
+					id={inputId}
+					onChange={onChange}
+					required={field.required !== false}
+					validationError={error}
+					value={inputValue}
+					variables={compatibleVariables}
+				/>
+			) : field.colorPicker ? (
+				<ColorConfigInput
+					error={error}
+					errorId={errorId}
+					label={field.label}
+					value={inputValue}
+					variables={compatibleVariables}
+					onChange={onChange}
+				/>
 			) : field.type === "select" ? (
-				<ComboboxField value={inputValue} options={field.options ?? []} onChange={onChange} />
+				<ComboboxField
+					ariaDescribedBy={error ? errorId : undefined}
+					ariaLabel={field.label}
+					hasError={!!error}
+					value={inputValue}
+					options={field.options ?? []}
+					onChange={onChange}
+				/>
 			) : field.type === "switch" ? (
-				<div className="flex min-h-9 items-center justify-between gap-3 rounded-lg border border-baud-border bg-baud-panel/70 px-3 py-2 transition-colors hover:border-baud-line">
+				<div
+					aria-describedby={error ? errorId : undefined}
+					aria-invalid={!!error || undefined}
+					className={`flex min-h-9 items-center justify-between gap-3 rounded-lg border bg-baud-panel/70 px-3 py-2 transition-colors hover:border-baud-line ${
+						error ? "border-baud-danger" : "border-baud-border"
+					}`}
+				>
 					<span className="text-sm text-baud-text">{value === true || value === "true" ? "Enabled" : "Disabled"}</span>
-					<Switch checked={value === true || value === "true"} onCheckedChange={(checked) => onChange(checked)} />
+					<Switch
+						aria-label={field.label}
+						checked={value === true || value === "true"}
+						onCheckedChange={(checked) => onChange(checked)}
+					/>
 				</div>
 			) : field.type === "string-list" ? (
 				<StringListField
+					error={error}
+					errorId={errorId}
 					label={field.label}
 					value={value}
 					variableCompletions={variableCompletions}
+					compatibleVariableCompletions={compatibleVariables}
+					variableTypes={getEffectiveVariableContract(field, validationConfig)}
 					onChange={onChange}
 				/>
 			) : field.type === "textarea" && field.usesVariables ? (
 				<VariableCodeInput
+					id={inputId}
 					ariaLabel={field.label}
+					ariaDescribedBy={error ? errorId : undefined}
+					hasError={!!error}
 					value={inputValue}
 					multiline
-					variables={variableCompletions}
+					variables={compatibleVariables}
 					onChange={onChange}
 				/>
 			) : field.type === "textarea" ? (
-				<Textarea value={inputValue} onChange={(event) => onChange(event.target.value)} />
+				<Textarea
+					id={inputId}
+					aria-label={field.label}
+					aria-describedby={error ? errorId : undefined}
+					aria-invalid={!!error || undefined}
+					value={inputValue}
+					onChange={(event) => onChange(event.target.value)}
+				/>
 			) : field.usesVariables ? (
 				<VariableCodeInput
+					id={inputId}
 					ariaLabel={field.label}
+					ariaDescribedBy={error ? errorId : undefined}
+					hasError={!!error}
 					value={inputValue}
-					variables={variableCompletions}
+					variables={compatibleVariables}
 					onChange={onChange}
 				/>
 			) : (
 				<Input
+					id={inputId}
+					aria-label={field.label}
+					aria-describedby={error ? errorId : undefined}
+					aria-invalid={!!error || undefined}
 					value={inputValue}
-					type={field.type === "number" && !field.usesVariables ? "number" : "text"}
+					type="text"
 					onChange={(event) => onChange(event.target.value)}
 				/>
 			)}
+			{!numericContract && field.type !== "string-list" && <FieldError id={errorId} message={error} />}
 			{field.help && <p className="mt-1 text-xs leading-4 text-baud-muted">{field.help}</p>}
 		</div>
 	);
 }
 
 function StringListField({
+	error,
+	errorId,
 	label,
 	value,
 	variableCompletions,
+	compatibleVariableCompletions,
+	variableTypes,
 	onChange,
 }: {
+	error: string;
+	errorId: string;
 	label: string;
 	value: JsonValue | undefined;
 	variableCompletions: VariableCompletion[];
+	compatibleVariableCompletions: VariableCompletion[];
+	variableTypes: VariableInputContract;
 	onChange: (value: JsonValue) => void;
 }) {
 	const items = Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+	const itemErrors = items.map(
+		(item) =>
+			validateVariableReferences(item, variableCompletions) ||
+			validateVariableReferenceTypes(item, variableCompletions, variableTypes),
+	);
 	const updateItem = (index: number, nextValue: string) => {
 		onChange(items.map((item, itemIndex) => (itemIndex === index ? nextValue : item)));
 	};
@@ -497,11 +591,14 @@ function StringListField({
 				<div className="flex items-start gap-2" key={`${index}-${items.length}`}>
 					<div className="min-w-0 flex-1">
 						<VariableCodeInput
+							ariaDescribedBy={itemErrors[index] ? `${errorId}-${index}` : undefined}
 							ariaLabel={`${label} ${index + 1}`}
+							hasError={!!itemErrors[index]}
 							value={item}
-							variables={variableCompletions}
+							variables={compatibleVariableCompletions}
 							onChange={(nextValue) => updateItem(index, nextValue)}
 						/>
+						<FieldError id={`${errorId}-${index}`} message={itemErrors[index]} />
 					</div>
 					<Button
 						type="button"
@@ -519,23 +616,22 @@ function StringListField({
 				<Plus size={14} />
 				Add argument
 			</Button>
+			<FieldError id={errorId} message={itemErrors.some(Boolean) ? "" : error} />
 		</div>
 	);
 }
 
 function IfElseConfigPanel({
-	actionType,
 	config,
 	variableCompletions,
 	onChange,
 }: {
-	actionType: ActionType;
 	config: Record<string, JsonValue>;
 	variableCompletions: VariableCompletion[];
 	onChange: (key: string, value: JsonValue) => void;
 }) {
 	const conditions = getConditionRows(config.conditions, valueToInputString(config.combinator));
-	const operatorOptions = actionType === "control.if" ? ifElseComparisonOperatorOptions : comparisonOperatorOptions;
+	const operatorOptions = ifElseComparisonOperatorOptions;
 	const conditionReorder = useReorderController({
 		rows: conditions,
 		onCommit: (rows) => onChange("conditions", normalizeConditionRows(rows)),
@@ -585,10 +681,10 @@ function IfElseConfigPanel({
 											}
 										/>
 									</div>
-									<TextInput
+									<ConditionValueInput
 										label="Value"
 										value={condition.left}
-										usesVariables
+										numeric={isNumericConditionOperator(condition.operator)}
 										variableCompletions={variableCompletions}
 										onChange={(value) => updateCondition(conditions, condition.id, { left: value }, onChange)}
 									/>
@@ -615,26 +711,26 @@ function IfElseConfigPanel({
 									/>
 									{isBetweenConditionOperator(condition.operator) ? (
 										<>
-											<TextInput
+											<ConditionValueInput
 												label="Start value"
 												value={condition.right}
-												usesVariables
+												numeric
 												variableCompletions={variableCompletions}
 												onChange={(value) => updateCondition(conditions, condition.id, { right: value }, onChange)}
 											/>
-											<TextInput
+											<ConditionValueInput
 												label="End value"
 												value={condition.rightEnd ?? ""}
-												usesVariables
+												numeric
 												variableCompletions={variableCompletions}
 												onChange={(value) => updateCondition(conditions, condition.id, { rightEnd: value }, onChange)}
 											/>
 										</>
 									) : !isUnaryConditionOperator(condition.operator) ? (
-										<TextInput
+										<ConditionValueInput
 											label="Target"
 											value={condition.right}
-											usesVariables
+											numeric={isNumericConditionOperator(condition.operator)}
 											variableCompletions={variableCompletions}
 											onChange={(value) => updateCondition(conditions, condition.id, { right: value }, onChange)}
 										/>
@@ -657,6 +753,53 @@ function IfElseConfigPanel({
 	);
 }
 
+function ConditionValueInput({
+	label,
+	numeric,
+	value,
+	variableCompletions,
+	onChange,
+}: {
+	label: string;
+	numeric: boolean;
+	value: string;
+	variableCompletions: VariableCompletion[];
+	onChange: (value: string) => void;
+}) {
+	if (!numeric) {
+		const error =
+			(!value.trim() ? `${label} is required.` : "") || validateVariableReferences(value, variableCompletions);
+		return (
+			<TextInput
+				error={error}
+				label={label}
+				value={value}
+				usesVariables
+				variableCompletions={variableCompletions}
+				onChange={onChange}
+			/>
+		);
+	}
+
+	const numericVariableError =
+		validateVariableReferences(value, variableCompletions) ||
+		validateVariableReferenceTypes(value, variableCompletions, "numeric");
+	return (
+		<div>
+			<span className="mb-1 block font-mono text-sm text-baud-muted">{label}</span>
+			<NumericField
+				allowVariables
+				ariaLabel={label}
+				contract={runtimeNumberContract}
+				validationError={numericVariableError}
+				value={value}
+				variables={filterCompatibleVariables(variableCompletions, "numeric")}
+				onChange={onChange}
+			/>
+		</div>
+	);
+}
+
 function SwitchConfigPanel({
 	config,
 	variableCompletions,
@@ -674,13 +817,18 @@ function SwitchConfigPanel({
 	const draggedCase = caseReorder.drag
 		? cases.find((switchCase) => switchCase.id === caseReorder.drag?.draggedId)
 		: null;
+	const switchValue = valueToInputString(config.value);
+	const switchValueError =
+		(!switchValue.trim() ? "Switch value is required." : "") ||
+		validateVariableReferences(switchValue, variableCompletions);
 	let visibleCaseIndex = 0;
 
 	return (
 		<div className="space-y-3">
 			<TextInput
+				error={switchValueError}
 				label="Switch value"
-				value={valueToInputString(config.value)}
+				value={switchValue}
 				usesVariables
 				variableCompletions={variableCompletions}
 				onChange={(value) => onChange("value", value)}
@@ -694,6 +842,10 @@ function SwitchConfigPanel({
 					const switchCase = entry.row;
 					visibleCaseIndex += 1;
 					const caseIndex = visibleCaseIndex;
+					const nameError = validateSwitchCaseName(cases, switchCase.id);
+					const valueError =
+						validateSwitchCaseValue(cases, switchCase.id) ||
+						validateVariableReferences(switchCase.value, variableCompletions);
 
 					return (
 						<li
@@ -721,11 +873,13 @@ function SwitchConfigPanel({
 								/>
 							</div>
 							<TextInput
+								error={nameError}
 								label="Name"
 								value={switchCase.name}
 								onChange={(value) => updateSwitchCase(cases, switchCase.id, { name: value }, onChange)}
 							/>
 							<TextInput
+								error={valueError}
 								label="Value"
 								value={switchCase.value}
 								usesVariables
@@ -764,6 +918,10 @@ function TextTransformConfigPanel({
 	return (
 		<div className="space-y-3">
 			<TextInput
+				error={
+					(!valueToInputString(config.input).trim() ? "Input is required." : "") ||
+					validateVariableReferences(valueToInputString(config.input), variableCompletions)
+				}
 				label="Input"
 				value={valueToInputString(config.input)}
 				usesVariables
@@ -931,12 +1089,18 @@ function TextTransformRowInput({
 	rows: TextTransformOperationRow[];
 	variableCompletions: VariableCompletion[];
 }) {
+	const variableTypes = field === "start" || field === "length" || field === "targetLength" ? "numeric" : "text";
+	const error =
+		validateTextTransformField(row, field) ||
+		validateVariableReferences(row[field], variableCompletions) ||
+		validateVariableReferenceTypes(row[field], variableCompletions, variableTypes);
 	return (
 		<TextInput
+			error={error}
 			label={label}
 			value={row[field]}
 			usesVariables
-			variableCompletions={variableCompletions}
+			variableCompletions={filterCompatibleVariables(variableCompletions, variableTypes)}
 			onChange={(value) => updateTextTransformOperation(rows, row.id, { [field]: value }, onChange)}
 		/>
 	);
@@ -1018,6 +1182,13 @@ function VariableOperationConfigPanel({
 		fieldValueType,
 		fieldItemType,
 	);
+	const inputVariableTypes = variableTypeToInputContract(
+		getVariableOperationInputType(operation, selectedType, fieldValueType),
+	);
+	const variableReferenceMessage =
+		validateVariableReferences(draftValue, variableCompletions) ||
+		validateVariableReferenceTypes(draftValue, variableCompletions, inputVariableTypes);
+	const valueValidationMessage = validationMessage || variableReferenceMessage;
 	const definition = variableTypeDefinitions[selectedType];
 	const operationDefinition = variableOperationDefinitions[operation];
 
@@ -1210,13 +1381,13 @@ function VariableOperationConfigPanel({
 						}
 						type={getVariableOperationInputType(operation, selectedType, fieldValueType)}
 						value={draftValue}
-						hasError={!!validationMessage}
-						variables={variableCompletions}
+						hasError={!!valueValidationMessage}
+						variables={filterCompatibleVariables(variableCompletions, inputVariableTypes)}
 						onChange={handleValueChange}
 					/>
 				)}
 				{operation === "set" && <p className="mt-1 text-xs leading-4 text-baud-muted">{definition.description}</p>}
-				{validationMessage && <p className="mt-1 text-xs leading-4 text-baud-danger">{validationMessage}</p>}
+				{valueValidationMessage && <p className="mt-1 text-xs leading-4 text-baud-danger">{valueValidationMessage}</p>}
 			</div>
 		</div>
 	);
@@ -1328,6 +1499,16 @@ function getVariableOperationInputType(
 		return "number";
 	}
 	return targetType;
+}
+
+function variableTypeToInputContract(type: VariableType): VariableInputContract {
+	if (type === "file_path") {
+		return "file-path";
+	}
+	if (type === "number") {
+		return "numeric";
+	}
+	return type;
 }
 
 function variableOperationNeedsValue(operation: ReturnType<typeof normalizeVariableOperation>) {
@@ -1453,6 +1634,7 @@ function PlaySoundConfigPanel({
 			{source === "asset" ? (
 				<div>
 					<ComboboxField
+						error={!assetPath ? "Audio asset is required." : ""}
 						label="Audio asset"
 						value={assetPath}
 						options={assetOptions}
@@ -1467,10 +1649,15 @@ function PlaySoundConfigPanel({
 				</div>
 			) : (
 				<TextInput
+					error={
+						(!valueToInputString(config.filePath).trim() ? "File path is required." : "") ||
+						validateVariableReferences(valueToInputString(config.filePath), variableCompletions) ||
+						validateVariableReferenceTypes(valueToInputString(config.filePath), variableCompletions, "file-path")
+					}
 					label="File path"
 					value={valueToInputString(config.filePath)}
 					usesVariables
-					variableCompletions={variableCompletions}
+					variableCompletions={filterCompatibleVariables(variableCompletions, "file-path")}
 					onChange={(value) => onChange("filePath", value)}
 				/>
 			)}
@@ -1498,6 +1685,7 @@ function SerialWriteConfigPanel({
 	return (
 		<div className="space-y-3">
 			<ComboboxField
+				error={!selectedDeviceId ? "Device is required." : ""}
 				label="Device"
 				value={selectedDeviceId}
 				options={options}
@@ -1516,6 +1704,10 @@ function SerialWriteConfigPanel({
 				onChange={(value) => onChange("lineEnding", value)}
 			/>
 			<TextInput
+				error={
+					(!valueToInputString(config.data).trim() ? "Data is required." : "") ||
+					validateVariableReferences(valueToInputString(config.data), variableCompletions)
+				}
 				label="Data"
 				value={valueToInputString(config.data)}
 				usesVariables
@@ -1528,12 +1720,23 @@ function SerialWriteConfigPanel({
 
 function KeyCaptureConfigPanel({
 	config,
+	variableCompletions,
 	onChange,
 }: {
 	config: Record<string, JsonValue>;
+	variableCompletions: VariableCompletion[];
 	onChange: (key: string, value: JsonValue) => void;
 }) {
-	return <KeyCaptureInput label="Key" value={getConfiguredKey(config)} onChange={(value) => onChange("key", value)} />;
+	return (
+		<KeyCaptureInput
+			allowVariables
+			label="Key"
+			showReference
+			value={getConfiguredKey(config)}
+			variables={variableCompletions}
+			onChange={(value) => onChange("key", value)}
+		/>
+	);
 }
 
 function NodeSpecificHelp({ actionType }: { actionType: ActionType }) {
@@ -1612,6 +1815,7 @@ function NodeSpecificHelp({ actionType }: { actionType: ActionType }) {
 }
 
 function TextInput({
+	error,
 	label,
 	value,
 	onChange,
@@ -1619,6 +1823,7 @@ function TextInput({
 	usesVariables,
 	variableCompletions = [],
 }: {
+	error?: string;
 	label: string;
 	value: string;
 	onChange: (value: string) => void;
@@ -1627,6 +1832,8 @@ function TextInput({
 	variableCompletions?: VariableCompletion[];
 }) {
 	const inputId = useId();
+	const errorId = `${inputId}-error`;
+	const invalid = !!error || !!hasError;
 
 	return (
 		<div>
@@ -1637,46 +1844,60 @@ function TextInput({
 				<VariableCodeInput
 					id={inputId}
 					ariaLabel={label}
+					ariaDescribedBy={error ? errorId : undefined}
 					value={value}
-					hasError={hasError}
+					hasError={invalid}
 					variables={variableCompletions}
 					onChange={onChange}
 				/>
 			) : (
 				<Input
 					id={inputId}
+					aria-describedby={error ? errorId : undefined}
+					aria-invalid={invalid || undefined}
 					value={value}
 					onChange={(event) => onChange(event.target.value)}
 					className={
-						hasError
+						invalid
 							? "border-baud-danger focus-visible:border-baud-danger"
 							: "border-baud-border focus-visible:border-baud-red/75"
 					}
 				/>
 			)}
+			<FieldError id={errorId} message={error} />
 		</div>
 	);
 }
 
 function ComboboxField({
+	ariaDescribedBy,
 	ariaLabel,
+	error,
+	hasError,
 	label,
 	value,
 	options,
 	onChange,
 	triggerClassName,
 }: {
+	ariaDescribedBy?: string;
 	ariaLabel?: string;
+	error?: string;
+	hasError?: boolean;
 	label?: string;
 	value: string;
 	options: SelectOption[];
 	onChange: (value: string) => void;
 	triggerClassName?: string;
 }) {
+	const generatedErrorId = useId();
+	const errorId = `${generatedErrorId}-error`;
 	const combobox = (
 		<OptionCombobox
+			ariaDescribedBy={ariaDescribedBy ?? (error ? errorId : undefined)}
 			ariaLabel={ariaLabel ?? label}
 			className={triggerClassName ?? "w-full"}
+			hasError={hasError || !!error}
 			options={options}
 			value={value}
 			onChange={onChange}
@@ -1691,6 +1912,7 @@ function ComboboxField({
 		<div>
 			<span className="mb-1 block font-mono text-sm text-baud-muted">{label}</span>
 			{combobox}
+			<FieldError id={errorId} message={error} />
 		</div>
 	);
 }
@@ -1933,6 +2155,7 @@ function createVariableCompletions(variables: EditorVariable[]): VariableComplet
 		completionsByName.set(variable.name, {
 			description: variable.description,
 			name: variable.name,
+			preTrigger: variable.preTrigger,
 			readOnly: variable.read_only,
 			token: variable.token,
 			type: variable.type,

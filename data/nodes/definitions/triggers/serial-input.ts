@@ -6,7 +6,20 @@ import { configString, requiredConfig } from "../validators";
 export const serialInputTriggerNode = defineNode({
 	actionType: "trigger.serial_input",
 	capabilities: ["trigger.serial_input"],
-	configFields: [{ key: "deviceId", label: "Device id", type: "text" }],
+	configFields: [
+		{
+			key: "deviceId",
+			label: "Device id",
+			nonEmpty: true,
+			type: "text",
+			validate: (config) => {
+				const deviceId = configString(config, "deviceId").trim();
+				return deviceId && deviceId !== normalizeSerialDeviceId(deviceId)
+					? "Device id must use lowercase letters, numbers, underscores, or hyphens."
+					: "";
+			},
+		},
+	],
 	defaultConfig: () => ({
 		deviceId: "",
 	}),
@@ -40,14 +53,7 @@ export const serialInputTriggerNode = defineNode({
 	],
 	runnerType: "serial_input",
 	validateConfig: (config) => {
-		const deviceId = configString(config, "deviceId").trim();
-		const normalizedDeviceId = normalizeSerialDeviceId(deviceId);
-		return [
-			requiredConfig(config, "deviceId", "serial device id"),
-			deviceId && deviceId !== normalizedDeviceId
-				? "serial device id must use lowercase letters, numbers, underscores, or hyphens."
-				: "",
-		].filter(Boolean);
+		return [requiredConfig(config, "deviceId", "serial device id")].filter(Boolean);
 	},
 	validateGraph: ({ context, node }) => {
 		const deviceId = configString(node.data.config, "deviceId").trim();

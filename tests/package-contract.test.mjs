@@ -69,6 +69,19 @@ test("editor condition equality follows the shared Rust parity matrix", async ()
 	}
 });
 
+test("calculate and for-each reject arbitrary input while accepting variable expressions", async () => {
+	const { validateCalculationExpression } = await loadCalculationUtilities();
+	const { validateListExpression } = await loadListExpressionUtilities();
+
+	assert.equal(validateCalculationExpression("round({{settings.amount}} * 2)"), "");
+	assert.match(validateCalculationExpression("{{settings.amount}} random text"), /trailing tokens|must be called/);
+	assert.match(validateCalculationExpression("{{broken"), /invalid variable reference/);
+	assert.equal(validateListExpression("[1, 2, 3]", "Items"), "");
+	assert.equal(validateListExpression("{{settings.items}}", "Items"), "");
+	assert.match(validateListExpression('{"not":"a list"}', "Items"), /must be a JSON list/);
+	assert.match(validateListExpression("arbitrary text", "Items"), /valid JSON list syntax/);
+});
+
 test("datetime values use selectable timezones while retaining UTC storage", async () => {
 	const { datetimeInTimeZoneToIso, formatDatetimeForTimeZone } = await loadDatetimeUtilities();
 
@@ -176,7 +189,7 @@ test("condition schemas reject retired operators and require both range bounds",
 	const whileSchema = JSON.parse(read(join(schemasRoot, "nodes", "control-while.schema.json")));
 	assert.equal(
 		whileSchema.$defs.config.properties.conditions.$ref,
-		"https://schemas.baudbound.app/program.schema.json#/$defs/whileConditionRows",
+		"https://schemas.baudbound.app/program.schema.json#/$defs/conditionRows",
 	);
 });
 
@@ -336,6 +349,7 @@ test("generated numeric contract preserves exact editor ranges and conditional P
 		allows_variables: true,
 	});
 	assert.equal(contract.nodes["control.repeat"].count.maximum, "18446744073709551615");
+	assert.equal(contract.nodes["trigger.schedule"].every.allows_variables, true);
 	for (const actionType of ["action.process.kill", "action.process.status", "action.window.focus"]) {
 		assert.deepEqual(contract.nodes[actionType].target.when, { key: "matchMode", equals: "pid" });
 		assert.equal(contract.nodes[actionType].target.maximum, "4294967295");
@@ -377,6 +391,59 @@ test("every generated numeric field passes the editor boundary matrix", async ()
 	}
 
 	assert.equal(testedFields, 19, "the numeric matrix must cover every currently declared root config field");
+});
+
+test("custom numeric fields preserve precision, support variables, and replace native number inputs", async () => {
+	const { getNumericDraftError, stepNumericDraft } = await loadNumericFieldModel();
+	const integerContract = {
+		kind: "integer",
+		signed: false,
+		minimum: "0",
+		maximum: "18446744073709551615",
+		minimumInclusive: true,
+		maximumInclusive: true,
+	};
+	const decimalContract = {
+		kind: "float",
+		signed: true,
+		minimum: "-100",
+		maximum: "100",
+		minimumInclusive: true,
+		maximumInclusive: true,
+	};
+	const exclusiveDecimalContract = {
+		kind: "float",
+		signed: false,
+		minimum: "0",
+		maximum: "10",
+		minimumInclusive: false,
+		maximumInclusive: false,
+	};
+
+	assert.equal(stepNumericDraft("9007199254740992", integerContract, 1), "9007199254740993");
+	assert.equal(stepNumericDraft("18446744073709551615", integerContract, 1), null);
+	assert.equal(stepNumericDraft("0.2", decimalContract, 1, "0.1"), "0.3");
+	assert.equal(stepNumericDraft("", exclusiveDecimalContract, 1, "0.5"), "0.5");
+	assert.equal(stepNumericDraft("0.25", exclusiveDecimalContract, -1, "0.5"), null);
+	assert.equal(stepNumericDraft("9.75", exclusiveDecimalContract, 1, "0.5"), null);
+	assert.equal(getNumericDraftError("{{ runtime_count }}", integerContract, true, true), "");
+	assert.match(getNumericDraftError("-1", integerContract, false, true), /non-negative/);
+
+	const numericFieldSource = read(join(appRoot, "components", "common", "numeric-field.tsx"));
+	assert.match(numericFieldSource, /VariableCodeInput/);
+	assert.match(numericFieldSource, /numericVariableTypes/);
+	assert.match(numericFieldSource, /Minus/);
+	assert.match(numericFieldSource, /Plus/);
+
+	const sourceFiles = ["app", "components", "data", "hooks", "lib", "utils"].flatMap((directory) =>
+		readSourceFiles(join(appRoot, directory)),
+	);
+	for (const filePath of sourceFiles) {
+		const source = read(filePath);
+		assert.doesNotMatch(source, /type\s*=\s*["']number["']/, `${filePath} must use NumericField`);
+		assert.doesNotMatch(source, /type\s*=\s*\{[^\n}]*["']number["']/, `${filePath} must use NumericField`);
+		assert.doesNotMatch(source, /\bvalueAsNumber\b/, `${filePath} must not use native numeric coercion`);
+	}
 });
 
 test("generated runner capability contract covers every editor node", () => {
@@ -606,6 +673,19 @@ test("program schema includes every editor action type", () => {
 	}
 });
 
+test("program schema includes every editor runtime data type", () => {
+	const typesSource = read(join(appRoot, "lib", "types.ts"));
+	const runtimeDataTypeBlock = typesSource.match(/export type RuntimeDataType =([\s\S]*?);/)?.[1] ?? "";
+	const runtimeDataTypes = [...runtimeDataTypeBlock.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+	const programSchema = JSON.parse(read(join(schemasRoot, "program.schema.json")));
+	const schemaRuntimeDataTypes = new Set(programSchema.$defs.runtimeDataType.enum);
+
+	assert.ok(runtimeDataTypes.length > 0, "RuntimeDataType union should not be empty");
+	for (const runtimeDataType of runtimeDataTypes) {
+		assert.ok(schemaRuntimeDataTypes.has(runtimeDataType), `${runtimeDataType} is missing from program.schema.json`);
+	}
+});
+
 test("serial input stores only logical device ids in script packages", () => {
 	const serialInputSource = read(join(appRoot, "data", "nodes", "definitions", "triggers", "serial-input.ts"));
 	const serialProjectSource = read(join(appRoot, "data", "project", "serial.ts"));
@@ -619,7 +699,30 @@ test("serial input stores only logical device ids in script packages", () => {
 	assert.doesNotMatch(serialProjectSource, /baudRate|vendorId|productId|\bport\b/);
 });
 
-test("file watch uses a static path and explicit recursive configuration", () => {
+test("Read File has an implicit UTF-8 contract without redundant encoding config", () => {
+	const readFileSource = read(join(appRoot, "data", "nodes", "definitions", "actions", "file-read.ts"));
+	const readFileSchema = JSON.parse(read(join(schemasRoot, "nodes", "action-file-read.schema.json")));
+	const configSchema = readFileSchema.$defs.config;
+
+	assert.deepEqual(configSchema.required, ["path"]);
+	assert.deepEqual(Object.keys(configSchema.properties).sort(), ["customName", "path"]);
+	assert.doesNotMatch(readFileSource, /key:\s*"encoding"|configString\(node,\s*"encoding"\)/);
+	assert.match(readFileSource, /as UTF-8/);
+});
+
+test("Switch validates required values, row structure, and duplicate names and values", () => {
+	const switchSource = read(join(appRoot, "data", "nodes", "definitions", "control", "switch.ts"));
+	const validationSource = read(join(appRoot, "data", "nodes", "switch-validation.ts"));
+
+	assert.match(switchSource, /validateConfig:\s*validateSwitchConfig/);
+	assert.match(validationSource, /must define a switch value/);
+	assert.match(validationSource, /must define at least one switch case/);
+	assert.match(validationSource, /Name must be unique/);
+	assert.match(validationSource, /Value must be unique/);
+	assert.match(validationSource, /duplicate switch case identifiers/);
+});
+
+test("file watch supports pre-trigger variables and explicit recursive configuration", () => {
 	const fileWatchSource = read(join(appRoot, "data", "nodes", "definitions", "triggers", "file-watch.ts"));
 	const fileWatchSchema = JSON.parse(read(join(schemasRoot, "nodes", "trigger-file-watch.schema.json")));
 	const configSchema = fileWatchSchema.$defs.config;
@@ -627,8 +730,28 @@ test("file watch uses a static path and explicit recursive configuration", () =>
 	assert.deepEqual(configSchema.required, ["path"]);
 	assert.deepEqual(configSchema.properties.path, { type: "string" });
 	assert.deepEqual(configSchema.properties.recursive, { type: "boolean" });
-	assert.match(fileWatchSource, /requiredStaticConfig\(config, "path", "file watch path"\)/);
-	assert.doesNotMatch(fileWatchSource, /key:\s*"path"[^\n]*usesVariables/);
+	assert.match(fileWatchSource, /requiredConfig\(config, "path", "file watch path"\)/);
+	const pathField = extractConfigField(fileWatchSource, "path");
+	assert.match(pathField, /usesVariables:\s*true/);
+	assert.match(pathField, /variableTypes:\s*"file-path"/);
+});
+
+test("variable-capable trigger and keyboard fields are explicit while listener identity fields stay literal", () => {
+	const fileWatch = read(join(appRoot, "data", "nodes", "definitions", "triggers", "file-watch.ts"));
+	const processStarted = read(join(appRoot, "data", "nodes", "definitions", "triggers", "process-started.ts"));
+	const hotkey = read(join(appRoot, "data", "nodes", "definitions", "triggers", "hotkey.ts"));
+	const keyboard = read(join(appRoot, "data", "nodes", "definitions", "actions", "keyboard.ts"));
+	const serial = read(join(appRoot, "data", "nodes", "definitions", "triggers", "serial-input.ts"));
+	const webhook = read(join(appRoot, "data", "nodes", "definitions", "triggers", "webhook.ts"));
+	const websocket = read(join(appRoot, "data", "nodes", "definitions", "triggers", "websocket.ts"));
+
+	assert.match(extractConfigField(fileWatch, "path"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"file-path"/);
+	assert.match(extractConfigField(processStarted, "target"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"string"/);
+	assert.match(extractConfigField(hotkey, "key"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"keyboard-key"/);
+	assert.match(extractConfigField(keyboard, "key"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"keyboard-key"/);
+	assert.doesNotMatch(extractConfigField(serial, "deviceId"), /usesVariables/);
+	assert.doesNotMatch(extractConfigField(webhook, "hookName"), /usesVariables/);
+	assert.doesNotMatch(extractConfigField(websocket, "path"), /usesVariables/);
 });
 
 test("delay and schedule intervals use the shared millisecond duration contract", () => {
@@ -638,7 +761,8 @@ test("delay and schedule intervals use the shared millisecond duration contract"
 	const validatorsSource = read(join(appRoot, "data", "nodes", "definitions", "validators.ts"));
 
 	assert.match(delaySource, /staticPositiveDurationConfig\(config, "amount", "unit", "delay duration", true\)/);
-	assert.match(scheduleSource, /staticPositiveDurationConfig\(config, "every", "unit", "schedule interval"\)/);
+	assert.match(scheduleSource, /usesVariables: true/);
+	assert.match(scheduleSource, /staticPositiveDurationConfig\(config, "every", "unit", "schedule interval", true\)/);
 	assert.match(scheduleSimulationSource, /unit === "milliseconds"/);
 	assert.match(scheduleSimulationSource, /Math\.max\(1, Math\.round\(intervalMs\)\)/);
 	assert.match(scheduleSimulationSource, /Start Schedule/);
@@ -646,6 +770,23 @@ test("delay and schedule intervals use the shared millisecond duration contract"
 	assert.match(validatorsSource, /milliseconds: 0\.001/);
 	assert.match(validatorsSource, /seconds < 0\.001/);
 	assert.match(validatorsSource, /cannot use runtime variable references/);
+});
+
+test("schedule simulation preserves its original cadence after delayed callbacks", async () => {
+	const { advanceScheduleDeadline } = await loadScheduleCadence();
+
+	assert.deepEqual(advanceScheduleDeadline(3_000, 3_125, 3_000), {
+		missedIntervals: 0,
+		nextDeadlineMs: 6_000,
+	});
+	assert.deepEqual(advanceScheduleDeadline(3_000, 10_000, 3_000), {
+		missedIntervals: 2,
+		nextDeadlineMs: 12_000,
+	});
+	assert.deepEqual(advanceScheduleDeadline(12_000, 12_000, 3_000), {
+		missedIntervals: 0,
+		nextDeadlineMs: 15_000,
+	});
 });
 
 test("runner types used by node definitions are declared by the program schema", () => {
@@ -694,12 +835,46 @@ test("old capability and permission strings are not used by node definitions", (
 
 test("simulator does not retain streamed step history or use recursive traversal helpers", () => {
 	const simulationSource = read(join(appRoot, "utils", "simulation.ts"));
+	const editorSource = read(join(appRoot, "app", "editor-page.tsx"));
 
 	assert.equal(/context\.steps|steps:\s*\[\]|steps:\s*context\./.test(simulationSource), false);
 	assert.match(simulationSource, /type SimulationFrame/);
 	assert.match(simulationSource, /processSimulationFrames/);
+	assert.match(
+		simulationSource,
+		/const results = \(await context\.onStep\(step\)\) \?\? \[\];\s*await yieldSimulationTask/,
+	);
+	assert.match(simulationSource, /await pushNodeState\(context, node\.id, "active"\)/);
+	assert.match(
+		simulationSource,
+		/finally\s*\{\s*if \(!context\.signal\?\.aborted\)\s*\{\s*await pushNodeState\(context, node\.id, "completed"\)/,
+	);
+	assert.match(editorSource, /flushSync\(\(\) => \{/);
+	assert.match(editorSource, /nodeState\?\.status === "active"/);
+	assert.match(editorSource, /nodeState\?\.status === "completed"/);
+	assert.doesNotMatch(editorSource, /nextNodeIds\.add\(traversedEdge\.target\)/);
+	assert.doesNotMatch(simulationSource, /SIMULATION_YIELD_INTERVAL|streamedSteps/);
+	assert.ok(
+		editorSource.indexOf("setSimulationVariables(step.variables)") <
+			editorSource.indexOf("executeSimulationSideEffects(step.sideEffects"),
+		"simulation state must be published before browser side effects execute",
+	);
 	assert.equal(/async function followHandle|async function executeNode\(/.test(simulationSource), false);
 	assert.equal(/switch\s*\(\s*node\.data\.actionType\s*\)/.test(simulationSource), false);
+});
+
+test("simulation pacing exposes real time plus explicit per-step slowdowns", () => {
+	const optionsSource = read(join(appRoot, "components", "simulation", "simulator-options.ts"));
+	const settingsSource = read(join(appRoot, "utils", "simulation-settings.ts"));
+	const typesSource = read(join(appRoot, "lib", "types.ts"));
+
+	assert.match(typesSource, /"realtime"\s*\|\s*"slowdown-100"\s*\|\s*"slowdown-300"\s*\|\s*"slowdown-700"/);
+	assert.match(optionsSource, /\{ label: "Real time", value: "realtime" \}/);
+	for (const delay of [100, 300, 700]) {
+		assert.match(optionsSource, new RegExp(`Slowdown: ${delay} ms`));
+	}
+	assert.match(settingsSource, /\^slowdown-\(100\|300\|700\)\$/);
+	assert.doesNotMatch(optionsSource, /Instant|Normal|Fast/);
 });
 
 test("simulation audio side effects clean up object URLs deterministically", () => {
@@ -1021,6 +1196,12 @@ function read(path) {
 	return readFileSync(path, "utf8");
 }
 
+function extractConfigField(source, key) {
+	const field = source.match(new RegExp(`\\{\\s*key:\\s*"${key}",[\\s\\S]*?\\n\\s*\\},`))?.[0];
+	assert.ok(field, `Could not find config field "${key}".`);
+	return field;
+}
+
 async function loadColorMatcher() {
 	const typescript = await import("typescript");
 	const source = read(join(appRoot, "data", "nodes", "color-match.ts"));
@@ -1037,6 +1218,32 @@ async function loadColorMatcher() {
 async function loadConditionComparison() {
 	const typescript = await import("typescript");
 	const source = read(join(appRoot, "data", "nodes", "condition-comparison.ts"));
+	const compiled = typescript.transpileModule(source, {
+		compilerOptions: {
+			module: typescript.ModuleKind.ESNext,
+			target: typescript.ScriptTarget.ES2022,
+		},
+	});
+	const moduleUrl = `data:text/javascript;base64,${Buffer.from(compiled.outputText).toString("base64")}`;
+	return import(moduleUrl);
+}
+
+async function loadCalculationUtilities() {
+	const typescript = await import("typescript");
+	const source = read(join(appRoot, "data", "project", "calculation.ts"));
+	const compiled = typescript.transpileModule(source, {
+		compilerOptions: {
+			module: typescript.ModuleKind.ESNext,
+			target: typescript.ScriptTarget.ES2022,
+		},
+	});
+	const moduleUrl = `data:text/javascript;base64,${Buffer.from(compiled.outputText).toString("base64")}`;
+	return import(moduleUrl);
+}
+
+async function loadListExpressionUtilities() {
+	const typescript = await import("typescript");
+	const source = read(join(appRoot, "data", "nodes", "list-expression.ts"));
 	const compiled = typescript.transpileModule(source, {
 		compilerOptions: {
 			module: typescript.ModuleKind.ESNext,
@@ -1076,6 +1283,43 @@ async function loadFilePermissionUtilities() {
 async function loadNumericValidator() {
 	const typescript = await import("typescript");
 	const source = read(join(appRoot, "data", "nodes", "numeric-validation.ts"));
+	const compiled = typescript.transpileModule(source, {
+		compilerOptions: {
+			module: typescript.ModuleKind.ESNext,
+			target: typescript.ScriptTarget.ES2022,
+		},
+	});
+	const moduleUrl = `data:text/javascript;base64,${Buffer.from(compiled.outputText).toString("base64")}`;
+	return import(moduleUrl);
+}
+
+async function loadNumericFieldModel() {
+	const typescript = await import("typescript");
+	const validatorSource = read(join(appRoot, "data", "nodes", "numeric-validation.ts"));
+	const compiledValidator = typescript.transpileModule(validatorSource, {
+		compilerOptions: {
+			module: typescript.ModuleKind.ESNext,
+			target: typescript.ScriptTarget.ES2022,
+		},
+	});
+	const validatorUrl = `data:text/javascript;base64,${Buffer.from(compiledValidator.outputText).toString("base64")}`;
+	const modelSource = read(join(appRoot, "components", "common", "numeric-field-model.ts")).replace(
+		'"@/data/nodes/numeric-validation"',
+		JSON.stringify(validatorUrl),
+	);
+	const compiledModel = typescript.transpileModule(modelSource, {
+		compilerOptions: {
+			module: typescript.ModuleKind.ESNext,
+			target: typescript.ScriptTarget.ES2022,
+		},
+	});
+	const moduleUrl = `data:text/javascript;base64,${Buffer.from(compiledModel.outputText).toString("base64")}`;
+	return import(moduleUrl);
+}
+
+async function loadScheduleCadence() {
+	const typescript = await import("typescript");
+	const source = read(join(appRoot, "components", "simulation", "schedule-cadence.ts"));
 	const compiled = typescript.transpileModule(source, {
 		compilerOptions: {
 			module: typescript.ModuleKind.ESNext,
@@ -1215,6 +1459,8 @@ test("Script Settings are typed package metadata and read only simulation values
 		"datetime",
 		"duration",
 		"file_path",
+		"hotkey",
+		"color",
 	]);
 	assert.deepEqual(settingsSchema.items.properties.item_type.enum, [
 		"string",
@@ -1225,7 +1471,8 @@ test("Script Settings are typed package metadata and read only simulation values
 		"duration",
 		"file_path",
 	]);
-	assert.equal(settingsSchema.items.allOf.length, 8);
+	assert.equal(settingsSchema.items.allOf.length, 10);
+	assert.doesNotMatch(JSON.stringify(manifestSchema.properties.variables.items.properties.type.enum), /hotkey|color/);
 	assert.match(settingSource, /createSimulationScriptSettingValues/);
 	assert.match(packageSource, /settings:\s*params\.scriptSettings\.map/);
 	assert.match(simulationSource, /createSimulationScriptSettingValues/);
