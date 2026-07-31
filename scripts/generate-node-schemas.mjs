@@ -17,7 +17,6 @@ const runnerKeyboardContractPath = join(contractsRoot, "runner", "windows-keyboa
 const publicSchemaRoot = "https://schemas.baudbound.app";
 const programSchemaUrl = `${publicSchemaRoot}/program.schema.json`;
 const conditionRowsRef = `${programSchemaUrl}#/$defs/conditionRows`;
-const whileConditionRowsRef = `${programSchemaUrl}#/$defs/whileConditionRows`;
 const jsonValueRef = `${programSchemaUrl}#/$defs/jsonValue`;
 const runtimeOutputRef = `${programSchemaUrl}#/$defs/runtimeOutput`;
 const checkMode = process.argv.includes("--check");
@@ -262,7 +261,7 @@ function createConfigSchema(definition) {
 			definition.actionType === "control.if" && key === "conditions"
 				? { $ref: conditionRowsRef }
 				: definition.actionType === "control.while" && key === "conditions"
-					? { $ref: whileConditionRowsRef }
+					? { $ref: conditionRowsRef }
 					: definition.actionType === "action.text.format" && key === "operations"
 						? createTextTransformOperationsSchema()
 						: field

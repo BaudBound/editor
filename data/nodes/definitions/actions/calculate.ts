@@ -7,7 +7,17 @@ import { fallible } from "../runtime-outputs";
 export const calculateNode = defineNode({
 	actionType: "action.calculate",
 	capabilities: ["action.calculate"],
-	configFields: [{ key: "expression", label: "Expression", type: "textarea", usesVariables: true }],
+	configFields: [
+		{
+			key: "expression",
+			label: "Expression",
+			type: "textarea",
+			usesVariables: true,
+			variableTypes: "numeric",
+			validate: (config) =>
+				validateCalculationExpression(typeof config.expression === "string" ? config.expression : ""),
+		},
+	],
 	defaultConfig: () => ({ expression: "" }),
 	description: "Calculate a numeric expression and expose the result.",
 	fallible: true,
@@ -26,12 +36,6 @@ export const calculateNode = defineNode({
 		},
 	]),
 	runnerType: "calculate",
-	validateConfig: (config) => {
-		const expression = typeof config.expression === "string" ? config.expression : "";
-		const error = validateCalculationExpression(expression);
-
-		return error ? [`has invalid calculation expression: ${error}`] : [];
-	},
 	simulation: {
 		createOutput: ({ api, context, node }): NodeExecutionResult => {
 			const expression = String(api.resolveTemplate(api.getConfigString(node, "expression"), context));

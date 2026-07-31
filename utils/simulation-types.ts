@@ -34,6 +34,10 @@ export type SimulationRunOptions = {
 };
 
 export type SimulationStep = {
+	nodeState?: {
+		nodeId: string;
+		status: "active" | "completed";
+	};
 	outputLogs: LogEntry[];
 	sideEffects: SimulationSideEffect[];
 	traces: SimulationTraceEntry[];
@@ -98,7 +102,6 @@ export type SimulationContext = {
 	secretValues: JsonValue[];
 	signal?: AbortSignal;
 	stepDelayMs: number;
-	streamedSteps: number;
 	triggerPayload: SimulationTriggerPayload;
 	webhookResponse: {
 		fallback: Record<string, JsonValue>;

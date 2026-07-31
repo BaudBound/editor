@@ -11,7 +11,10 @@ export const processStartedTriggerNode = defineNode({
 		{
 			key: "target",
 			label: "Target",
+			nonEmpty: true,
 			type: "text",
+			usesVariables: true,
+			variableTypes: "string",
 			help: "Process name, executable path, or window title depending on Match by.",
 		},
 	],
@@ -70,7 +73,10 @@ export const processStartedTriggerNode = defineNode({
 		createOutput: ({ api, context, node }) => ({
 			failed: false,
 			outputData: {
-				process_name: context.triggerPayload.processName || api.getConfigString(node, "target") || "app.exe",
+				process_name:
+					context.triggerPayload.processName ||
+					api.resolveTemplate(api.getConfigString(node, "target"), context) ||
+					"app.exe",
 				process_id: Number(context.triggerPayload.processId) || 4244,
 				executable_path: context.triggerPayload.executablePath || "",
 				window_title: context.triggerPayload.windowTitle || "",

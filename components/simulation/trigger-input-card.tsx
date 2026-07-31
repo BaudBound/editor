@@ -6,6 +6,7 @@ import { OptionCombobox } from "@/components/ui/option-combobox";
 import { Textarea } from "@/components/ui/textarea";
 import { fileWatchEventOptions, httpMethodOptions } from "@/data/nodes/definitions/options";
 import type { HeaderRow } from "@/data/nodes/definitions/rows";
+import type { EditorVariable } from "@/data/project/variables";
 import type {
 	ScriptNodeData,
 	SimulationRunStatus,
@@ -21,6 +22,7 @@ type TriggerInputCardProps = {
 	draft?: SimulationTriggerInputDraft;
 	status: SimulationRunStatus;
 	triggerNode: Node<ScriptNodeData>;
+	variables: EditorVariable[];
 	onDraftChange: (triggerNodeId: string, draft: SimulationTriggerInputDraft) => void;
 	onStartSchedule: (triggerNodeId: string) => void;
 	onStopSchedule: (triggerNodeId: string) => void;
@@ -32,6 +34,7 @@ export function TriggerInputCard({
 	draft: storedDraft,
 	status,
 	triggerNode,
+	variables,
 	onDraftChange,
 	onStartSchedule,
 	onStopSchedule,
@@ -78,6 +81,7 @@ export function TriggerInputCard({
 					}
 					status={status}
 					triggerNode={triggerNode}
+					variables={variables}
 					onStart={() => onStartSchedule(triggerNode.id)}
 					onStop={() => onStopSchedule(triggerNode.id)}
 					onTrigger={onTrigger}

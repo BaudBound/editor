@@ -8,10 +8,16 @@ export const readFileNode = defineNode({
 	actionType: "action.file.read",
 	capabilities: actionFile,
 	configFields: [
-		{ key: "path", label: "Path", type: "text", usesVariables: true },
-		{ key: "encoding", label: "Encoding", type: "select", options: [{ value: "utf-8", label: "UTF-8" }] },
+		{
+			key: "path",
+			label: "Path",
+			type: "text",
+			usesVariables: true,
+			variableTypes: "file-path",
+			nonEmpty: true,
+		},
 	],
-	defaultConfig: () => ({ path: "", encoding: "utf-8" }),
+	defaultConfig: () => ({ path: "" }),
 	description: "Read file content into runtime data.",
 	fallible: true,
 	group: "actions",
@@ -49,7 +55,7 @@ export const readFileNode = defineNode({
 		describe: ({ api, context, node }) => [
 			{
 				level: "info",
-				message: `[Simulation] Read File (${node.id}) succeeded. Would read ${api.formatValue(api.resolveTemplate(api.getConfigString(node, "path"), context))} as ${api.getConfigString(node, "encoding") || "utf-8"}.`,
+				message: `[Simulation] Read File (${node.id}) succeeded. Would read ${api.formatValue(api.resolveTemplate(api.getConfigString(node, "path"), context))} as UTF-8.`,
 			},
 		],
 	},

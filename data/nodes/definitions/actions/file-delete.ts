@@ -7,7 +7,16 @@ import { requiredConfig } from "../validators";
 export const deleteFileNode = defineNode({
 	actionType: "action.file.delete",
 	capabilities: actionFile,
-	configFields: [{ key: "path", label: "Path", type: "text", usesVariables: true }],
+	configFields: [
+		{
+			key: "path",
+			label: "Path",
+			type: "text",
+			usesVariables: true,
+			variableTypes: "file-path",
+			nonEmpty: true,
+		},
+	],
 	defaultConfig: () => ({ path: "" }),
 	description: "Delete a selected file path.",
 	fallible: true,

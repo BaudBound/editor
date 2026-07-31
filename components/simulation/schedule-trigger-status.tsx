@@ -2,13 +2,16 @@ import type { Node } from "@xyflow/react";
 import { Clock, Play, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import type { EditorVariable } from "@/data/project/variables";
 import type { ScriptNodeData, SimulationRunStatus, SimulationTriggerPayload } from "@/lib/types";
+import { advanceScheduleDeadline } from "./schedule-cadence";
 
 type ScheduleTriggerStatusProps = {
 	active: boolean;
 	startDisabled: boolean;
 	status: SimulationRunStatus;
 	triggerNode: Node<ScriptNodeData>;
+	variables: EditorVariable[];
 	onStart: () => void;
 	onStop: () => void;
 	onTrigger: (triggerNodeId: string, payload: SimulationTriggerPayload) => void;
@@ -21,11 +24,12 @@ export function ScheduleTriggerStatus({
 	startDisabled,
 	status,
 	triggerNode,
+	variables,
 	onStart,
 	onStop,
 	onTrigger,
 }: ScheduleTriggerStatusProps) {
-	const intervalMs = getScheduleIntervalMs(triggerNode);
+	const intervalMs = getScheduleIntervalMs(triggerNode, variables);
 	const statusRef = useRef(status);
 	const triggerRef = useRef(onTrigger);
 	const [lastRunAt, setLastRunAt] = useState<number | null>(null);
@@ -41,6 +45,7 @@ export function ScheduleTriggerStatus({
 			return;
 		}
 
+		setNow(Date.now());
 		const tickId = window.setInterval(() => setNow(Date.now()), 500);
 		return () => window.clearInterval(tickId);
 	}, [active]);
@@ -53,22 +58,24 @@ export function ScheduleTriggerStatus({
 
 		let timeoutId: number | null = null;
 		let cancelled = false;
-		let nextAt = Date.now() + intervalMs;
+		const wallClockOffsetMs = Date.now() - performance.now();
+		let nextDeadlineMs = performance.now() + intervalMs;
 
 		const scheduleNext = () => {
 			if (cancelled) {
 				return;
 			}
 
-			setNextRunAt(nextAt);
-			const remainingMs = nextAt - Date.now();
+			setNextRunAt(wallClockOffsetMs + nextDeadlineMs);
+			const remainingMs = nextDeadlineMs - performance.now();
 			timeoutId = window.setTimeout(
 				() => {
 					if (cancelled) {
 						return;
 					}
 
-					if (Date.now() < nextAt) {
+					const firedAtMonotonic = performance.now();
+					if (firedAtMonotonic < nextDeadlineMs) {
 						scheduleNext();
 						return;
 					}
@@ -79,7 +86,7 @@ export function ScheduleTriggerStatus({
 						triggerRef.current(triggerNode.id, {});
 					}
 
-					nextAt = Date.now() + intervalMs;
+					nextDeadlineMs = advanceScheduleDeadline(nextDeadlineMs, firedAtMonotonic, intervalMs).nextDeadlineMs;
 					scheduleNext();
 				},
 				Math.min(Math.max(1, remainingMs), MAX_BROWSER_TIMEOUT_MS),
@@ -97,7 +104,12 @@ export function ScheduleTriggerStatus({
 	}, [active, intervalMs, triggerNode.id]);
 
 	return (
-		<div className="space-y-2 rounded border border-baud-border bg-baud-soft px-3 py-2 text-xs text-baud-muted">
+		<div
+			className="space-y-2 rounded border border-baud-border bg-baud-soft px-3 py-2 text-xs text-baud-muted"
+			data-schedule-last-run-at={lastRunAt ?? undefined}
+			data-schedule-next-run-at={nextRunAt ?? undefined}
+			data-schedule-status={triggerNode.id}
+		>
 			<div className="flex items-center justify-between gap-3">
 				<div className="flex items-center gap-2 text-baud-text">
 					<Clock size={13} />
@@ -144,8 +156,8 @@ function ScheduleTime({ label, value }: { label: string; value: string }) {
 	);
 }
 
-function getScheduleIntervalMs(triggerNode: Node<ScriptNodeData>) {
-	const every = Number(triggerNode.data.config.every);
+function getScheduleIntervalMs(triggerNode: Node<ScriptNodeData>, variables: EditorVariable[]) {
+	const every = resolveScheduleValue(triggerNode.data.config.every, variables);
 	const unit = String(triggerNode.data.config.unit ?? "seconds");
 	const unitMultiplier = getScheduleUnitMultiplier(unit);
 	const intervalMs = every * unitMultiplier;
@@ -155,6 +167,19 @@ function getScheduleIntervalMs(triggerNode: Node<ScriptNodeData>) {
 	}
 
 	return Math.max(1, Math.round(intervalMs));
+}
+
+function resolveScheduleValue(value: unknown, variables: EditorVariable[]) {
+	if (typeof value === "number") {
+		return value;
+	}
+	if (typeof value !== "string") {
+		return Number.NaN;
+	}
+
+	const trimmed = value.trim();
+	const variable = variables.find((candidate) => candidate.preTrigger && candidate.token === trimmed);
+	return Number(variable ? variable.value : trimmed);
 }
 
 function getScheduleUnitMultiplier(unit: string) {

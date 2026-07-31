@@ -21,7 +21,14 @@ export const convertValueNode = defineNode({
 	actionType: "action.value.convert",
 	capabilities: ["action.value"],
 	configFields: [
-		{ key: "value", label: "Value", type: "textarea", usesVariables: true },
+		{
+			key: "value",
+			label: "Value",
+			type: "textarea",
+			usesVariables: true,
+			variableTypes: "any",
+			nonEmpty: true,
+		},
 		{ key: "targetType", label: "Convert to", type: "select", options: valueConversionOptions },
 	],
 	defaultConfig: () => ({ value: "", targetType: "text" }),

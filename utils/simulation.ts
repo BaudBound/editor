@@ -33,7 +33,6 @@ export type {
 	SimulationStep,
 } from "./simulation-types";
 
-const SIMULATION_YIELD_INTERVAL = 100;
 const MAX_SIMULATION_MESSAGE_LENGTH = 4000;
 const MAX_VARIABLE_SNAPSHOT_ENTRIES = 600;
 const MAX_VARIABLE_SNAPSHOT_STRING_LENGTH = 4000;
@@ -138,7 +137,6 @@ export async function createSimulationRun({
 		secretValues: Object.values(secretValues),
 		signal,
 		stepDelayMs,
-		streamedSteps: 0,
 		triggerPayload,
 		webhookResponse: null,
 	};
@@ -278,6 +276,25 @@ async function executeNodeFrame(
 		return;
 	}
 
+	await pushNodeState(context, node.id, "active");
+	if (context.signal?.aborted) {
+		return;
+	}
+
+	try {
+		await executeResolvedNodeFrame(node, context, frames);
+	} finally {
+		if (!context.signal?.aborted) {
+			await pushNodeState(context, node.id, "completed");
+		}
+	}
+}
+
+async function executeResolvedNodeFrame(
+	node: Node<ScriptNodeData>,
+	context: SimulationContext,
+	frames: SimulationFrame[],
+) {
 	if (node.data.actionType === "control.break_loop" || node.data.actionType === "control.continue_loop") {
 		await processLoopControlNode(node, context, frames);
 		return;
@@ -1497,38 +1514,61 @@ async function pushOutputLog(context: SimulationContext, log: LogEntry) {
 	});
 }
 
+async function pushNodeState(
+	context: SimulationContext,
+	nodeId: string,
+	status: NonNullable<SimulationStep["nodeState"]>["status"],
+) {
+	return emitStep(context, {
+		nodeState: { nodeId, status },
+		outputLogs: [],
+		sideEffects: [],
+		traces: [],
+		traversedEdgeIds: [],
+		variables: createVariableSnapshot(context),
+	});
+}
+
 async function emitStep(context: SimulationContext, step: SimulationStep) {
 	if (!context.onStep) {
 		return [];
 	}
 
-	if (context.streamedSteps > 0 && context.stepDelayMs > 0) {
-		await sleepSimulationStep(context.stepDelayMs, context.signal);
-	}
-
 	if (context.signal?.aborted) {
 		return [];
 	}
 
-	context.streamedSteps += 1;
-	if (context.streamedSteps % SIMULATION_YIELD_INTERVAL === 0) {
-		await yieldSimulationFrame(context.signal);
-	}
+	const results = (await context.onStep(step)) ?? [];
+	await yieldSimulationTask(context.signal);
 
 	if (context.signal?.aborted) {
-		return [];
+		return results;
 	}
 
-	return (await context.onStep(step)) ?? [];
+	await sleepSimulationStep(context.stepDelayMs, context.signal);
+	return results;
 }
 
-function yieldSimulationFrame(signal: AbortSignal | undefined) {
+export function yieldSimulationTask(signal: AbortSignal | undefined) {
 	if (signal?.aborted) {
 		return Promise.resolve();
 	}
 
 	return new Promise<void>((resolve) => {
-		window.setTimeout(resolve, 0);
+		let completed = false;
+		const finish = () => {
+			if (completed) {
+				return;
+			}
+
+			completed = true;
+			window.clearTimeout(timeoutId);
+			signal?.removeEventListener("abort", handleAbort);
+			resolve();
+		};
+		const timeoutId = window.setTimeout(finish, 0);
+		const handleAbort = () => finish();
+		signal?.addEventListener("abort", handleAbort, { once: true });
 	});
 }
 

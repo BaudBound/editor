@@ -16,7 +16,7 @@ type TextTransformOperation = (typeof textTransformOperations)[number];
 export const formatTextNode = defineNode({
 	actionType: "action.text.format",
 	capabilities: ["action.text"],
-	configFields: [{ key: "input", label: "Input", type: "textarea", usesVariables: true }],
+	configFields: [{ key: "input", label: "Input", type: "textarea", usesVariables: true, variableTypes: "any" }],
 	defaultConfig: () => ({
 		input: "",
 		operations: [createTextTransformOperationRow()],
@@ -197,32 +197,52 @@ function validateTextTransformConfig(config: Record<string, JsonValue>) {
 		const operation = row.operation;
 		const prefix = `operation ${index + 1}`;
 		if (!textTransformOperations.includes(operation)) errors.push(`${prefix} is not supported.`);
-		if (operation === "template" && !row.template.trim()) errors.push(`${prefix} must define a template.`);
-		if ((operation === "replace" || operation === "regex_replace") && !row.search) {
-			errors.push(`${prefix} must define search text.`);
-		}
-		if (operation === "regex_replace" && row.search) {
-			try {
-				new RegExp(row.search, "u");
-			} catch {
-				errors.push(`${prefix} has an invalid regular expression.`);
+		for (const field of textTransformValidatedFields) {
+			const error = validateTextTransformField(row, field);
+			if (error) {
+				errors.push(`${prefix}: ${error}`);
 			}
-			const portabilityError = portableRegexError(row.search, row.replacement);
-			if (portabilityError) errors.push(`${prefix}: ${portabilityError}`);
-		}
-		if ((operation === "split" || operation === "join") && !row.delimiter) {
-			errors.push(`${prefix} must define a delimiter.`);
-		}
-		if (operation === "substring") {
-			validateStaticInteger(row.start, `${prefix} start`, errors);
-			if (row.length.trim()) validateStaticInteger(row.length, `${prefix} length`, errors);
-		}
-		if (operation === "pad_start" || operation === "pad_end") {
-			validateStaticInteger(row.targetLength, `${prefix} target length`, errors);
-			if (!row.pad) errors.push(`${prefix} must define pad text.`);
 		}
 	}
 	return errors;
+}
+
+export function validateTextTransformField(
+	row: TextTransformOperationRow,
+	field: keyof Omit<TextTransformOperationRow, "id" | "operation">,
+) {
+	const operation = row.operation;
+	const value = row[field];
+	if (field === "template" && operation === "template" && !value.trim()) {
+		return "Template is required.";
+	}
+	if (field === "search" && (operation === "replace" || operation === "regex_replace") && !value) {
+		return operation === "regex_replace" ? "Regex pattern is required." : "Search text is required.";
+	}
+	if (field === "search" && operation === "regex_replace" && value) {
+		try {
+			new RegExp(value, "u");
+		} catch {
+			return "Regex pattern is invalid.";
+		}
+		return portableRegexError(value, row.replacement);
+	}
+	if (field === "delimiter" && (operation === "split" || operation === "join") && !value) {
+		return "Delimiter is required.";
+	}
+	if (field === "start" && operation === "substring") {
+		return staticIntegerError(value, "Start");
+	}
+	if (field === "length" && operation === "substring" && value.trim()) {
+		return staticIntegerError(value, "Length");
+	}
+	if (field === "targetLength" && (operation === "pad_start" || operation === "pad_end")) {
+		return staticIntegerError(value, "Target length");
+	}
+	if (field === "pad" && (operation === "pad_start" || operation === "pad_end") && !value) {
+		return "Pad text is required.";
+	}
+	return "";
 }
 
 function sanitizeTextTransformConfig(config: Record<string, JsonValue>) {
@@ -257,15 +277,27 @@ function normalizeTextTransformOperation(value: string): TextTransformOperation 
 	return textTransformOperations.includes(value) ? value : undefined;
 }
 
-function validateStaticInteger(value: string, label: string, errors: string[]) {
+function staticIntegerError(value: string, label: string) {
 	if (!value.trim()) {
-		errors.push(`${label} is required.`);
-		return;
+		return `${label} is required.`;
 	}
-	if (/\{\{[^{}]+}}/.test(value)) return;
+	if (/\{\{[^{}]+}}/.test(value)) {
+		return "";
+	}
 	const parsed = Number(value);
-	if (!Number.isSafeInteger(parsed) || parsed < 0) errors.push(`${label} must be a non-negative safe integer.`);
+	return Number.isSafeInteger(parsed) && parsed >= 0 ? "" : `${label} must be a non-negative safe integer.`;
 }
+
+const textTransformValidatedFields = [
+	"template",
+	"search",
+	"replacement",
+	"delimiter",
+	"start",
+	"length",
+	"targetLength",
+	"pad",
+] as const satisfies readonly (keyof Omit<TextTransformOperationRow, "id" | "operation">)[];
 
 function parseNonNegativeInteger(value: string, label: string) {
 	const normalized = value.trim();

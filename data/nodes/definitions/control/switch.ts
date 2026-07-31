@@ -1,5 +1,6 @@
 import { Hash } from "lucide-react";
 import { defineNode } from "../../node-definition";
+import { validateSwitchConfig } from "../../switch-validation";
 import { createSwitchCaseRow } from "../rows";
 
 export const switchNode = defineNode({
@@ -14,4 +15,5 @@ export const switchNode = defineNode({
 	label: "Switch",
 	portPolicy: { kind: "switch-cases", configKey: "cases", outputPrefix: "case-", defaultOutput: "default" },
 	risk: "low",
+	validateConfig: validateSwitchConfig,
 });

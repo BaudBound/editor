@@ -8,12 +8,20 @@ export const shellCommandNode = defineNode({
 	actionType: "action.shell",
 	capabilities: actionProcess,
 	configFields: [
-		{ key: "command", label: "Command", type: "textarea", usesVariables: true },
+		{
+			key: "command",
+			label: "Command",
+			type: "textarea",
+			usesVariables: true,
+			variableTypes: "text",
+			nonEmpty: true,
+		},
 		{
 			key: "timeoutSeconds",
 			label: "Timeout seconds",
 			type: "number",
 			usesVariables: true,
+			variableTypes: "numeric",
 			required: false,
 			numeric: {
 				kind: "float",

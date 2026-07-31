@@ -3,9 +3,13 @@
 import CodeMirror from "@uiw/react-codemirror";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { ColorConfigInput } from "@/components/inspector/color-config-input";
+import { KeyCaptureInput } from "@/components/inspector/key-capture-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { NumericConfigContract } from "@/data/nodes/node-definition";
+import { runtimeNumberContract, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
 import {
 	createTimeZoneOptions,
 	datetimeInTimeZoneToIso,
@@ -13,10 +17,22 @@ import {
 	initialTimeZoneOptions,
 	localTimeZoneValue,
 } from "@/data/project/datetime";
-import { createEmptyTypedValue, parseObjectValue, validateTypedValue } from "@/data/project/typed-values";
-import { durationUnits, type ListItemType, listItemTypes, type VariableType } from "@/data/project/variables";
+import {
+	createEmptyTypedValue,
+	parseObjectValue,
+	type TypedValueType,
+	validateTypedValue,
+} from "@/data/project/typed-values";
+import { durationUnits, type ListItemType, listItemTypes } from "@/data/project/variables";
 import { type ActiveReorderDragState, useReorderController } from "@/hooks/use-reorder-controller";
 import type { JsonValue } from "@/lib/types";
+import { NumericField } from "./numeric-field";
+
+const durationAmountContract: NumericConfigContract = {
+	...runtimeNumberContract,
+	signed: false,
+	minimum: "0",
+};
 
 type TypedValueEditorProps = {
 	ariaLabel?: string;
@@ -25,7 +41,7 @@ type TypedValueEditorProps = {
 	onChange: (value: JsonValue) => void;
 	onItemTypeChange?: (type: ListItemType) => void;
 	showListItemType?: boolean;
-	type: VariableType;
+	type: TypedValueType;
 	value: JsonValue;
 };
 
@@ -55,15 +71,15 @@ export function TypedValueEditor({
 
 	if (type === "number") {
 		return (
-			<Input
+			<NumericField
 				id={id}
-				aria-label={ariaLabel}
-				type="number"
-				step="any"
+				ariaLabel={ariaLabel}
+				contract={runtimeNumberContract}
 				value={typeof value === "number" && Number.isFinite(value) ? value : ""}
-				onChange={(event) => {
-					const next = Number(event.target.value);
-					if (event.target.value && Number.isFinite(next)) onChange(next);
+				onChange={(nextDraft) => {
+					if (!validateNumericConfigValue(nextDraft, runtimeNumberContract)) {
+						onChange(Number(nextDraft));
+					}
 				}}
 			/>
 		);
@@ -93,6 +109,28 @@ export function TypedValueEditor({
 
 	if (type === "duration") {
 		return <DurationValueEditor id={id} ariaLabel={ariaLabel} value={value} onChange={onChange} />;
+	}
+
+	if (type === "hotkey") {
+		return (
+			<KeyCaptureInput
+				id={id}
+				ariaLabel={ariaLabel}
+				value={typeof value === "string" ? value : ""}
+				onChange={onChange}
+			/>
+		);
+	}
+
+	if (type === "color") {
+		return (
+			<ColorConfigInput
+				label={ariaLabel ?? "Color"}
+				value={typeof value === "string" ? value : ""}
+				variables={[]}
+				onChange={onChange}
+			/>
+		);
 	}
 
 	if (type === "file_path") {
@@ -382,16 +420,15 @@ function DurationValueEditor({ ariaLabel, id, value, onChange }: Omit<TypedValue
 
 	return (
 		<div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem]">
-			<Input
+			<NumericField
 				id={id}
-				aria-label={ariaLabel ? `${ariaLabel} amount` : "Duration amount"}
-				type="number"
-				min={0}
-				step="any"
+				ariaLabel={ariaLabel ? `${ariaLabel} amount` : "Duration amount"}
+				contract={durationAmountContract}
 				value={amount}
-				onChange={(event) => {
-					const next = Number(event.target.value);
-					if (Number.isFinite(next) && next >= 0) onChange({ type: "duration", unit, value: next });
+				onChange={(nextDraft) => {
+					if (!validateNumericConfigValue(nextDraft, durationAmountContract)) {
+						onChange({ type: "duration", unit, value: Number(nextDraft) });
+					}
 				}}
 			/>
 			<Select value={unit} onValueChange={(next) => onChange({ type: "duration", unit: next, value: amount })}>

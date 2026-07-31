@@ -3,12 +3,30 @@ import type { JsonValue } from "@/lib/types";
 import type { NodeExecutionResult } from "@/utils/simulation-types";
 import { defineNode } from "../../node-definition";
 import { fallible } from "../runtime-outputs";
-import { requiredConfig } from "../validators";
 
 export const parseUrlNode = defineNode({
 	actionType: "action.url.parse",
 	capabilities: ["action.text"],
-	configFields: [{ key: "url", label: "URL", type: "textarea", usesVariables: true }],
+	configFields: [
+		{
+			key: "url",
+			label: "URL",
+			type: "textarea",
+			usesVariables: true,
+			variableTypes: "string",
+			validate: (config) => {
+				const value = configString(config.url).trim();
+				if (!value) {
+					return "URL is required.";
+				}
+				if (containsVariable(value)) {
+					return "";
+				}
+				const result = parseAbsoluteUrl(value);
+				return result.ok ? "" : result.error;
+			},
+		},
+	],
 	defaultConfig: () => ({ url: "" }),
 	description: "Parse a standard or custom absolute URL into its individual components.",
 	fallible: true,
@@ -77,20 +95,6 @@ export const parseUrlNode = defineNode({
 		},
 	]),
 	runnerType: "parse_url",
-	validateConfig: (config) => {
-		const requiredError = requiredConfig(config, "url", "URL");
-		if (requiredError) {
-			return [requiredError];
-		}
-
-		const value = configString(config.url).trim();
-		if (containsVariable(value)) {
-			return [];
-		}
-
-		const result = parseAbsoluteUrl(value);
-		return result.ok ? [] : [result.error];
-	},
 	simulation: {
 		createOutput: ({ api, context, node }): NodeExecutionResult => {
 			const value = String(api.resolveTemplate(api.getConfigString(node, "url"), context));

@@ -6,7 +6,16 @@ import { requiredConfig } from "../validators";
 export const subScriptNode = defineNode({
 	actionType: "action.script.run",
 	capabilities: ["action.sub_script"],
-	configFields: [{ key: "script", label: "Script", type: "text", usesVariables: true }],
+	configFields: [
+		{
+			key: "script",
+			label: "Script",
+			type: "text",
+			usesVariables: true,
+			variableTypes: "file-path",
+			nonEmpty: true,
+		},
+	],
 	defaultConfig: () => ({ script: "" }),
 	description: "Run another local script through its manual trigger.",
 	fallible: true,

@@ -10,6 +10,7 @@ import {
 } from "@xyflow/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
 	areCommentNodeDataEqual,
 	createCommentFlowNode,
@@ -102,6 +103,7 @@ import {
 	type SimulationSideEffect,
 	type SimulationSideEffectResult,
 	type SimulationStep,
+	yieldSimulationTask,
 } from "@/utils/simulation";
 import { getSimulationStepDelay, getSimulationTriggers } from "@/utils/simulation-settings";
 import { executeSimulationSideEffects } from "@/utils/simulation-side-effects";
@@ -173,6 +175,23 @@ function createVerificationLogEntries(prefix: string, checks: VerificationCheck[
 	return findings.length > 0
 		? findings.map((message) => ({ level, message: `${prefix}: ${message}` }))
 		: [{ level, message: `${prefix}: all checks passed.` }];
+}
+
+function createSimulationPreflightCheck(
+	id: string,
+	title: string,
+	description: string,
+	problems: string[],
+	passedMessage: string,
+): VerificationCheck {
+	return {
+		id,
+		title,
+		description,
+		outcome: problems.length > 0 ? "failed" : "passed",
+		message: problems.length > 0 ? problems[0] : passedMessage,
+		...(problems.length > 1 ? { details: problems } : {}),
+	};
 }
 
 type SimulationMessageBoxState = Extract<SimulationSideEffect, { type: "message_box" }> | null;
@@ -261,7 +280,7 @@ export function EditorPage({
 		simulation: true,
 	});
 	const [simulationSettings, setSimulationSettings] = useState<SimulationSettings>({
-		speed: "instant",
+		speed: "realtime",
 	});
 	const [simulationOverrides, setSimulationOverrides] = useState<SimulationOverride[]>([]);
 	const [simulationTriggerInputDrafts, setSimulationTriggerInputDrafts] = useState<
@@ -272,6 +291,7 @@ export function EditorPage({
 	const [simulationLogs, setSimulationLogs] = useState<SimulationTraceEntry[]>([]);
 	const [simulationEdgeIds, setSimulationEdgeIds] = useState<ReadonlySet<string>>(() => new Set());
 	const [simulationNodeIds, setSimulationNodeIds] = useState<ReadonlySet<string>>(() => new Set());
+	const [activeSimulationNodeId, setActiveSimulationNodeId] = useState<string | null>(null);
 	const [simulationVariables, setSimulationVariables] = useState<SimulationVariableSnapshot[]>([]);
 	const [simulationMessageBox, setSimulationMessageBox] = useState<SimulationMessageBoxState>(null);
 	const [systemLogs, setSystemLogs] = useState<LogEntry[]>(() =>
@@ -442,6 +462,7 @@ export function EditorPage({
 		lifecycle.active = false;
 		lifecycle.runId += 1;
 		setActiveScheduleTriggerId(null);
+		setActiveSimulationNodeId(null);
 	}, []);
 
 	const restoreDocument = useCallback(
@@ -505,6 +526,7 @@ export function EditorPage({
 		lifecycle.abortController = null;
 		lifecycle.active = false;
 		setActiveScheduleTriggerId(null);
+		setActiveSimulationNodeId(null);
 	}, []);
 
 	useEffect(() => {
@@ -628,47 +650,54 @@ export function EditorPage({
 				return [];
 			}
 
-			let sideEffectResults: SimulationSideEffectResult[] = [];
-			if (step.sideEffects.length > 0) {
-				const sideEffectResult = await executeSimulationSideEffects(step.sideEffects, assets, signal, {
-					showMessageBox: showSimulationMessageBox,
-				});
-				sideEffectResults = sideEffectResult.results;
-				const sideEffectErrors = sideEffectResult.traces;
-				if (sideEffectErrors.length > 0) {
-					appendSimulationLogs(sideEffectErrors);
+			const nodeState = step.nodeState;
+			flushSync(() => {
+				if (step.outputLogs.length > 0) {
+					appendOutputLogs(step.outputLogs);
 				}
-			}
-			if (step.outputLogs.length > 0) {
-				appendOutputLogs(step.outputLogs);
-			}
-			if (step.traces.length > 0) {
-				appendSimulationLogs(step.traces);
-			}
-			if (step.traversedEdgeIds.length > 0) {
-				setSimulationEdgeIds((currentEdgeIds) => {
-					const nextEdgeIds = new Set(currentEdgeIds);
-					for (const edgeId of step.traversedEdgeIds) {
-						nextEdgeIds.add(edgeId);
-					}
-					return nextEdgeIds;
-				});
-				setSimulationNodeIds((currentNodeIds) => {
-					const nextNodeIds = new Set(currentNodeIds);
-					for (const edgeId of step.traversedEdgeIds) {
-						const traversedEdge = edges.find((edge) => edge.id === edgeId);
-						if (traversedEdge) {
-							nextNodeIds.add(traversedEdge.source);
-							nextNodeIds.add(traversedEdge.target);
+				if (step.traces.length > 0) {
+					appendSimulationLogs(step.traces);
+				}
+				if (step.traversedEdgeIds.length > 0) {
+					setSimulationEdgeIds((currentEdgeIds) => {
+						const nextEdgeIds = new Set(currentEdgeIds);
+						for (const edgeId of step.traversedEdgeIds) {
+							nextEdgeIds.add(edgeId);
 						}
-					}
-					return nextNodeIds;
-				});
+						return nextEdgeIds;
+					});
+				}
+				if (nodeState?.status === "active") {
+					setActiveSimulationNodeId(nodeState.nodeId);
+				} else if (nodeState?.status === "completed") {
+					setActiveSimulationNodeId((currentNodeId) => (currentNodeId === nodeState.nodeId ? null : currentNodeId));
+					setSimulationNodeIds((currentNodeIds) => {
+						const nextNodeIds = new Set(currentNodeIds);
+						nextNodeIds.add(nodeState.nodeId);
+						return nextNodeIds;
+					});
+				}
+				setSimulationVariables(step.variables);
+			});
+
+			if (step.sideEffects.length === 0) {
+				return [];
 			}
-			setSimulationVariables(step.variables);
-			return sideEffectResults;
+
+			await yieldSimulationTask(signal);
+			if (simulationLifecycleRef.current.runId !== runId || signal.aborted) {
+				return [];
+			}
+
+			const sideEffectResult = await executeSimulationSideEffects(step.sideEffects, assets, signal, {
+				showMessageBox: showSimulationMessageBox,
+			});
+			if (sideEffectResult.traces.length > 0 && simulationLifecycleRef.current.runId === runId && !signal.aborted) {
+				flushSync(() => appendSimulationLogs(sideEffectResult.traces));
+			}
+			return sideEffectResult.results;
 		},
-		[appendOutputLogs, appendSimulationLogs, assets, edges, showSimulationMessageBox],
+		[appendOutputLogs, appendSimulationLogs, assets, showSimulationMessageBox],
 	);
 
 	const runSimulationTrigger = useCallback(
@@ -687,6 +716,7 @@ export function EditorPage({
 		}) => {
 			setSimulationEdgeIds(new Set());
 			setSimulationNodeIds(new Set());
+			setActiveSimulationNodeId(null);
 			const secretProblems = getSecretSimulationProblems(secretDeclarations, simulationSecretValues);
 			const settingProblems = getScriptSettingSimulationProblems(scriptSettings);
 			if (secretProblems.length > 0 || settingProblems.length > 0) {
@@ -701,7 +731,6 @@ export function EditorPage({
 				return;
 			}
 			setSimulationStatus("running");
-			setSimulationNodeIds(new Set([triggerNodeId]));
 
 			try {
 				const run = await createSimulationRun({
@@ -804,33 +833,61 @@ export function EditorPage({
 	);
 
 	const startVerifiedSimulationSession = useCallback(() => {
-		const currentLifecycle = simulationLifecycleRef.current;
-		if (currentLifecycle.active && currentLifecycle.abortController) {
-			return currentLifecycle;
-		}
+		const triggerNodes = getSimulationTriggers(scriptNodes);
+		const secretProblems = getSecretSimulationProblems(secretDeclarations, simulationSecretValues);
+		const settingProblems = getScriptSettingSimulationProblems(scriptSettings);
+		const simulationChecks: VerificationCheck[] = [
+			...verificationChecks,
+			createSimulationPreflightCheck(
+				"simulation-trigger",
+				"Simulation Trigger",
+				"Checking that at least one trigger is available before activating simulation.",
+				triggerNodes.length === 0 ? ["No trigger nodes are available."] : [],
+				`${triggerNodes.length} trigger${triggerNodes.length === 1 ? " is" : "s are"} available.`,
+			),
+			createSimulationPreflightCheck(
+				"simulation-secrets",
+				"Simulation Secrets",
+				"Checking required browser-session secret values before activating simulation.",
+				secretProblems,
+				"All required simulation secrets have values.",
+			),
+			createSimulationPreflightCheck(
+				"simulation-settings",
+				"Script Settings",
+				"Checking required Script Settings before activating simulation.",
+				settingProblems,
+				"All required Script Settings have a simulation override or package default.",
+			),
+		];
+		const packageSummary = summarizeVerification(verificationChecks);
+		const simulationSummary = summarizeVerification(simulationChecks);
+		const verificationLogs = createVerificationLogEntries("[Simulation] Preflight", simulationChecks);
 
-		const summary = summarizeVerification(verificationChecks);
-		const verificationLogs = createVerificationLogEntries("[Simulation] Verification", verificationChecks);
+		setVerificationRecord({ signature: verificationSignature, status: packageSummary.status });
+		appendSystemLogs(createVerificationLogEntries("Simulation preflight", simulationChecks));
 
-		setVerificationRecord({ signature: verificationSignature, status: summary.status });
-		appendSystemLogs(createVerificationLogEntries("Simulation verification", verificationChecks));
-
-		if (summary.status === "failed") {
+		if (simulationSummary.status === "failed") {
 			setVerificationErrorDialog({
 				open: true,
 				title: "Simulation Blocked",
-				description: "The current script failed verification and cannot be simulated.",
-				checks: verificationChecks,
+				description: "The script or its required simulation inputs failed preflight. Nothing was started or activated.",
+				checks: simulationChecks,
 			});
 			appendSimulationLogs([
 				...verificationLogs,
 				{
 					level: "error",
-					message: "[Simulation] Simulation was blocked because the verification findings listed above must be fixed.",
+					message: "[Simulation] Preflight failed. Simulation remained inactive.",
 				},
 			]);
 			expandPanel("bottom");
 			return null;
+		}
+
+		const currentLifecycle = simulationLifecycleRef.current;
+		if (currentLifecycle.active && currentLifecycle.abortController) {
+			return currentLifecycle;
 		}
 
 		return startSimulationSession(verificationLogs);
@@ -838,6 +895,10 @@ export function EditorPage({
 		appendSimulationLogs,
 		appendSystemLogs,
 		expandPanel,
+		scriptNodes,
+		secretDeclarations,
+		simulationSecretValues,
+		scriptSettings,
 		startSimulationSession,
 		verificationChecks,
 		verificationSignature,
@@ -1447,6 +1508,7 @@ export function EditorPage({
 
 				<main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 					<FlowCanvas
+						activeSimulationNodeId={activeSimulationNodeId}
 						nodes={nodes}
 						edges={edges}
 						nodeFocusRequest={nodeFocusRequest}

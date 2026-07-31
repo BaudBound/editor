@@ -2,6 +2,7 @@ import type { Edge, Node } from "@xyflow/react";
 import JSZip from "jszip";
 import { defaultEditorEdgeStyle, type EditorEdgeStyle, isEditorEdgeStyle } from "@/data/editor/flow-canvas";
 import { getNodeDefinition, getNodePorts, getRuntimeDataOutputs } from "@/data/nodes/registry";
+import { validateWindowsHotkey } from "@/data/nodes/windows-key-contract";
 import {
 	getAssetKindForMediaType,
 	toAssetManifestEntry,
@@ -12,19 +13,20 @@ import { packageLimits, validatePackageEntryLimits } from "@/data/project/packag
 import { targetRuntimes } from "@/data/project/runtimes";
 import { variableTypes } from "@/data/project/variables";
 import type { ProjectIdentity } from "../data/projects/model";
-import type {
-	ActionType,
-	AssetKind,
-	DefaultVariable,
-	EditorAsset,
-	EditorComment,
-	JsonValue,
-	ProjectSettings,
-	RiskLevel,
-	ScriptNodeData,
-	ScriptSetting,
-	SecretDeclaration,
-	TargetRuntime,
+import {
+	type ActionType,
+	type AssetKind,
+	type DefaultVariable,
+	type EditorAsset,
+	type EditorComment,
+	type JsonValue,
+	type ProjectSettings,
+	type RiskLevel,
+	type ScriptNodeData,
+	type ScriptSetting,
+	type SecretDeclaration,
+	scriptSettingTypes,
+	type TargetRuntime,
 } from "../lib/types";
 import { DEFAULT_MINIMUM_RUNNER_VERSION, EDITOR_CREATED_WITH } from "../lib/version";
 import { calculateCapabilities, calculatePermissions, calculateRiskLevel, toProgramJson } from "./analysis";
@@ -368,9 +370,7 @@ function toScriptSettings(manifest: Record<string, unknown>): ScriptSetting[] {
 		if (
 			!setting ||
 			typeof setting.name !== "string" ||
-			!["string", "number", "boolean", "object", "list", "datetime", "duration", "file_path"].includes(
-				String(setting.type),
-			) ||
+			!scriptSettingTypes.includes(String(setting.type) as ScriptSetting["type"]) ||
 			typeof setting.required !== "boolean" ||
 			(setting.default_value !== undefined &&
 				(!isJsonValue(setting.default_value) ||
@@ -399,6 +399,10 @@ function scriptSettingValueMatchesType(type: string, value: JsonValue) {
 		case "string":
 		case "file_path":
 			return typeof value === "string";
+		case "hotkey":
+			return typeof value === "string" && !validateWindowsHotkey(value);
+		case "color":
+			return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
 		case "number":
 			return typeof value === "number" && Number.isFinite(value);
 		case "boolean":

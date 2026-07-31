@@ -11,6 +11,7 @@ export const getPixelColorNode = defineNode({
 			label: "Screen X",
 			type: "number",
 			usesVariables: true,
+			variableTypes: "numeric",
 			numeric: {
 				kind: "integer",
 				signed: true,
@@ -25,6 +26,7 @@ export const getPixelColorNode = defineNode({
 			label: "Screen Y",
 			type: "number",
 			usesVariables: true,
+			variableTypes: "numeric",
 			numeric: {
 				kind: "integer",
 				signed: true,
@@ -49,10 +51,10 @@ export const getPixelColorNode = defineNode({
 	runtimeOutputs: fallible([
 		{ name: "x", type: "number", description: "Signed virtual-desktop X coordinate.", example: "n-mr3zyt6f-19.x" },
 		{ name: "y", type: "number", description: "Signed virtual-desktop Y coordinate.", example: "n-mr3zyt6f-19.y" },
-		{ name: "hex", type: "string", description: "Pixel color as a hex string.", example: "n-mr3zyt6f-19.hex" },
+		{ name: "hex", type: "color", description: "Pixel color as a hex string.", example: "n-mr3zyt6f-19.hex" },
 		{
 			name: "rgb",
-			type: "object",
+			type: "color",
 			description: "Pixel color as red, green, and blue channels.",
 			example: "n-mr3zyt6f-19.rgb.r",
 			fields: [

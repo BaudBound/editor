@@ -14,11 +14,13 @@ export const openApplicationNode = defineNode({
 		{
 			key: "application",
 			label: "Application",
+			nonEmpty: true,
 			type: "text",
 			usesVariables: true,
+			variableTypes: "string",
 			help: "Use an app name, app id, bundle id, shortcut path, or desktop entry supported by the target runner.",
 		},
-		{ key: "arguments", label: "Arguments", type: "string-list", usesVariables: true },
+		{ key: "arguments", label: "Arguments", type: "string-list", usesVariables: true, variableTypes: "text" },
 	],
 	defaultConfig: () => ({ application: "", arguments: [] }),
 	description: "Launch an installed desktop application without waiting for it or capturing its output.",
@@ -47,9 +49,12 @@ export const openApplicationNode = defineNode({
 	runnerType: "open_application",
 	validateConfig: (config) => [requiredConfig(config, "application", "application")].filter(Boolean),
 	simulation: {
-		createOutput: ({ api, node }) => ({
+		createOutput: ({ api, context, node }) => ({
 			failed: false,
-			outputData: { application_id: api.getConfigString(node, "application") || "application", process_id: 4243 },
+			outputData: {
+				application_id: String(api.resolveTemplate(api.getConfigString(node, "application"), context)) || "application",
+				process_id: 4243,
+			},
 		}),
 		describe: ({ api, context, node }) => [
 			{

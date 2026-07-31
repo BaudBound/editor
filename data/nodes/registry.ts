@@ -658,7 +658,8 @@ function validateDeclaredConfigFields(fields: NodeConfigField[], config: Record<
 			return [`Invalid value for ${field.key}: expected boolean.`];
 		}
 
-		return [];
+		const fieldError = field.validate?.(config);
+		return fieldError ? [fieldError] : [];
 	});
 }
 

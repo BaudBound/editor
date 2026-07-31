@@ -51,6 +51,7 @@ export type EditorVariableSource = "user" | "built_in" | "node_output" | "secret
 export type EditorVariable<TValue extends JsonValue | undefined = JsonValue | undefined> = {
 	description?: string;
 	name: string;
+	preTrigger?: boolean;
 	read_only: boolean;
 	scope: EditorVariableScope;
 	source: EditorVariableSource;

@@ -12,6 +12,7 @@ export const repeatNode = defineNode({
 			label: "Repeat count",
 			type: "number",
 			usesVariables: true,
+			variableTypes: "numeric",
 			numeric: {
 				kind: "integer",
 				signed: false,

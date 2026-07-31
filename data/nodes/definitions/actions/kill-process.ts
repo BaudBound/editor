@@ -13,8 +13,10 @@ export const killProcessNode = defineNode({
 		{
 			key: "target",
 			label: "Target",
+			nonEmpty: true,
 			type: "text",
 			usesVariables: true,
+			variableTypes: "string",
 			numeric: {
 				kind: "integer",
 				signed: false,

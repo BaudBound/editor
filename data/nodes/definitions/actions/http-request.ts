@@ -14,8 +14,16 @@ export const httpRequestNode = defineNode({
 	capabilities: ["action.http"],
 	configFields: [
 		{ key: "method", label: "Method", type: "select", options: httpMethodOptions },
-		{ key: "url", label: "URL", type: "text", usesVariables: true },
-		{ key: "userAgent", label: "User-Agent", type: "text", usesVariables: true },
+		{
+			key: "url",
+			label: "URL",
+			nonEmpty: true,
+			type: "text",
+			usesVariables: true,
+			variableTypes: "string",
+			validate: (config) => staticHttpUrlConfig(config, "url", "Request URL"),
+		},
+		{ key: "userAgent", label: "User-Agent", type: "text", usesVariables: true, variableTypes: "string" },
 		{
 			key: "timeoutSeconds",
 			label: "Timeout seconds",
@@ -37,7 +45,14 @@ export const httpRequestNode = defineNode({
 			required: false,
 			help: "JSON safely serializes variables. Text sends the resolved body without JSON processing.",
 		},
-		{ key: "body", label: "Body", type: "textarea", usesVariables: true },
+		{
+			key: "body",
+			label: "Body",
+			type: "textarea",
+			usesVariables: true,
+			variableTypes: "any",
+			validate: validateHttpBody,
+		},
 	],
 	defaultConfig: () => ({
 		method: "GET",
@@ -93,9 +108,7 @@ export const httpRequestNode = defineNode({
 	validateConfig: (config) =>
 		[
 			requiredConfig(config, "url", "request URL"),
-			staticHttpUrlConfig(config, "url", "request URL"),
 			staticPositiveNumberConfig(config, "timeoutSeconds", "timeout seconds"),
-			validateHttpBody(config),
 		].filter(Boolean),
 	simulation: {
 		createOutput: ({ api, context, node }) => api.executeHttpRequest(node, context),

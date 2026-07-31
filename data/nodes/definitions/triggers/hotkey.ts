@@ -1,12 +1,25 @@
 import { Keyboard } from "lucide-react";
 import { defineNode } from "../../node-definition";
-import { validateWindowsHotkey } from "../../windows-key-contract";
-import { configString, requiredStaticConfig } from "../validators";
+import { validateWindowsKeyTemplate } from "../../windows-key-contract";
+import { configString, requiredConfig } from "../validators";
 
 export const hotkeyTriggerNode = defineNode({
 	actionType: "trigger.hotkey",
 	capabilities: ["trigger.hotkey"],
-	configFields: [{ key: "key", label: "Key", type: "text" }],
+	configFields: [
+		{
+			key: "key",
+			label: "Key",
+			nonEmpty: true,
+			type: "text",
+			usesVariables: true,
+			variableTypes: "keyboard-key",
+			validate: (config) => {
+				const key = configString(config, "key").trim();
+				return key ? validateWindowsKeyTemplate(key) : "";
+			},
+		},
+	],
 	defaultConfig: () => ({ key: "" }),
 	description: "Start from a desktop hotkey.",
 	desktopOnly: true,
@@ -31,20 +44,12 @@ export const hotkeyTriggerNode = defineNode({
 	],
 	runnerType: "hotkey",
 	supportedTargetRuntimes: ["Windows Desktop"],
-	validateConfig: (config) => {
-		const requiredError = requiredStaticConfig(config, "key", "hotkey");
-		if (requiredError) {
-			return [requiredError];
-		}
-
-		const error = validateWindowsHotkey(configString(config, "key"));
-		return error ? [error] : [];
-	},
+	validateConfig: (config) => [requiredConfig(config, "key", "hotkey")].filter(Boolean),
 	simulation: {
 		createOutput: ({ api, context, node }) => ({
 			failed: false,
 			outputData: {
-				key: context.triggerPayload.key || api.getConfigString(node, "key"),
+				key: context.triggerPayload.key || api.resolveTemplate(api.getConfigString(node, "key"), context),
 				timestamp: context.triggerPayload.timestamp || Date.now().toString(),
 			},
 		}),

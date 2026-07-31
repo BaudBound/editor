@@ -25,6 +25,184 @@ test("editor shell loads the core controls", async ({ page }) => {
 	await expect(page.getByRole("button", { name: "Stop simulation" })).toBeVisible();
 });
 
+test("real-time simulation streams steps without blocking the editor UI", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "Manual" }).click();
+	await page.getByRole("textbox", { name: "Search blocks" }).fill("Repeat");
+	await page.getByRole("button", { name: /^Repeat low/ }).click();
+	await page.getByRole("textbox", { name: "Repeat count" }).fill("40");
+
+	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
+	const repeatNode = page.locator(".react-flow__node").filter({ hasText: "Repeat" });
+	await manualNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
+	await repeatNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await expect(page.getByRole("button", { name: "Simulation speed" })).toContainText("Real time");
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+
+	const runState = page.getByText("Run State", { exact: true }).locator("..");
+	await expect(runState).toContainText("running");
+	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await expect(page.getByRole("textbox", { name: "Search variables" })).toBeVisible();
+	await page.getByRole("button", { name: "Simulation", exact: true }).click();
+	await expect(page.getByText(/Simulation completed\./)).toHaveCount(0);
+	await expect(page.getByText(/Repeat .* iteration 40 of 40\./)).toBeVisible();
+	await expect(page.getByText(/Simulation completed\./)).toBeVisible();
+	await expect(runState).toContainText("waiting");
+});
+
+test("simulation publishes each node output before completing and advancing its highlight", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "Manual" }).click();
+	const blockSearch = page.getByRole("textbox", { name: "Search blocks" });
+	await blockSearch.fill("Log");
+	await page.getByRole("button", { name: /^Log low/ }).click();
+	await page.getByRole("textbox", { name: "Custom name" }).fill("First live log");
+	await page.getByRole("textbox", { name: "Message" }).fill("first live output");
+
+	await page.getByRole("button", { name: /^Log low/ }).click();
+	await page.getByRole("textbox", { name: "Custom name" }).fill("Second live log");
+	await page.getByRole("textbox", { name: "Message" }).fill("second live output");
+
+	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
+	const firstLogNode = page.locator(".react-flow__node").filter({ hasText: "First live log" });
+	const secondLogNode = page.locator(".react-flow__node").filter({ hasText: "Second live log" });
+	await manualNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
+	await firstLogNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+	await firstLogNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
+	await secondLogNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+
+	await page.getByRole("button", { name: "Simulator" }).click();
+	const outputTab = page.getByRole("button", { name: "Output", exact: true });
+	await outputTab.click();
+	const outputPanel = outputTab.locator("xpath=ancestor::section");
+	const firstLogState = firstLogNode.locator(".baud-script-node");
+	const secondLogState = secondLogNode.locator(".baud-script-node");
+	const firstOutput = outputPanel.getByText(/first live output/);
+	const secondOutput = outputPanel.getByText(/second live output/);
+
+	await page.evaluate(() => {
+		const testWindow = window as typeof window & {
+			__simulationSequence?: string[];
+			__simulationSequenceObserver?: MutationObserver;
+		};
+		const sequence: string[] = [];
+		const record = (event: string) => {
+			if (!sequence.includes(event)) {
+				sequence.push(event);
+			}
+		};
+		const capture = () => {
+			const flowNodes = [...document.querySelectorAll(".react-flow__node")];
+			const firstLog = flowNodes.find((node) => node.textContent?.includes("First live log"));
+			const secondLog = flowNodes.find((node) => node.textContent?.includes("Second live log"));
+			const firstState = firstLog?.querySelector(".baud-script-node")?.getAttribute("data-simulation-state");
+			const secondState = secondLog?.querySelector(".baud-script-node")?.getAttribute("data-simulation-state");
+			const outputButton = [...document.querySelectorAll("button")].find(
+				(button) => button.textContent?.trim() === "Output",
+			);
+			const outputText = outputButton?.closest("section")?.textContent ?? "";
+
+			if (firstState === "active") record("first-active");
+			if (outputText.includes("first live output")) record("first-output");
+			if (firstState === "completed") record("first-completed");
+			if (secondState === "active") record("second-active");
+			if (outputText.includes("second live output")) record("second-output");
+			if (secondState === "completed") record("second-completed");
+		};
+
+		testWindow.__simulationSequence = sequence;
+		testWindow.__simulationSequenceObserver = new MutationObserver(capture);
+		testWindow.__simulationSequenceObserver.observe(document.body, {
+			attributes: true,
+			childList: true,
+			characterData: true,
+			subtree: true,
+		});
+		capture();
+	});
+
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+	await expect(firstOutput).toBeVisible();
+	await expect(secondOutput).toBeVisible();
+	await expect(secondLogState).toHaveAttribute("data-simulation-state", "completed");
+	const sequence = await page.evaluate(() => {
+		const testWindow = window as typeof window & {
+			__simulationSequence?: string[];
+			__simulationSequenceObserver?: MutationObserver;
+		};
+		testWindow.__simulationSequenceObserver?.disconnect();
+		return testWindow.__simulationSequence ?? [];
+	});
+	expect(sequence).toEqual([
+		"first-active",
+		"first-output",
+		"first-completed",
+		"second-active",
+		"second-output",
+		"second-completed",
+	]);
+	await expect(firstLogState).toHaveAttribute("data-simulation-state", "completed");
+});
+
+test("inspector fields show accessible inline validation and clear it after correction", async ({ page }) => {
+	await openEditor(page);
+
+	const blockSearch = page.getByRole("textbox", { name: "Search blocks" });
+	await blockSearch.fill("Log");
+	await page.getByRole("button", { name: /^Log low/ }).click();
+
+	const message = page.getByRole("textbox", { name: "Message" });
+	await expect(message).toHaveAttribute("aria-invalid", "true");
+	const messageErrorId = await message.getAttribute("aria-describedby");
+	expect(messageErrorId).toBeTruthy();
+	await expect(page.locator(`[id="${messageErrorId}"]`)).toHaveText("Message is required.");
+
+	await message.fill("Ready");
+	await expect(message).not.toHaveAttribute("aria-invalid", "true");
+	await expect(page.locator(`[id="${messageErrorId}"]`)).toHaveCount(0);
+
+	await blockSearch.fill("Calculate");
+	await page.getByRole("button", { name: /^Calculate low/ }).click();
+	const expression = page.getByRole("textbox", { name: "Expression" });
+	await expression.fill("not_a_formula");
+	await expect(expression).toHaveAttribute("aria-invalid", "true");
+	await expect(page.getByText('Function "not_a_formula" must be called with parentheses.')).toBeVisible();
+
+	await expression.fill("round(1.5)");
+	await expect(expression).not.toHaveAttribute("aria-invalid", "true");
+	await expect(page.getByText('Function "not_a_formula" must be called with parentheses.')).toHaveCount(0);
+
+	await blockSearch.fill("Switch");
+	await page.getByRole("button", { name: /^Switch low/ }).click();
+	const switchValue = page.getByRole("textbox", { name: "Switch value" });
+	await expect(switchValue).toHaveAttribute("aria-invalid", "true");
+	await expect(page.getByText("Switch value is required.")).toBeVisible();
+	await switchValue.fill("{{broken");
+	await expect(page.getByText("Variable reference syntax is incomplete.")).toBeVisible();
+	await switchValue.fill("ready");
+
+	const switchCases = page.getByRole("list", { name: "Switch cases" });
+	const firstCase = switchCases.getByRole("listitem").first();
+	await expect(firstCase.getByText("Name is required.")).toBeVisible();
+	await expect(firstCase.getByText("Value is required.")).toBeVisible();
+	await firstCase.getByRole("textbox", { name: "Name" }).fill("Primary");
+	await firstCase.getByRole("textbox", { name: "Value" }).fill("yes");
+	await page.getByRole("button", { name: "Add switch case" }).click();
+	const secondCase = switchCases.getByRole("listitem").nth(1);
+	await secondCase.getByRole("textbox", { name: "Name" }).fill("primary");
+	await secondCase.getByRole("textbox", { name: "Value" }).fill("yes");
+	await expect(secondCase.getByText("Name must be unique.")).toBeVisible();
+	await expect(secondCase.getByText("Value must be unique.")).toBeVisible();
+	await secondCase.getByRole("textbox", { name: "Name" }).fill("Secondary");
+	await secondCase.getByRole("textbox", { name: "Value" }).fill("no");
+	await expect(secondCase.getByText("Name must be unique.")).toHaveCount(0);
+	await expect(secondCase.getByText("Value must be unique.")).toHaveCount(0);
+});
+
 test("node finder searches configuration and focuses the selected node", async ({ page }) => {
 	await openEditor(page);
 
@@ -56,8 +234,54 @@ test("node finder searches configuration and focuses the selected node", async (
 test("Schedule triggers can start and stop their simulator timer", async ({ page }) => {
 	await openEditor(page);
 
+	await openProjectSettingsTab(page, "Default Variables");
+	await page.getByRole("button", { name: "Add variable" }).click();
+	const variableDialog = page.getByRole("dialog");
+	await variableDialog.getByRole("textbox", { name: "Name" }).fill("interval");
+	await variableDialog.getByRole("combobox", { name: "Type" }).click();
+	await page.getByRole("option", { name: "number" }).click();
+	await variableDialog.getByRole("spinbutton", { name: "Default value" }).fill("25");
+	await variableDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
 	await page.getByRole("button", { name: "Schedule" }).click();
-	await page.getByText("Every", { exact: true }).locator("..").getByRole("spinbutton").fill("25");
+	const intervalField = page.getByRole("textbox", { name: "Every", exact: true });
+	await intervalField.fill("{{int");
+	const suggestions = page.getByRole("listbox", { name: "Every suggestions" });
+	const intervalSuggestion = suggestions.locator('[data-variable-suggestion="interval"]');
+	await expect(suggestions).toBeVisible();
+	await expect(intervalSuggestion).toBeVisible();
+	await expect(intervalSuggestion).toHaveAttribute("aria-selected", "true");
+	await expect(suggestions.getByRole("option")).toHaveCount(1);
+	await expect(suggestions.locator('[data-variable-suggestion*="interval_seconds"]')).toHaveCount(0);
+	const [fieldBox, suggestionBox] = await Promise.all([intervalField.boundingBox(), suggestions.boundingBox()]);
+	expect(fieldBox).not.toBeNull();
+	expect(suggestionBox).not.toBeNull();
+	expect(suggestionBox?.y).toBeGreaterThanOrEqual((fieldBox?.y ?? 0) + (fieldBox?.height ?? 0));
+	expect(suggestionBox?.width).toBeGreaterThan(100);
+	await intervalSuggestion.click();
+	await expect(intervalField).toHaveValue("{{interval}}");
+	const highlightedToken = page.locator(
+		'[data-variable-highlight-layer] [data-variable-token="interval"][data-variable-status="known"]',
+	);
+	await expect(highlightedToken).toBeVisible();
+	const highlightStyles = await highlightedToken.evaluate((element) => {
+		const tokenStyle = getComputedStyle(element);
+		const layerStyle = getComputedStyle(element.closest("[data-variable-highlight-layer]") as HTMLElement);
+		return {
+			backgroundColor: tokenStyle.backgroundColor,
+			baseColor: layerStyle.color,
+			tokenColor: tokenStyle.color,
+		};
+	});
+	expect(highlightStyles.tokenColor).not.toBe(highlightStyles.baseColor);
+	expect(highlightStyles.backgroundColor).not.toMatch(/^(?:rgba\(0,\s*0,\s*0,\s*0\)|transparent)$/);
+	await expect(intervalField).not.toHaveAttribute("aria-invalid", "true");
+	const highlightedTokenBox = await highlightedToken.boundingBox();
+	expect(highlightedTokenBox).not.toBeNull();
+	const fieldCenter = (fieldBox?.y ?? 0) + (fieldBox?.height ?? 0) / 2;
+	const tokenCenter = (highlightedTokenBox?.y ?? 0) + (highlightedTokenBox?.height ?? 0) / 2;
+	expect(Math.abs(fieldCenter - tokenCenter)).toBeLessThanOrEqual(1);
 	await page.getByText("Unit", { exact: true }).locator("..").getByRole("button").click();
 	await page.getByRole("option", { name: "Milliseconds" }).click();
 	await page.getByRole("button", { name: "Simulator" }).click();
@@ -74,6 +298,83 @@ test("Schedule triggers can start and stop their simulator timer", async ({ page
 	await expect(page.getByRole("button", { name: "Start Schedule" })).toBeVisible();
 	await expect(page.getByRole("button", { name: "Stop simulation" })).toBeDisabled();
 });
+
+test("Schedule simulation fires a three-second interval every three seconds", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "Schedule" }).click();
+	await page.getByRole("textbox", { name: "Every", exact: true }).fill("3");
+	await page.getByText("Unit", { exact: true }).locator("..").getByRole("button").click();
+	await page.getByRole("option", { name: "Seconds", exact: true }).click();
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Simulation speed" }).click();
+	await page.getByRole("option", { name: "Real time" }).click();
+
+	const scheduleStatus = page.locator("[data-schedule-status]");
+	await page.getByRole("button", { name: "Start Schedule" }).click();
+
+	const firstFireAt = await waitForScheduleFire(scheduleStatus, 0);
+	const secondFireAt = await waitForScheduleFire(scheduleStatus, firstFireAt);
+	const elapsedMs = secondFireAt - firstFireAt;
+
+	expect(elapsedMs).toBeGreaterThanOrEqual(2_800);
+	expect(elapsedMs).toBeLessThan(3_600);
+});
+
+test("failed simulation preflight leaves Schedule controls inactive", async ({ page }) => {
+	await openEditor(page);
+
+	await openProjectSettingsTab(page, "Secrets");
+	await page.getByRole("button", { name: "Add secret" }).click();
+	const secretDialog = page.getByRole("dialog");
+	await secretDialog.getByRole("textbox", { name: "Name" }).fill("api_token");
+	await expect(secretDialog.getByRole("switch", { name: "Required for execution" })).toBeChecked();
+	await secretDialog.getByRole("button", { name: "Save", exact: true }).click();
+
+	await page.getByRole("tab", { name: "Script Settings" }).click();
+	await page.getByRole("button", { name: "Add setting" }).click();
+	const settingDialog = page.getByRole("dialog");
+	await settingDialog.getByRole("textbox", { name: "Name" }).fill("Endpoint");
+	await settingDialog.getByRole("switch", { name: "Required Script Setting" }).click();
+	await settingDialog.getByRole("button", { name: "Save", exact: true }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
+	await page.getByRole("button", { name: "Schedule" }).click();
+	await page.getByRole("textbox", { name: "Every", exact: true }).fill("10");
+	await page.getByRole("button", { name: "Simulator" }).click();
+
+	const runState = page.getByText("Run State", { exact: true }).locator("..");
+	await expect(runState).toContainText("idle");
+	await page.getByRole("button", { name: "Start Schedule" }).click();
+
+	const blockedDialog = page.getByRole("dialog");
+	await expect(blockedDialog.getByRole("heading", { name: "Simulation Blocked" })).toBeVisible();
+	await expect(blockedDialog).toContainText('Required simulation secret "api_token" has no value.');
+	await expect(blockedDialog).toContainText(
+		'Required Script Setting "Endpoint" has no simulation override or package default.',
+	);
+	await expect(blockedDialog).toContainText("Nothing was started or activated.");
+	await blockedDialog.getByRole("button", { name: "Close" }).first().click();
+	await expect(page.getByRole("button", { name: "Start Schedule" })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Stop Schedule" })).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Stop simulation" })).toBeDisabled();
+	await expect(runState).toContainText("idle");
+	await expect(page.getByText("inactive", { exact: true })).toHaveCount(2);
+});
+
+async function waitForScheduleFire(scheduleStatus: ReturnType<Page["locator"]>, after: number) {
+	let firedAt = 0;
+	await expect
+		.poll(
+			async () => {
+				firedAt = Number(await scheduleStatus.getAttribute("data-schedule-last-run-at"));
+				return firedAt;
+			},
+			{ timeout: 5_000 },
+		)
+		.toBeGreaterThan(after);
+	return firedAt;
+}
 
 test("panel collapse state persists across editor reloads", async ({ page }) => {
 	await openEditor(page);
@@ -148,18 +449,51 @@ test("If / Else unary conditions hide the target field", async ({ page }) => {
 	await openEditor(page);
 
 	await page.getByRole("button", { name: "If / Else" }).click();
-	await page.getByRole("button", { name: "Expression" }).click();
+	const expressionTrigger = page.getByRole("button", { name: "Expression" });
+	const selectedExpression = expressionTrigger.locator("span").first();
+	const [triggerBounds, selectedBounds] = await Promise.all([
+		expressionTrigger.boundingBox(),
+		selectedExpression.boundingBox(),
+	]);
+	if (!triggerBounds || !selectedBounds) throw new Error("Expression dropdown is not visible.");
+	expect(
+		Math.abs(triggerBounds.y + triggerBounds.height / 2 - (selectedBounds.y + selectedBounds.height / 2)),
+	).toBeLessThan(1.5);
+
+	await expressionTrigger.click();
+	const equalsOption = page.getByRole("option", { name: "equals", exact: true });
+	const equalsLabel = equalsOption.locator("span").first();
+	const [optionBounds, optionLabelBounds] = await Promise.all([equalsOption.boundingBox(), equalsLabel.boundingBox()]);
+	if (!optionBounds || !optionLabelBounds) throw new Error("Expression option is not visible.");
+	expect(
+		Math.abs(optionBounds.y + optionBounds.height / 2 - (optionLabelBounds.y + optionLabelBounds.height / 2)),
+	).toBeLessThan(1.5);
+	await equalsOption.click();
+
+	await expressionTrigger.click();
+	await page.getByRole("option", { name: "greater than", exact: true }).click();
+	await expect(page.getByRole("button", { name: "Increase Value" })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Increase Target" })).toBeVisible();
+
+	await expressionTrigger.click();
 	await page.getByRole("option", { name: "Is numeric" }).click();
 	await expect(page.getByRole("textbox", { name: "Target" })).toHaveCount(0);
 
-	await page.getByRole("button", { name: "Expression" }).click();
+	await expressionTrigger.click();
 	await page.getByRole("option", { name: "has key" }).click();
 	await expect(page.getByRole("textbox", { name: "Target" })).toBeVisible();
 
-	await page.getByRole("button", { name: "Expression" }).click();
+	await expressionTrigger.click();
 	await page.getByRole("option", { name: "Is between" }).click();
+	await expect(page.getByRole("button", { name: "Increase Value" })).toBeVisible();
 	await expect(page.getByRole("textbox", { name: "Start value" })).toBeVisible();
 	await expect(page.getByRole("textbox", { name: "End value" })).toBeVisible();
+	await expect(page.getByRole("textbox", { name: "Target" })).toHaveCount(0);
+
+	await page.getByRole("textbox", { name: "Search blocks" }).fill("While");
+	await page.getByRole("button", { name: /^While low/ }).click();
+	await page.getByRole("button", { name: "Expression" }).click();
+	await page.getByRole("option", { name: "Is True" }).click();
 	await expect(page.getByRole("textbox", { name: "Target" })).toHaveCount(0);
 });
 
@@ -238,7 +572,10 @@ test("Script Settings are available to autocomplete and simulation", async ({ pa
 	await page.getByRole("button", { name: /^Log low/ }).click();
 	const message = page.getByRole("textbox", { name: "Message" });
 	await message.fill("{{settings.End");
-	await page.getByRole("button", { name: /\{\{settings\.Endpoint\}\}/ }).click();
+	await page
+		.getByRole("listbox", { name: "Message suggestions" })
+		.getByRole("option", { name: /\{\{settings\.Endpoint\}\}/ })
+		.click();
 	await expect(message).toHaveValue("{{settings.Endpoint}}");
 
 	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
@@ -248,7 +585,7 @@ test("Script Settings are available to autocomplete and simulation", async ({ pa
 
 	await page.getByRole("button", { name: "Simulator" }).click();
 	await page.getByRole("button", { name: "Simulation speed" }).click();
-	await page.getByRole("option", { name: "Instant" }).click();
+	await page.getByRole("option", { name: "Real time" }).click();
 	await page.getByRole("button", { name: "Trigger", exact: true }).click();
 	await page.getByRole("button", { name: "Output", exact: true }).click();
 	await expect(page.getByText(/https:\/\/simulation\.example/)).toBeVisible();
@@ -278,12 +615,20 @@ test("Script Setting type and timezone menus stay anchored and scroll vertically
 	await page.getByRole("option", { name: "datetime" }).click();
 	await settingDialog.getByRole("switch", { name: "Use Package default" }).click();
 	const timeZoneTrigger = settingDialog.getByRole("combobox", { name: "Datetime timezone" });
+	const timeZoneTriggerBounds = await timeZoneTrigger.boundingBox();
+	if (!timeZoneTriggerBounds) throw new Error("Timezone trigger is not visible.");
 	await timeZoneTrigger.click();
 	const timeZoneMenu = page.locator('[data-slot="select-content"]');
 	const timeZoneViewport = timeZoneMenu.locator('[data-position="popper"]');
 	await expect(timeZoneMenu).toBeVisible();
 	expect(await timeZoneMenu.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 	expect(await timeZoneViewport.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+	await expect(timeZoneMenu.locator('[data-slot="select-scroll-up-button"]')).toHaveCount(0);
+	await expect(timeZoneMenu.locator('[data-slot="select-scroll-down-button"]')).toHaveCount(0);
+	const menuBoundsBeforeScroll = await timeZoneMenu.boundingBox();
+	if (!menuBoundsBeforeScroll) throw new Error("Timezone menu geometry is unavailable.");
+	expect(menuBoundsBeforeScroll.y).toBeGreaterThanOrEqual(timeZoneTriggerBounds.y + timeZoneTriggerBounds.height);
+	expect(Math.abs(menuBoundsBeforeScroll.width - timeZoneTriggerBounds.width)).toBeLessThanOrEqual(1);
 
 	await timeZoneViewport.hover();
 	await page.mouse.wheel(0, 500);
@@ -292,6 +637,89 @@ test("Script Setting type and timezone menus stay anchored and scroll vertically
 			message: "Timezone menu should scroll down.",
 		})
 		.toBeGreaterThan(0);
+	const menuBoundsAfterScroll = await timeZoneMenu.boundingBox();
+	expect(menuBoundsAfterScroll?.x).toBe(menuBoundsBeforeScroll.x);
+	expect(menuBoundsAfterScroll?.y).toBe(menuBoundsBeforeScroll.y);
+});
+
+test("Webhook response controls explain both modes and Read File is implicitly UTF-8", async ({ page }) => {
+	await openEditor(page);
+
+	const blockSearch = page.getByRole("textbox", { name: "Search blocks" });
+	await blockSearch.fill("Webhook");
+	await page.getByRole("button", { name: /^Webhook high$/ }).click();
+	await expect(page.getByRole("spinbutton", { name: "Response timeout seconds" })).toBeVisible();
+	await expect(page.getByRole("spinbutton", { name: "Response status" })).toBeVisible();
+	await expect(page.getByRole("textbox", { name: "Response content type" })).toBeVisible();
+	await expect(page.getByRole("textbox", { name: "Response body" })).toBeVisible();
+	await page.getByRole("switch", { name: "Wait for response node" }).click();
+	await expect(page.getByRole("spinbutton", { name: "Response timeout seconds" })).toBeVisible();
+
+	await blockSearch.fill("Read File");
+	await page.getByRole("button", { name: /^Read File medium$/ }).click();
+	await expect(page.getByRole("textbox", { name: "Path" })).toBeVisible();
+	await expect(page.getByText("Encoding", { exact: true })).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Encoding" })).toHaveCount(0);
+});
+
+test("hotkey and color Script Settings use dedicated controls and color variables resolve in nodes", async ({
+	page,
+}) => {
+	await openEditor(page);
+
+	await openProjectSettingsTab(page, "Script Settings");
+	await page.getByRole("button", { name: "Add setting" }).click();
+	let settingDialog = page.getByRole("dialog");
+	await settingDialog.getByRole("textbox", { name: "Name" }).fill("Accent");
+	await settingDialog.locator('[data-slot="select-trigger"]').first().click();
+	await page.getByRole("option", { name: "color", exact: true }).click();
+	await settingDialog.getByRole("switch", { name: "Use Simulation override" }).click();
+	await settingDialog.getByRole("textbox", { name: "Simulation override" }).fill("#123456");
+	await settingDialog.getByRole("button", { name: "Save", exact: true }).click();
+
+	await page.getByRole("button", { name: "Add setting" }).click();
+	settingDialog = page.getByRole("dialog");
+	await settingDialog.getByRole("textbox", { name: "Name" }).fill("Shortcut");
+	await settingDialog.locator('[data-slot="select-trigger"]').first().click();
+	await page.getByRole("option", { name: "hotkey", exact: true }).click();
+	await settingDialog.getByRole("switch", { name: "Use Package default" }).click();
+	const hotkeyDefault = settingDialog.getByRole("textbox", { name: "Package default" });
+	await hotkeyDefault.press("Control+Shift+F8");
+	await expect(hotkeyDefault).toHaveValue("Ctrl+Shift+F8");
+	await settingDialog.getByRole("button", { name: "Save", exact: true }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
+	await page.getByRole("button", { name: /Color Match low/ }).click();
+	const actualColor = page.getByRole("textbox", { name: "Actual color" });
+	await actualColor.fill("{{settings.Acc");
+	const colorSuggestions = page.getByRole("listbox", { name: "Actual color suggestions" });
+	await expect(colorSuggestions.locator('[data-variable-suggestion="settings.Shortcut"]')).toHaveCount(0);
+	await colorSuggestions.getByRole("option", { name: /\{\{settings\.Accent\}\}/ }).click();
+	await expect(actualColor).toHaveValue("{{settings.Accent}}");
+	await expect(page.getByRole("button", { name: "Open actual color color picker" })).toHaveCSS(
+		"background-color",
+		"rgb(18, 52, 86)",
+	);
+
+	const blockSearch = page.getByRole("textbox", { name: "Search blocks" });
+	await blockSearch.fill("Hotkey");
+	await page.getByRole("button", { name: /Hotkey medium/ }).click();
+	const inspector = page.getByRole("complementary", { name: "Inspector" });
+	const literalKey = inspector.getByRole("textbox", { name: "Key" });
+	await literalKey.press("Control+8");
+	await expect(literalKey).toHaveValue("Ctrl+8");
+
+	const keySource = inspector.getByRole("button", { name: "Key source" });
+	await keySource.click();
+	await page.getByRole("option", { name: "Variable", exact: true }).click();
+	await expect(inspector.getByRole("textbox", { name: "Key" })).toHaveCount(0);
+	const hotkeyVariable = inspector.getByRole("button", { name: "Key", exact: true });
+	await hotkeyVariable.click();
+	await expect(page.getByRole("option", { name: "settings.Accent", exact: true })).toHaveCount(0);
+	await page.getByRole("option", { name: "settings.Shortcut", exact: true }).click();
+	await expect(hotkeyVariable).toContainText("settings.Shortcut");
+	await expect(hotkeyVariable).not.toContainText("{{");
+	await expect(inspector.getByText("Supported key reference", { exact: true })).toHaveCount(0);
 });
 
 test("renaming defaults and secrets updates every node reference", async ({ page }) => {
@@ -441,7 +869,7 @@ test("persistent variable simulation carries changes into the next run", async (
 
 	await page.getByRole("button", { name: "Simulator" }).click();
 	await page.getByRole("button", { name: "Simulation speed" }).click();
-	await page.getByRole("option", { name: "Instant" }).click();
+	await page.getByRole("option", { name: "Real time" }).click();
 	await page.getByRole("button", { name: "Trigger", exact: true }).click();
 	await page.getByRole("button", { name: "Variables", exact: true }).click();
 	const counterValue = page.locator('[data-variable-name="counter"] pre');
@@ -463,6 +891,54 @@ test("persistent variable simulation carries changes into the next run", async (
 	await page.getByRole("button", { name: "Trigger", exact: true }).click();
 	await page.getByRole("button", { name: "Variables", exact: true }).click();
 	await expect(counterValue).toHaveText("1");
+});
+
+test("numeric fields autocomplete number variables and suspend literal stepping", async ({ page }) => {
+	await openEditor(page);
+
+	await openProjectSettingsTab(page, "Default Variables");
+	await page.getByRole("button", { name: "Add variable" }).click();
+	const variableDialog = page.getByRole("dialog");
+	await variableDialog.getByRole("textbox", { name: "Name" }).fill("distance");
+	await variableDialog.getByRole("combobox", { name: "Type" }).click();
+	await page.getByRole("option", { name: "number" }).click();
+	await variableDialog.getByRole("spinbutton", { name: "Default value" }).fill("12");
+	await variableDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
+	const blockSearch = page.getByRole("textbox", { name: "Search blocks" });
+	await blockSearch.fill("Move Mouse");
+	await page.getByRole("button", { name: /Move Mouse high/ }).click();
+	const xField = page.getByRole("textbox", { name: "X", exact: true });
+	await xField.fill("{{dis");
+	await expect(page.getByText("{{distance}}", { exact: true })).toBeVisible();
+	await xField.press("Enter");
+
+	await expect(xField).toHaveValue("{{distance}}");
+	const decreaseX = page.getByRole("button", { name: "Decrease X" });
+	const increaseX = page.getByRole("button", { name: "Increase X" });
+	await expect(decreaseX).toBeDisabled();
+	await expect(increaseX).toBeDisabled();
+	await expect(xField).toHaveCSS("text-align", "left");
+	const [fieldBox, decreaseBox, increaseBox] = await Promise.all([
+		xField.boundingBox(),
+		decreaseX.boundingBox(),
+		increaseX.boundingBox(),
+	]);
+	expect(fieldBox).not.toBeNull();
+	expect(decreaseBox).not.toBeNull();
+	expect(increaseBox).not.toBeNull();
+	expect(decreaseBox?.x).toBeGreaterThanOrEqual((fieldBox?.x ?? 0) + (fieldBox?.width ?? 0));
+	expect(increaseBox?.x).toBeGreaterThan(decreaseBox?.x ?? 0);
+	expect(decreaseBox?.width).toBeLessThanOrEqual(24);
+	expect(increaseBox?.width).toBeLessThanOrEqual(24);
+
+	await blockSearch.fill("Delay");
+	await page.getByRole("button", { name: /^Delay low/ }).click();
+	const amountField = page.getByRole("textbox", { name: "Amount", exact: true });
+	await page.getByRole("button", { name: "Increase Amount" }).click();
+	await expect(amountField).toHaveValue("1");
+	await expect(page.getByRole("button", { name: "Decrease Amount" })).toBeDisabled();
 });
 
 test("Switch simulation follows the default output when no case matches", async ({ page }) => {
@@ -492,7 +968,7 @@ test("Switch simulation follows the default output when no case matches", async 
 
 	await page.getByRole("button", { name: "Simulator" }).click();
 	await page.getByRole("button", { name: "Simulation speed" }).click();
-	await page.getByRole("option", { name: "Instant" }).click();
+	await page.getByRole("option", { name: "Real time" }).click();
 	await page.getByRole("button", { name: "Trigger", exact: true }).click();
 	await page.getByRole("button", { name: "Simulation", exact: true }).click();
 
@@ -547,7 +1023,7 @@ test("negative screen coordinates verify, simulate, export, and import", async (
 
 	await page.getByRole("button", { name: "Simulator" }).click();
 	await page.getByRole("button", { name: "Simulation speed" }).click();
-	await page.getByRole("option", { name: "Instant" }).click();
+	await page.getByRole("option", { name: "Real time" }).click();
 	await page.getByRole("button", { name: "Trigger", exact: true }).click();
 	await page.getByRole("button", { name: "Simulation", exact: true }).click();
 	await expect(page.getByText(/Get Pixel Color .* x=-1920, y=-120/)).toBeVisible();
@@ -780,7 +1256,7 @@ test("comment text editing preserves caret position", async ({ page }) => {
 	await expect(commentEditor).toHaveCSS("font-size", "14px");
 	await page.getByRole("button", { name: "Increase comment font size" }).click();
 	await expect(commentEditor).toHaveCSS("font-size", "15px");
-	const fontSizeInput = page.getByRole("textbox", { name: "Comment font size" });
+	const fontSizeInput = page.getByRole("spinbutton", { name: "Comment font size" });
 	await expect(fontSizeInput).toHaveValue("15");
 	await fontSizeInput.fill("48");
 	await fontSizeInput.press("Enter");
@@ -851,9 +1327,14 @@ test("comment text editing preserves caret position", async ({ page }) => {
 		if (!box) {
 			throw new Error(`${controlName} control is not visible.`);
 		}
-		const minimumSize = controlName === "Delete comment" ? 36 : 32;
-		expect(box.width).toBeGreaterThanOrEqual(minimumSize);
-		expect(box.height).toBeGreaterThanOrEqual(minimumSize);
+		if (controlName === "Delete comment") {
+			expect(box.width).toBeGreaterThanOrEqual(36);
+			expect(box.height).toBeGreaterThanOrEqual(36);
+		} else {
+			expect(box.width).toBeGreaterThanOrEqual(20);
+			expect(box.width).toBeLessThanOrEqual(24);
+			expect(box.height).toBeGreaterThanOrEqual(32);
+		}
 	}
 	const deleteIconBox = await page.getByRole("button", { name: "Delete comment" }).locator("svg").boundingBox();
 	if (!deleteIconBox) {

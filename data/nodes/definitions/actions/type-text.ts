@@ -6,7 +6,16 @@ import { requiredConfig } from "../validators";
 export const typeTextNode = defineNode({
 	actionType: "action.keyboard.type_text",
 	capabilities: actionKeyboard,
-	configFields: [{ key: "text", label: "Text", type: "textarea", usesVariables: true }],
+	configFields: [
+		{
+			key: "text",
+			label: "Text",
+			type: "textarea",
+			usesVariables: true,
+			variableTypes: "text",
+			nonEmpty: true,
+		},
+	],
 	defaultConfig: () => ({ text: "" }),
 	description: "Type selected text through the keyboard.",
 	desktopOnly: true,

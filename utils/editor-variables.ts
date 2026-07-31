@@ -54,6 +54,7 @@ export function createEditorVariableRegistry(
 		variables.set(variable.name, {
 			description: variable.description,
 			name: variable.name,
+			preTrigger: true,
 			read_only: false,
 			scope: variable.scope,
 			source: "user",
@@ -82,6 +83,7 @@ export function createEditorVariableRegistry(
 	variables.set("settings", {
 		description: "Read-only values configured for this script.",
 		name: "settings",
+		preTrigger: true,
 		read_only: true,
 		scope: "setting",
 		source: "setting",
@@ -94,11 +96,12 @@ export function createEditorVariableRegistry(
 		variables.set(name, {
 			description: setting.description,
 			name,
+			preTrigger: true,
 			read_only: true,
 			scope: "setting",
 			source: "setting",
 			token: `{{${name}}}`,
-			type: setting.type,
+			type: setting.type === "hotkey" ? "keyboard_key" : setting.type === "color" ? "color" : setting.type,
 			value: structuredClone(setting.simulationValue ?? setting.defaultValue ?? null),
 		});
 	}

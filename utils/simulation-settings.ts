@@ -2,19 +2,8 @@ import type { Node } from "@xyflow/react";
 import type { ScriptNodeData, SimulationSettings } from "@/lib/types";
 
 export function getSimulationStepDelay(speed: SimulationSettings["speed"]) {
-	if (speed === "slow") {
-		return 520;
-	}
-
-	if (speed === "fast") {
-		return 70;
-	}
-
-	if (speed === "instant") {
-		return 0;
-	}
-
-	return 220;
+	const slowdownMs = Number(speed.match(/^slowdown-(100|300|700)$/)?.[1] ?? 0);
+	return slowdownMs;
 }
 
 export function getSimulationTriggers(nodes: Node<ScriptNodeData>[]) {

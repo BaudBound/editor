@@ -6,12 +6,12 @@ export const outcomeOptions: Array<{ label: string; value: SimulationOverrideOut
 ];
 
 export const speedOptions: Array<{ label: string; value: SimulationSpeed }> = [
-	{ label: "Slow", value: "slow" },
-	{ label: "Normal", value: "normal" },
-	{ label: "Fast", value: "fast" },
-	{ label: "Instant", value: "instant" },
+	{ label: "Real time", value: "realtime" },
+	{ label: "Slowdown: 100 ms", value: "slowdown-100" },
+	{ label: "Slowdown: 300 ms", value: "slowdown-300" },
+	{ label: "Slowdown: 700 ms", value: "slowdown-700" },
 ];
 
 export function normalizeSimulationSpeed(value: string): SimulationSpeed {
-	return value === "slow" || value === "fast" || value === "instant" ? value : "normal";
+	return speedOptions.some((option) => option.value === value) ? (value as SimulationSpeed) : "realtime";
 }

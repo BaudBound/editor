@@ -35,21 +35,41 @@ export type NumericConfigContract = {
 
 export type NumericConfigCondition = {
 	key: string;
-	equals: string;
+	equals: string | boolean;
 };
 
 type NodeConfigFieldBase = {
 	colorPicker?: boolean;
 	key: string;
 	label: string;
+	nonEmpty?: boolean;
 	options?: SelectOption[];
 	required?: boolean;
-	usesVariables?: boolean;
 	help?: string;
+	validate?: (config: Record<string, JsonValue>) => string;
 	visibleWhen?: NumericConfigCondition;
 };
 
+export type VariableInputContract =
+	| "any"
+	| "boolean"
+	| "color"
+	| "datetime"
+	| "duration"
+	| "file-path"
+	| "keyboard-key"
+	| "list"
+	| "numeric"
+	| "object"
+	| "string"
+	| "text";
+
+type NodeConfigVariableSupport =
+	| { usesVariables: true; variableTypes: VariableInputContract }
+	| { usesVariables?: false; variableTypes?: never };
+
 export type NodeConfigField = NodeConfigFieldBase &
+	NodeConfigVariableSupport &
 	(
 		| { numeric: NumericConfigContract; numericWhen?: never; type: "number" }
 		| { numeric: NumericConfigContract; numericWhen: NumericConfigCondition; type: "text" }
