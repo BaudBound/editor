@@ -34,7 +34,7 @@ test("history tracks saved boundaries, survives save, and resets after reload", 
 	await expect(page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" })).toHaveCount(1);
 	await expect(page.getByText("saved", { exact: true })).toBeVisible();
 
-	await page.reload();
+	await page.reload({ waitUntil: "commit" });
 	await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
 	await expect(page.getByRole("button", { name: "Redo" })).toBeDisabled();
 });
