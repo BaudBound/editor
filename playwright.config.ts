@@ -1,11 +1,15 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const e2eServerCommand =
-	process.platform === "win32" ? "pnpm start --hostname 127.0.0.1 --port 3100" : "node .next/standalone/server.js";
+	process.platform === "win32"
+		? "pnpm start --hostname 127.0.0.1 --port 3100"
+		: "node scripts/start-standalone-server.mjs";
 
 export default defineConfig({
 	testDir: "./tests/e2e",
 	timeout: 30_000,
+	retries: process.env.CI ? 1 : 0,
+	workers: process.env.CI ? 4 : undefined,
 	expect: {
 		timeout: 10_000,
 	},

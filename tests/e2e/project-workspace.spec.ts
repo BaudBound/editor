@@ -101,7 +101,7 @@ test("project creation, save, reload, and home listing use durable storage", asy
 	await expect(page.getByText("saved", { exact: true })).toBeVisible();
 	const projectUrl = page.url();
 
-	await page.reload();
+	await page.reload({ waitUntil: "commit" });
 	await expect(page).toHaveURL(projectUrl);
 	await expect(page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" })).toHaveCount(1);
 	await page.getByRole("button", { name: "Return to projects" }).click();
@@ -229,7 +229,7 @@ test("interrupted panel migration retries before deleting legacy values", async 
 	expect(retainedLegacyValues.collapsed).not.toBeNull();
 	expect(retainedLegacyValues.sizes).not.toBeNull();
 
-	await page.reload();
+	await page.reload({ waitUntil: "commit" });
 	await expect(page.getByRole("button", { name: "Expand block library" })).toBeVisible();
 	await expect(page.getByRole("button", { name: "Expand bottom panel" })).toBeVisible();
 	expect(await readLegacyPanelValues(page)).toEqual({ collapsed: null, sizes: null });
@@ -401,7 +401,7 @@ test("damaged project records show recovery instead of opening partial state", a
 		database.close();
 	});
 
-	await page.reload();
+	await page.reload({ waitUntil: "commit" });
 	await expect(page.getByRole("heading", { name: "Project unavailable" })).toBeVisible();
 	await expect(page.getByText("stored project record is damaged", { exact: false })).toBeVisible();
 	await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();

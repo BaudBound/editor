@@ -399,7 +399,7 @@ test("panel collapse state persists across editor reloads", async ({ page }) => 
 	const storedState = await readPanelPreferences(page);
 	expect(storedState).toEqual({ left: true, right: true, bottom: true });
 
-	await page.reload();
+	await page.reload({ waitUntil: "commit" });
 
 	await expect(page.getByRole("button", { name: "Expand block library" })).toBeVisible();
 	await expect(page.getByRole("button", { name: "Expand inspector" })).toBeVisible();
