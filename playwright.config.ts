@@ -1,7 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const e2eServerCommand =
-	process.platform === "win32" ? "pnpm start --hostname 127.0.0.1 --port 3100" : "node .next/standalone/server.js";
+	process.platform === "win32"
+		? "pnpm start --hostname 127.0.0.1 --port 3100"
+		: "node scripts/start-standalone-server.mjs";
 
 export default defineConfig({
 	testDir: "./tests/e2e",
