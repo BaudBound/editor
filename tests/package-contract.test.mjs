@@ -56,6 +56,20 @@ test("editor color matching follows the shared Rust parity matrix", async () => 
 	}
 });
 
+test("editor risk colors use the shared production severity palette", () => {
+	const riskSource = read(join(appRoot, "data", "editor", "risk.ts"));
+	const badgeSource = read(join(appRoot, "components", "ui", "badge.tsx"));
+
+	assert.match(riskSource, /low:\s*\{[\s\S]*?color:\s*"#3ecf8e"/);
+	assert.match(riskSource, /medium:\s*\{[\s\S]*?color:\s*"#f5a623"/);
+	assert.match(riskSource, /const dangerRiskTone = \{[\s\S]*?color:\s*"#e62d3e"/);
+	assert.match(riskSource, /high:\s*dangerRiskTone/);
+	assert.match(riskSource, /dangerous:\s*dangerRiskTone/);
+	assert.match(badgeSource, /high:\s*"border-baud-danger\/30 bg-baud-danger\/10 text-baud-danger"/);
+	assert.match(badgeSource, /dangerous:\s*"border-baud-danger\/30 bg-baud-danger\/10 text-baud-danger"/);
+	assert.doesNotMatch(badgeSource, /dangerous:[^\n]*baud-purple/);
+});
+
 test("editor condition equality follows the shared Rust parity matrix", async () => {
 	const { conditionValuesEqual } = await loadConditionComparison();
 	const cases = JSON.parse(read(conditionEqualityCasesPath));

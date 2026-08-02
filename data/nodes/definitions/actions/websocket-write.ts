@@ -1,4 +1,5 @@
 import { Send } from "lucide-react";
+import { getWebSocketConnectionTriggerId } from "@/data/project/websocket";
 import type { JsonValue } from "@/lib/types";
 import { defineNode } from "../../node-definition";
 import { fallible } from "../runtime-outputs";
@@ -10,12 +11,12 @@ export const websocketWriteNode = defineNode({
 	configFields: [
 		{
 			key: "connectionId",
-			label: "Connection id",
+			label: "Connection",
 			nonEmpty: true,
 			type: "text",
 			usesVariables: true,
 			variableTypes: "string",
-			help: "Use the WebSocket Trigger connection_id output, for example {{node-id.connection_id}}.",
+			help: "WebSocket Trigger connection used for this message.",
 		},
 		{
 			key: "message",
@@ -59,15 +60,31 @@ export const websocketWriteNode = defineNode({
 		},
 	]),
 	runnerType: "websocket_write",
-	validateConfig: (config) =>
-		[
-			requiredConfig(config, "connectionId", "WebSocket connection id"),
+	validateConfig: (config) => {
+		const connectionRequired = requiredConfig(config, "connectionId", "WebSocket connection");
+		return [
+			connectionRequired,
+			!connectionRequired && !getWebSocketConnectionTriggerId(config.connectionId)
+				? "WebSocket connection must reference a WebSocket Trigger."
+				: "",
 			requiredConfig(config, "message", "WebSocket message"),
-		].filter(Boolean),
-	validateGraph: ({ context, node }) =>
-		context.nodes.some((otherNode) => otherNode.data.actionType === "trigger.websocket")
+		].filter(Boolean);
+	},
+	validateGraph: ({ context, node }) => {
+		const triggerNodeId = getWebSocketConnectionTriggerId(node.data.config.connectionId);
+		if (!triggerNodeId) {
+			return [];
+		}
+		const trigger = context.nodes.find(
+			(otherNode) => otherNode.id === triggerNodeId && otherNode.data.actionType === "trigger.websocket",
+		);
+		if (!trigger) {
+			return [`${node.id} references WebSocket Trigger ${triggerNodeId}, but that trigger does not exist.`];
+		}
+		return canReachNode(trigger.id, node.id, context.edges)
 			? []
-			: [`${node.id} writes to a WebSocket connection, but the script has no WebSocket Trigger.`],
+			: [`${node.id} uses the connection from ${trigger.id}, but that WebSocket Trigger cannot reach this node.`];
+	},
 	simulation: {
 		createOutput: ({ api, context, node }) => {
 			const connectionId = String(api.resolveTemplate(api.getConfigString(node, "connectionId"), context)).trim();
@@ -126,4 +143,27 @@ export const websocketWriteNode = defineNode({
 
 function truncateMessage(value: string) {
 	return value.length > 180 ? `${value.slice(0, 179)}...` : value;
+}
+
+function canReachNode(startNodeId: string, targetNodeId: string, edges: { source: string; target: string }[]) {
+	const visited = new Set<string>();
+	const queue = [startNodeId];
+
+	while (queue.length > 0) {
+		const nodeId = queue.shift();
+		if (!nodeId || visited.has(nodeId)) {
+			continue;
+		}
+		if (nodeId === targetNodeId) {
+			return true;
+		}
+		visited.add(nodeId);
+		for (const edge of edges) {
+			if (edge.source === nodeId) {
+				queue.push(edge.target);
+			}
+		}
+	}
+
+	return false;
 }

@@ -247,8 +247,7 @@ const nodeBehaviorRows = [
 	},
 	{
 		label: "WebSocket Write",
-		description:
-			"WebSocket Write sends a message to an active connection id, usually from a WebSocket Trigger output such as {{node-id.connection_id}}.",
+		description: "WebSocket Write sends a message through the connection selected from an available WebSocket Trigger.",
 	},
 	{
 		label: "Assets",
