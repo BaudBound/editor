@@ -11,7 +11,7 @@ export const websocketTriggerNode = defineNode({
 			label: "Path",
 			nonEmpty: true,
 			type: "text",
-			help: "Runner-side WebSocket path, for example /events/messages. The runner decides host and port.",
+			help: "Runner-side WebSocket path. The runner decides host and port.",
 			validate: (config) => {
 				const path = configString(config, "path").trim();
 				return path && !path.startsWith("/") ? 'WebSocket path must start with "/".' : "";

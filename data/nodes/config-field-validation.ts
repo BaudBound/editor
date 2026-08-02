@@ -139,7 +139,7 @@ export function validateVariableReferenceTypes(
 export function validateVariableReferences(value: string, variables: readonly VariableReferenceCandidate[]) {
 	const matches = [...value.matchAll(TEMPLATE_PATTERN)];
 	const remainder = value.replace(TEMPLATE_PATTERN, "");
-	if (remainder.includes("{{") || remainder.includes("}}")) {
+	if (remainder.includes("{{")) {
 		return "Variable reference syntax is incomplete.";
 	}
 

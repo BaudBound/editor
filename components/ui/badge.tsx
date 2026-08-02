@@ -19,7 +19,7 @@ const badgeVariants = cva(
 				low: "border-baud-green/30 bg-baud-green/10 text-baud-green",
 				medium: "border-baud-amber/30 bg-baud-amber/10 text-baud-amber",
 				high: "border-baud-danger/30 bg-baud-danger/10 text-baud-danger",
-				dangerous: "border-baud-purple/30 bg-baud-purple/10 text-baud-purple",
+				dangerous: "border-baud-danger/30 bg-baud-danger/10 text-baud-danger",
 			},
 		},
 		defaultVariants: {

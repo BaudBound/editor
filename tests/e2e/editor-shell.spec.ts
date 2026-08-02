@@ -203,6 +203,53 @@ test("inspector fields show accessible inline validation and clear it after corr
 	await expect(secondCase.getByText("Value must be unique.")).toHaveCount(0);
 });
 
+test("Shell Command accepts literal PowerShell script-block braces", async ({ page }) => {
+	await openEditor(page);
+
+	const command =
+		'powershell -NoProfile -Command "$r=Test-Connection 1.1.1.1 -Count 1 -ErrorAction SilentlyContinue; if($r){if($null-ne $r.Latency){$r.Latency}else{$r.ResponseTime}}"';
+	await page.getByRole("textbox", { name: "Search blocks" }).fill("Shell Command");
+	await page.getByRole("button", { name: /^Shell Command dangerous/ }).click();
+
+	const commandInput = page.getByRole("textbox", { name: "Command" });
+	await commandInput.fill(command);
+
+	await expect(commandInput).toHaveValue(command);
+	await expect(commandInput).not.toHaveAttribute("aria-invalid", "true");
+	await expect(page.getByText("Variable reference syntax is incomplete.")).toHaveCount(0);
+});
+
+test("WebSocket nodes normalize paths and select a trigger connection", async ({ page }) => {
+	await openEditor(page);
+
+	const blockSearch = page.getByRole("textbox", { name: "Search blocks" });
+	await blockSearch.fill("WebSocket");
+	await page.getByRole("button", { name: /^WebSocket high/ }).click();
+	await page.getByRole("textbox", { name: "Custom name" }).fill("Inbound messages");
+	const path = page.getByRole("textbox", { name: "Path" });
+	await path.fill("events/messages");
+	await expect(path).toHaveValue("events/messages");
+	await expect(path).not.toHaveAttribute("aria-invalid", "true");
+
+	await page.getByRole("button", { name: /^WebSocket Write medium/ }).click();
+	await expect(page.getByRole("textbox", { name: "Connection id" })).toHaveCount(0);
+	const connection = page.getByRole("button", { name: "Connection" });
+	await connection.click();
+	await page.getByRole("option", { name: "Inbound messages (/events/messages)" }).click();
+	await expect(connection).toContainText("Inbound messages (/events/messages)");
+	await page.getByRole("textbox", { name: "Message" }).fill("reply");
+
+	const triggerNode = page.locator(".react-flow__node").filter({ hasText: "Inbound messages" });
+	const writeNode = page.locator(".react-flow__node").filter({ hasText: "WebSocket Write" });
+	await triggerNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
+	await writeNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+	await page.getByRole("button", { name: "Simulation", exact: true }).click();
+	await expect(page.getByText(/sent 5 bytes to connection simulated-connection/)).toBeVisible();
+});
+
 test("node finder searches configuration and focuses the selected node", async ({ page }) => {
 	await openEditor(page);
 

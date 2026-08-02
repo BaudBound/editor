@@ -70,6 +70,12 @@ import {
 	variableScopeDefinitions,
 	variableTypeDefinitions,
 } from "@/data/project/variables";
+import {
+	createWebSocketConnectionOptions,
+	getWebSocketConnectionTriggerId,
+	websocketPathConfigFromInput,
+	websocketPathInputFromConfig,
+} from "@/data/project/websocket";
 import { type ActiveReorderDragState, useReorderController } from "@/hooks/use-reorder-controller";
 import type {
 	ActionType,
@@ -288,7 +294,11 @@ function PropertiesPanel({
 			? []
 			: usesKeyReference(selectedNode.data.actionType)
 				? fields.filter((field) => field.key !== "key")
-				: fields;
+				: selectedNode.data.actionType === "trigger.websocket"
+					? fields.filter((field) => field.key !== "path")
+					: selectedNode.data.actionType === "action.websocket.write"
+						? fields.filter((field) => field.key !== "connectionId")
+						: fields;
 
 	return (
 		<div className="space-y-5 p-4">
@@ -391,6 +401,19 @@ function PropertiesPanel({
 								deviceOptions={createSerialDeviceOptions(nodes)}
 								variableCompletions={variableCompletions}
 								onChange={(key, value) => onUpdateNodeConfig(selectedNode.id, key, value)}
+							/>
+						)}
+						{selectedNode.data.actionType === "trigger.websocket" && (
+							<WebSocketPathConfigPanel
+								config={selectedNode.data.config}
+								onChange={(value) => onUpdateNodeConfig(selectedNode.id, "path", value)}
+							/>
+						)}
+						{selectedNode.data.actionType === "action.websocket.write" && (
+							<WebSocketConnectionConfigPanel
+								config={selectedNode.data.config}
+								nodes={nodes}
+								onChange={(value) => onUpdateNodeConfig(selectedNode.id, "connectionId", value)}
 							/>
 						)}
 						{visibleFields.map((field) => (
@@ -1718,6 +1741,79 @@ function SerialWriteConfigPanel({
 	);
 }
 
+function WebSocketPathConfigPanel({
+	config,
+	onChange,
+}: {
+	config: Record<string, JsonValue>;
+	onChange: (value: JsonValue) => void;
+}) {
+	const inputId = useId();
+	const errorId = `${inputId}-error`;
+	const configuredPath = valueToInputString(config.path);
+	const inputValue = websocketPathInputFromConfig(config.path);
+	const error = !configuredPath.trim()
+		? "Path is required."
+		: !configuredPath.startsWith("/")
+			? 'WebSocket path must start with "/".'
+			: "";
+
+	return (
+		<div>
+			<label htmlFor={inputId} className="mb-1 block font-mono text-sm text-baud-muted">
+				Path
+			</label>
+			<div className="relative">
+				<span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 font-mono text-sm text-baud-muted">
+					/
+				</span>
+				<Input
+					id={inputId}
+					aria-describedby={error ? errorId : undefined}
+					aria-invalid={!!error || undefined}
+					className="pl-6 font-mono"
+					value={inputValue}
+					onChange={(event) => onChange(websocketPathConfigFromInput(event.target.value))}
+				/>
+			</div>
+			<FieldError id={errorId} message={error} />
+		</div>
+	);
+}
+
+function WebSocketConnectionConfigPanel({
+	config,
+	nodes,
+	onChange,
+}: {
+	config: Record<string, JsonValue>;
+	nodes: Node<ScriptNodeData>[];
+	onChange: (value: JsonValue) => void;
+}) {
+	const value = valueToInputString(config.connectionId);
+	const options = createWebSocketConnectionOptions(nodes);
+	const triggerNodeId = getWebSocketConnectionTriggerId(config.connectionId);
+	const selectionAvailable =
+		!!triggerNodeId && nodes.some((node) => node.id === triggerNodeId && node.data.actionType === "trigger.websocket");
+	const error = !value.trim()
+		? "Connection is required."
+		: !selectionAvailable
+			? "Select an available WebSocket Trigger connection."
+			: "";
+
+	return (
+		<ComboboxField
+			emptyMessage="No WebSocket triggers available."
+			error={error}
+			label="Connection"
+			options={options}
+			placeholder="Select WebSocket trigger..."
+			value={value}
+			onChange={onChange}
+		/>
+	);
+}
+
 function KeyCaptureConfigPanel({
 	config,
 	variableCompletions,
@@ -1872,9 +1968,11 @@ function TextInput({
 function ComboboxField({
 	ariaDescribedBy,
 	ariaLabel,
+	emptyMessage,
 	error,
 	hasError,
 	label,
+	placeholder,
 	value,
 	options,
 	onChange,
@@ -1882,9 +1980,11 @@ function ComboboxField({
 }: {
 	ariaDescribedBy?: string;
 	ariaLabel?: string;
+	emptyMessage?: string;
 	error?: string;
 	hasError?: boolean;
 	label?: string;
+	placeholder?: string;
 	value: string;
 	options: SelectOption[];
 	onChange: (value: string) => void;
@@ -1897,8 +1997,10 @@ function ComboboxField({
 			ariaDescribedBy={ariaDescribedBy ?? (error ? errorId : undefined)}
 			ariaLabel={ariaLabel ?? label}
 			className={triggerClassName ?? "w-full"}
+			emptyMessage={emptyMessage}
 			hasError={hasError || !!error}
 			options={options}
+			placeholder={placeholder}
 			value={value}
 			onChange={onChange}
 		/>
@@ -2036,7 +2138,9 @@ function hasCustomConfigPanel(actionType: ActionType) {
 		actionType === "action.http" ||
 		actionType === "action.webhook_response" ||
 		actionType === "action.sound.play" ||
-		actionType === "action.serial.write"
+		actionType === "action.serial.write" ||
+		actionType === "trigger.websocket" ||
+		actionType === "action.websocket.write"
 	);
 }
 
