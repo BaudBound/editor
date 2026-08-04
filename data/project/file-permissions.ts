@@ -53,6 +53,7 @@ export function isSensitiveOrUnboundedPath(path: string) {
 		pathUsesRuntimeData(path) ||
 		isAbsolutePath(normalized) ||
 		containsParentTraversal(normalized) ||
+		containsWindowsEscapeSegment(normalized) ||
 		isSensitivePath(normalized)
 	);
 }
@@ -67,6 +68,7 @@ export function isUnboundedWritePath(path: string) {
 		pathUsesRuntimeData(path) ||
 		isAbsolutePath(normalized) ||
 		containsParentTraversal(normalized) ||
+		containsWindowsEscapeSegment(normalized) ||
 		isSensitivePath(normalized)
 	);
 }
@@ -76,16 +78,39 @@ function isSensitivePath(normalizedPath: string) {
 }
 
 function isAbsolutePath(normalizedPath: string) {
-	return (
-		normalizedPath.startsWith("/") ||
-		/^[a-z]:\//.test(normalizedPath) ||
-		normalizedPath.startsWith("//") ||
-		normalizedPath.startsWith("~/")
-	);
+	return normalizedPath.startsWith("/") || normalizedPath === "~" || normalizedPath.startsWith("~/");
 }
 
 function containsParentTraversal(normalizedPath: string) {
 	return normalizedPath.split("/").some((component) => component === "..");
+}
+
+/**
+ * Reports whether any segment escapes the workspace on Windows.
+ *
+ * A colon is either a drive prefix such as `C:report.txt`, which resolves
+ * against that drive's current directory, or an alternate data stream such as
+ * `notes.txt:hidden`, which writes to a hidden stream of another file. A
+ * reserved device name resolves to a device wherever it appears.
+ *
+ * These are checked on every platform because a package authored on Linux can
+ * be installed on Windows. Classifying them differently would make the risk
+ * depend on the machine that built the package.
+ */
+function containsWindowsEscapeSegment(normalizedPath: string) {
+	return normalizedPath
+		.split("/")
+		.filter((segment) => segment.length > 0)
+		.some((segment) => segment.includes(":") || isReservedDeviceName(segment));
+}
+
+function isReservedDeviceName(segment: string) {
+	const stem = segment.split(".")[0]?.replace(/[ .]+$/, "") ?? "";
+	if (["con", "prn", "aux", "nul"].includes(stem)) {
+		return true;
+	}
+
+	return stem.length === 4 && (stem.startsWith("com") || stem.startsWith("lpt")) && /^[0-9]$/.test(stem[3] ?? "");
 }
 
 function pathUsesRuntimeData(path: string) {
