@@ -16,7 +16,6 @@ import type {
 } from "@/lib/types";
 import { getEdgeExecutionOrder, getEdgeExecutionOrderErrors } from "@/utils/editor-graph";
 import { createHttpActionError } from "@/utils/http-action-contract";
-import { SimulationHttpClientError, sendAuthorizedSimulationHttpRequest } from "@/utils/simulation-http-client";
 import type {
 	NodeExecutionResult,
 	SimulationContext,
@@ -38,6 +37,22 @@ export type {
 const MAX_SIMULATION_MESSAGE_LENGTH = 4000;
 const MAX_VARIABLE_SNAPSHOT_ENTRIES = 600;
 const MAX_VARIABLE_SNAPSHOT_STRING_LENGTH = 4000;
+
+/**
+ * Raised when a simulated request is rejected before it leaves the browser.
+ *
+ * Carries the code that the run log reports, so an authorization refusal is
+ * distinguishable from a transport failure.
+ */
+class SimulationHttpClientError extends Error {
+	constructor(
+		message: string,
+		readonly code: string,
+	) {
+		super(message);
+		this.name = "SimulationHttpClientError";
+	}
+}
 
 type SimulationFrame =
 	| {
@@ -976,23 +991,22 @@ async function executeHttpRequestNode(
 	try {
 		const headers = createHttpHeaders(node, context);
 		const body = resolveHttpRequestBody(node, context, headers);
-		const response = await sendAuthorizedSimulationHttpRequest(
-			{
-				authorizedOrigins: [...context.httpSimulation.authorizedOrigins],
-				body: method === "GET" || method === "HEAD" ? "" : body,
-				headers,
-				method,
-				timeoutMs: Math.round(timeoutSeconds * 1000),
-				url,
-			},
-			abortController.signal,
-		);
-		const responseBody = response.body;
+		// Issued from the browser rather than through a server route. The editor
+		// does not make requests on a user's behalf, so live simulation reaches
+		// only destinations that allow it through CORS, and the request carries
+		// the user's own address rather than the editor host's.
+		const response = await window.fetch(url, {
+			method,
+			headers,
+			body: method === "GET" || method === "HEAD" || body.length === 0 ? undefined : body,
+			signal: abortController.signal,
+		});
+		const responseBody = await response.text();
 		const json = parseJsonValue(responseBody);
 		const outputData: Record<string, JsonValue> = {
-			status_code: response.statusCode,
+			status_code: response.status,
 			status_text: response.statusText,
-			headers: response.headers,
+			headers: getResponseHeaders(response.headers),
 			body: responseBody,
 			duration_ms: Math.round(performance.now() - startedAt),
 		};
@@ -1120,6 +1134,15 @@ function createHttpErrorObject(
 		destination: safeHttpOrigin(url),
 		duration_ms: durationMs,
 	});
+}
+
+function getResponseHeaders(headers: Headers): Record<string, JsonValue> {
+	const responseHeaders: Record<string, JsonValue> = {};
+	headers.forEach((value, key) => {
+		responseHeaders[key] = value;
+	});
+
+	return responseHeaders;
 }
 
 function safeHttpOrigin(value: string) {
