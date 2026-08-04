@@ -16,6 +16,7 @@ import {
 	formatDatetimeForTimeZone,
 	initialTimeZoneOptions,
 	localTimeZoneValue,
+	typedDatetimeIso,
 } from "@/data/project/datetime";
 import {
 	createEmptyTypedValue,
@@ -27,6 +28,7 @@ import { durationUnits, type ListItemType, listItemTypes } from "@/data/project/
 import { type ActiveReorderDragState, useReorderController } from "@/hooks/use-reorder-controller";
 import type { JsonValue } from "@/lib/types";
 import { NumericField } from "./numeric-field";
+import { ReorderDragOverlay } from "./reorder-drag-overlay";
 
 const durationAmountContract: NumericConfigContract = {
 	...runtimeNumberContract,
@@ -332,28 +334,16 @@ function ListItemDropSpace({ height }: { height: number }) {
 
 function FloatingListItem({ drag, index }: { drag: ActiveReorderDragState; index: number }) {
 	return (
-		<div
-			className="pointer-events-none fixed z-9999 flex items-center gap-2 rounded border border-baud-red bg-baud-panel p-2 opacity-95 shadow-[0_18px_42px_rgba(0,0,0,0.38)]"
-			style={{
-				left: drag.pointerX - drag.pointerOffsetX,
-				minHeight: drag.cardHeight,
-				top: drag.pointerY - drag.pointerOffsetY,
-				transform: "rotate(0.7deg)",
-				width: drag.cardWidth,
-			}}
-		>
+		<ReorderDragOverlay className="flex items-center gap-2 p-2" drag={drag} style={{ transform: "rotate(0.7deg)" }}>
 			<GripVertical size={15} className="text-baud-muted" />
 			<span className="font-mono text-sm text-baud-muted">List item {index}</span>
-		</div>
+		</ReorderDragOverlay>
 	);
 }
 
 function DatetimeValueEditor({ ariaLabel, id, value, onChange }: Omit<TypedValueEditorProps, "type" | "itemType">) {
 	const current = readRecord(value);
-	const iso =
-		typeof current.value === "string" && !Number.isNaN(Date.parse(current.value))
-			? current.value
-			: new Date().toISOString();
+	const iso = typedDatetimeIso(current as JsonValue) ?? new Date().toISOString();
 	const [timeZone, setTimeZone] = useState(localTimeZoneValue);
 	const [timeZoneOptions, setTimeZoneOptions] = useState(initialTimeZoneOptions);
 	const displayedValue = formatDatetimeForTimeZone(iso, timeZone);

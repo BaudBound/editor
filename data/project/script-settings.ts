@@ -1,5 +1,5 @@
 import { runtimeNumberContract, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
-import { validateTypedValue } from "@/data/project/typed-values";
+import { formatTypedValueForDisplay, validateTypedValue } from "@/data/project/typed-values";
 import { type ListItemType, validateVariableName } from "@/data/project/variables";
 import type { JsonValue, ScriptSetting, ScriptSettingType } from "@/lib/types";
 
@@ -7,14 +7,8 @@ const MAX_SCRIPT_SETTING_INPUT_BYTES = 1024 * 1024;
 const MAX_SCRIPT_SETTING_CONTAINER_ITEMS = 4096;
 const MAX_SCRIPT_SETTING_VALUE_DEPTH = 32;
 
-export function formatScriptSettingValue(type: ScriptSettingType, value: JsonValue) {
-	if (type === "string" || type === "file_path" || type === "hotkey" || type === "color") {
-		return typeof value === "string" ? value : "";
-	}
-	if (type === "number" || type === "boolean") {
-		return String(value);
-	}
-	return JSON.stringify(value, null, 2);
+export function formatScriptSettingValue(type: ScriptSettingType, value: JsonValue, itemType?: ListItemType) {
+	return formatTypedValueForDisplay(type, value, itemType);
 }
 
 export function parseScriptSettingValue(type: ScriptSettingType, rawValue: string): JsonValue | undefined {

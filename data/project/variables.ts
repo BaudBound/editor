@@ -1,5 +1,7 @@
 import type { Node } from "@xyflow/react";
 import { runtimeNumberContract, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
+import { typedDatetimeIso } from "@/data/project/datetime";
+import { userIdentifierPattern } from "@/data/project/user-identifier";
 import type { JsonValue, RuntimeDataType, ScriptNodeData } from "@/lib/types";
 
 export const variableTypes = [
@@ -60,7 +62,7 @@ export type EditorVariable<TValue extends JsonValue | undefined = JsonValue | un
 	value?: TValue;
 };
 
-export type VariableReferenceCandidate = Pick<EditorVariable, "name" | "type" | "value">;
+export type VariableReferenceCandidate = Pick<EditorVariable, "name" | "preTrigger" | "type" | "value">;
 
 export type VariableReferenceStatus = "invalid" | "known" | "possible";
 
@@ -319,16 +321,18 @@ export function validateVariableValue(type: VariableType, value: string, itemTyp
 	if (type === "duration") {
 		return parsed.value.type === "duration" &&
 			typeof parsed.value.unit === "string" &&
-			typeof parsed.value.value === "number"
+			durationUnits.includes(parsed.value.unit as DurationUnit) &&
+			typeof parsed.value.value === "number" &&
+			Number.isFinite(parsed.value.value) &&
+			parsed.value.value >= 0
 			? ""
-			: "Duration variables must include type, unit, and numeric value fields.";
+			: "Duration variables must include a supported unit and a nonnegative finite value.";
 	}
 
 	if (type === "datetime") {
-		const valueField = parsed.value.value;
-		return parsed.value.type === "datetime" && typeof valueField === "string" && !Number.isNaN(Date.parse(valueField))
+		return typedDatetimeIso(parsed.value as JsonValue)
 			? ""
-			: "Datetime variables must include type and a valid ISO-8601 value field.";
+			: "Datetime variables must include type and a valid RFC 3339 value field.";
 	}
 
 	return "";
@@ -364,8 +368,8 @@ export function validateVariableName(name: string) {
 		return "Variable name is required.";
 	}
 
-	if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) {
-		return "Variable names must start with a letter or underscore and only use letters, numbers, or underscores.";
+	if (!userIdentifierPattern.test(trimmed)) {
+		return "Variable names may contain only letters A-Z, letters a-z, numbers 0-9, hyphens, and underscores.";
 	}
 
 	if (trimmed === "settings") {

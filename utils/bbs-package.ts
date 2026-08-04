@@ -2,15 +2,15 @@ import type { Edge, Node } from "@xyflow/react";
 import JSZip from "jszip";
 import { defaultEditorEdgeStyle, type EditorEdgeStyle, isEditorEdgeStyle } from "@/data/editor/flow-canvas";
 import { getNodeDefinition, getNodePorts, getRuntimeDataOutputs } from "@/data/nodes/registry";
-import { validateWindowsHotkey } from "@/data/nodes/windows-key-contract";
 import {
 	getAssetKindForMediaType,
 	toAssetManifestEntry,
 	validateAssetFileContent,
 	validatePackageAssetEntries,
 } from "@/data/project/assets";
-import { packageLimits, validatePackageEntryLimits } from "@/data/project/package-limits";
+import { packageLimits } from "@/data/project/package-limits";
 import { targetRuntimes } from "@/data/project/runtimes";
+import { normalizeListItemType, validateTypedValue } from "@/data/project/typed-values";
 import { variableTypes } from "@/data/project/variables";
 import type { ProjectIdentity } from "../data/projects/model";
 import {
@@ -30,6 +30,7 @@ import {
 } from "../lib/types";
 import { DEFAULT_MINIMUM_RUNNER_VERSION, EDITOR_CREATED_WITH } from "../lib/version";
 import { calculateCapabilities, calculatePermissions, calculateRiskLevel, toProgramJson } from "./analysis";
+import { type PackageArchive, type PackageArchiveEntry, readBbsPackageArchive } from "./bbs-package-archive";
 import { isSelfConnection, withEdgeExecutionOrder } from "./editor-graph";
 import { validatePackageJsonContracts } from "./package-contract";
 import { createScriptPackageFilename, downloadBytes } from "./script-repository";
@@ -62,9 +63,11 @@ export type GeneratedBbsPackage = {
 
 type PackageAssetRecord = {
 	asset: Record<string, unknown>;
-	packageEntry: JSZip.JSZipObject;
+	packageEntry: PackageArchiveEntry;
 	packagePath: string;
 };
+
+type PackageReadOptions = { signal?: AbortSignal };
 
 const EDITOR_PACKAGE_FILE = "editor.json";
 const EDITOR_METADATA_FORMAT_VERSION = 1;
@@ -202,30 +205,29 @@ export function downloadGeneratedBbsPackage(generated: GeneratedBbsPackage) {
 	downloadBytes(generated.bytes, generated.filename, "application/vnd.baudbound.script+zip");
 }
 
-export async function inspectBbsPackage(file: File) {
-	const zip = await JSZip.loadAsync(file);
-	assertZipWithinPackageLimits(zip);
-	const names = Object.keys(zip.files).filter((name) => !zip.files[name]?.dir);
-	return names.sort();
+export async function inspectBbsPackage(file: File, options: PackageReadOptions = {}) {
+	const archive = await readBbsPackageArchive(file, options.signal);
+	return archive.fileNames;
 }
 
-export async function verifyBbsPackage(file: File) {
-	const zip = await JSZip.loadAsync(file);
-	assertZipWithinPackageLimits(zip);
-	const fileNames = Object.keys(zip.files)
-		.filter((name) => !zip.files[name]?.dir)
-		.sort();
+export async function verifyBbsPackage(file: File, options: PackageReadOptions = {}) {
+	const archive = await readBbsPackageArchive(file, options.signal);
+	return verifyPackageArchive(archive);
+}
+
+async function verifyPackageArchive(archive: PackageArchive) {
+	const fileNames = [...archive.fileNames];
 	const jsonFiles: Record<string, unknown> = {};
 	const parseErrors: Record<string, string> = {};
 
 	for (const fileName of getPackageJsonFiles(fileNames)) {
-		const entry = zip.file(fileName);
+		const entry = archive.entries.get(fileName);
 		if (!entry) {
 			continue;
 		}
 
 		try {
-			jsonFiles[fileName] = JSON.parse(await entry.async("text")) as unknown;
+			jsonFiles[fileName] = parseJsonEntry(entry);
 		} catch (error) {
 			parseErrors[fileName] = error instanceof Error ? error.message : "Unable to parse JSON.";
 		}
@@ -233,7 +235,7 @@ export async function verifyBbsPackage(file: File) {
 
 	const checks = [
 		...createPackageVerificationChecks({ fileNames, jsonFiles, parseErrors }),
-		await createPackageAssetContentCheck(zip, jsonFiles),
+		await createPackageAssetContentCheck(archive, jsonFiles),
 	];
 
 	return {
@@ -243,17 +245,28 @@ export async function verifyBbsPackage(file: File) {
 	};
 }
 
-export async function importBbsPackage(file: File): Promise<ImportedBbsPackage> {
-	const zip = await JSZip.loadAsync(file);
-	assertZipWithinPackageLimits(zip);
-	const fileNames = Object.keys(zip.files)
-		.filter((name) => !zip.files[name]?.dir)
-		.sort();
-	const jsonFiles = await readPackageJsonFiles(zip);
-	const checks = [
-		...createPackageVerificationChecks({ fileNames, jsonFiles, parseErrors: {} }),
-		await createPackageAssetContentCheck(zip, jsonFiles),
-	];
+export async function importBbsPackage(file: File, options: PackageReadOptions = {}): Promise<ImportedBbsPackage> {
+	const archive = await readBbsPackageArchive(file, options.signal);
+	return importVerifiedPackageArchive(archive);
+}
+
+export async function verifyAndImportBbsPackage(file: File, options: PackageReadOptions = {}) {
+	const archive = await readBbsPackageArchive(file, options.signal);
+	const verification = await verifyPackageArchive(archive);
+	return {
+		...verification,
+		imported:
+			verification.summary.status === "verified" ? await importVerifiedPackageArchive(archive, verification) : null,
+	};
+}
+
+async function importVerifiedPackageArchive(
+	archive: PackageArchive,
+	verified?: Awaited<ReturnType<typeof verifyPackageArchive>>,
+): Promise<ImportedBbsPackage> {
+	const jsonFiles = readPackageJsonFiles(archive);
+	const verification = verified ?? (await verifyPackageArchive(archive));
+	const checks = [...verification.checks];
 	const summary = summarizeVerification(checks);
 
 	if (summary.status !== "verified") {
@@ -267,7 +280,7 @@ export async function importBbsPackage(file: File): Promise<ImportedBbsPackage> 
 
 	const projectSettings = toProjectSettings(manifest, capabilities);
 	const identity = toProjectIdentity(manifest);
-	const assets = await readPackageAssets(zip, manifest);
+	const assets = await readPackageAssets(archive, manifest);
 	const { nodes, edges } = toEditorGraph(program, editorMetadata);
 	const comments = toEditorComments(editorMetadata);
 	const edgeStyle = toEditorEdgeStyle(editorMetadata);
@@ -367,14 +380,16 @@ function toScriptSettings(manifest: Record<string, unknown>): ScriptSetting[] {
 
 	return manifest.settings.flatMap((value) => {
 		const setting = isRecord(value) ? value : null;
+		const type = String(setting?.type) as ScriptSetting["type"];
+		const itemType = normalizeListItemType(setting?.item_type);
 		if (
 			!setting ||
 			typeof setting.name !== "string" ||
-			!scriptSettingTypes.includes(String(setting.type) as ScriptSetting["type"]) ||
+			!scriptSettingTypes.includes(type) ||
 			typeof setting.required !== "boolean" ||
+			(type === "list" ? !itemType : setting.item_type !== undefined) ||
 			(setting.default_value !== undefined &&
-				(!isJsonValue(setting.default_value) ||
-					!scriptSettingValueMatchesType(String(setting.type), setting.default_value)))
+				(!isJsonValue(setting.default_value) || validateTypedValue(type, setting.default_value, itemType) !== null))
 		) {
 			return [];
 		}
@@ -383,55 +398,13 @@ function toScriptSettings(manifest: Record<string, unknown>): ScriptSetting[] {
 			{
 				...(setting.default_value === undefined ? {} : { defaultValue: setting.default_value }),
 				description: typeof setting.description === "string" ? setting.description : "",
-				...(setting.type === "list" && typeof setting.item_type === "string"
-					? { itemType: setting.item_type as ScriptSetting["itemType"] }
-					: {}),
+				...(type === "list" ? { itemType } : {}),
 				name: setting.name,
 				required: setting.required,
-				type: setting.type as ScriptSetting["type"],
+				type,
 			},
 		];
 	});
-}
-
-function scriptSettingValueMatchesType(type: string, value: JsonValue) {
-	switch (type) {
-		case "string":
-		case "file_path":
-			return typeof value === "string";
-		case "hotkey":
-			return typeof value === "string" && !validateWindowsHotkey(value);
-		case "color":
-			return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
-		case "number":
-			return typeof value === "number" && Number.isFinite(value);
-		case "boolean":
-			return typeof value === "boolean";
-		case "object":
-			return typeof value === "object" && value !== null && !Array.isArray(value);
-		case "list":
-			return Array.isArray(value);
-		case "datetime":
-			return (
-				typeof value === "object" &&
-				value !== null &&
-				!Array.isArray(value) &&
-				value.type === "datetime" &&
-				typeof value.value === "string" &&
-				!Number.isNaN(Date.parse(value.value))
-			);
-		case "duration":
-			return (
-				typeof value === "object" &&
-				value !== null &&
-				!Array.isArray(value) &&
-				value.type === "duration" &&
-				typeof value.value === "number" &&
-				typeof value.unit === "string"
-			);
-		default:
-			return false;
-	}
 }
 
 function compactObject(value: Record<string, unknown>) {
@@ -482,21 +455,21 @@ function toEditorJson(nodes: Node<ScriptNodeData>[], comments: EditorComment[], 
 	};
 }
 
-async function readPackageJsonFiles(zip: JSZip) {
+function readPackageJsonFiles(archive: PackageArchive) {
 	const jsonFiles: Record<string, unknown> = {};
 
 	for (const fileName of getRequiredPackageFiles()) {
-		const entry = zip.file(fileName);
+		const entry = archive.entries.get(fileName);
 		if (!entry) {
 			throw new Error(`Package is missing ${fileName}.`);
 		}
 
-		jsonFiles[fileName] = JSON.parse(await entry.async("text")) as unknown;
+		jsonFiles[fileName] = parseJsonEntry(entry);
 	}
 
-	const editorMetadataEntry = zip.file(EDITOR_PACKAGE_FILE);
+	const editorMetadataEntry = archive.entries.get(EDITOR_PACKAGE_FILE);
 	if (editorMetadataEntry) {
-		jsonFiles[EDITOR_PACKAGE_FILE] = JSON.parse(await editorMetadataEntry.async("text")) as unknown;
+		jsonFiles[EDITOR_PACKAGE_FILE] = parseJsonEntry(editorMetadataEntry);
 	}
 
 	return jsonFiles;
@@ -519,8 +492,8 @@ function toProjectSettings(manifest: Record<string, unknown>, capabilities: Reco
 	};
 }
 
-async function readPackageAssets(zip: JSZip, manifest: Record<string, unknown>): Promise<EditorAsset[]> {
-	const assetManifest = collectPackageAssetManifest(zip, manifest);
+async function readPackageAssets(archive: PackageArchive, manifest: Record<string, unknown>): Promise<EditorAsset[]> {
+	const assetManifest = collectPackageAssetManifest(archive, manifest);
 	if (assetManifest.errors.length > 0) {
 		throw new Error(assetManifest.errors.join(" "));
 	}
@@ -536,12 +509,7 @@ async function readPackageAssets(zip: JSZip, manifest: Record<string, unknown>):
 		const kind = asAssetKind(asset.kind);
 		const declaredSize = typeof asset.size === "number" ? asset.size : undefined;
 
-		const zipSize = getZipEntryUncompressedSize(packageEntry);
-		if (declaredSize !== undefined && zipSize !== undefined && declaredSize !== zipSize) {
-			throw new Error(`${packagePath}: manifest size ${declaredSize} does not match package size ${zipSize}.`);
-		}
-
-		const blob = await packageEntry.async("blob");
+		const blob = new Blob([packageEntry.bytes]);
 		if (declaredSize !== undefined && declaredSize !== blob.size) {
 			throw new Error(`${packagePath}: manifest size ${declaredSize} does not match asset size ${blob.size}.`);
 		}
@@ -576,14 +544,14 @@ async function readPackageAssets(zip: JSZip, manifest: Record<string, unknown>):
 }
 
 async function createPackageAssetContentCheck(
-	zip: JSZip,
+	archive: PackageArchive,
 	jsonFiles: Record<string, unknown>,
 ): Promise<VerificationCheck> {
 	const manifest = isRecord(jsonFiles["manifest.json"]) ? jsonFiles["manifest.json"] : null;
 	const errors: string[] = [];
 
 	if (!manifest) {
-		const assetEntries = getPackageAssetZipEntries(zip);
+		const assetEntries = getPackageAssetEntries(archive);
 		if (assetEntries.length > 0) {
 			errors.push("Asset files are present, but manifest.json is missing or invalid.");
 		}
@@ -598,7 +566,7 @@ async function createPackageAssetContentCheck(
 		};
 	}
 
-	const assetManifest = collectPackageAssetManifest(zip, manifest);
+	const assetManifest = collectPackageAssetManifest(archive, manifest);
 	errors.push(...assetManifest.errors);
 
 	for (const { asset, packageEntry, packagePath } of assetManifest.records) {
@@ -607,13 +575,7 @@ async function createPackageAssetContentCheck(
 		const kind = asAssetKind(asset.kind);
 		const declaredSize = typeof asset.size === "number" ? asset.size : undefined;
 
-		const zipSize = getZipEntryUncompressedSize(packageEntry);
-		if (declaredSize !== undefined && zipSize !== undefined && declaredSize !== zipSize) {
-			errors.push(`${packagePath}: manifest size ${declaredSize} does not match package size ${zipSize}.`);
-			continue;
-		}
-
-		const blob = await packageEntry.async("blob");
+		const blob = new Blob([packageEntry.bytes]);
 		if (declaredSize !== undefined && declaredSize !== blob.size) {
 			errors.push(`${packagePath}: manifest size ${declaredSize} does not match asset size ${blob.size}.`);
 			continue;
@@ -647,11 +609,11 @@ async function createPackageAssetContentCheck(
 	};
 }
 
-function collectPackageAssetManifest(zip: JSZip, manifest: Record<string, unknown>) {
-	const entryValidation = validatePackageAssetEntries(getZipAssetEntries(zip));
+function collectPackageAssetManifest(archive: PackageArchive, manifest: Record<string, unknown>) {
+	const entryValidation = validatePackageAssetEntries(getArchiveEntries(archive));
 	const errors: string[] = [...entryValidation.errors];
 	const records: PackageAssetRecord[] = [];
-	const assetEntries = getPackageAssetZipEntries(zip);
+	const assetEntries = getPackageAssetEntries(archive);
 	const zipPathsByLowercase = new Map(assetEntries.map((entry) => [entry.path.toLowerCase(), entry.path]));
 	const manifestAssets = manifest.assets;
 
@@ -680,7 +642,7 @@ function collectPackageAssetManifest(zip: JSZip, manifest: Record<string, unknow
 		manifestPathCounts.set(normalizedPath, (manifestPathCounts.get(normalizedPath) ?? 0) + 1);
 		manifestPathsByLowercase.set(normalizedPath, packagePath);
 
-		const packageEntry = zip.file(packagePath);
+		const packageEntry = archive.entries.get(packagePath);
 		if (!packageEntry) {
 			errors.push(`${packagePath} is listed in manifest but missing from zip.`);
 			continue;
@@ -961,51 +923,20 @@ function optionalString(value: unknown) {
 	return typeof value === "string" ? value : null;
 }
 
-function getZipAssetEntries(zip: JSZip) {
-	return Object.values(zip.files)
-		.filter((entry) => !entry.dir)
-		.map((entry) => ({
-			path: entry.name,
-			size: getZipEntryUncompressedSize(entry),
-		}));
+function getArchiveEntries(archive: PackageArchive) {
+	return [...archive.entries.values()].map((entry) => ({
+		path: entry.path,
+		size: entry.bytes.byteLength,
+	}));
 }
 
-function getPackageAssetZipEntries(zip: JSZip) {
-	return getZipAssetEntries(zip).filter((entry) => entry.path.startsWith("assets/"));
+function getPackageAssetEntries(archive: PackageArchive) {
+	return getArchiveEntries(archive).filter((entry) => entry.path.startsWith("assets/"));
 }
 
-function getZipEntryUncompressedSize(entry: JSZip.JSZipObject) {
-	const zipEntry = entry as JSZip.JSZipObject & {
-		_data?: {
-			compressedSize?: unknown;
-			uncompressedSize?: unknown;
-		};
-	};
-	const size = zipEntry._data?.uncompressedSize;
-
-	return typeof size === "number" && Number.isFinite(size) && size >= 0 ? size : undefined;
-}
-
-function assertZipWithinPackageLimits(zip: JSZip) {
-	const entries = Object.values(zip.files).map((entry) => {
-		const data = (
-			entry as JSZip.JSZipObject & {
-				_data?: { compressedSize?: unknown; uncompressedSize?: unknown };
-			}
-		)._data;
-		return {
-			compressedSize:
-				typeof data?.compressedSize === "number" && Number.isFinite(data.compressedSize)
-					? data.compressedSize
-					: undefined,
-			path: entry.name,
-			size: entry.dir ? 0 : getZipEntryUncompressedSize(entry),
-		};
-	});
-	const errors = validatePackageEntryLimits(entries);
-	if (errors.length > 0) {
-		throw new Error(errors.join(" "));
-	}
+function parseJsonEntry(entry: PackageArchiveEntry) {
+	const text = new TextDecoder("utf-8", { fatal: true }).decode(entry.bytes);
+	return JSON.parse(text) as unknown;
 }
 
 function assetFileNameFromPath(packagePath: string) {

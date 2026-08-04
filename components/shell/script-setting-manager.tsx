@@ -183,8 +183,18 @@ export function ScriptSettingManager({ settings, onChange }: ScriptSettingManage
 								</div>
 							</div>
 							<div className="mt-2 grid gap-2 border-t border-baud-border pt-2 sm:grid-cols-2">
-								<SettingValue label="Package default" type={setting.type} value={setting.defaultValue} />
-								<SettingValue label="Simulation override" type={setting.type} value={setting.simulationValue} />
+								<SettingValue
+									itemType={setting.itemType}
+									label="Package default"
+									type={setting.type}
+									value={setting.defaultValue}
+								/>
+								<SettingValue
+									itemType={setting.itemType}
+									label="Simulation override"
+									type={setting.type}
+									value={setting.simulationValue}
+								/>
 							</div>
 						</article>
 					))}
@@ -351,10 +361,12 @@ function OptionalValueEditor({
 }
 
 function SettingValue({
+	itemType,
 	label,
 	type,
 	value,
 }: {
+	itemType?: ListItemType;
 	label: string;
 	type: ScriptSettingType;
 	value: import("@/lib/types").JsonValue | undefined;
@@ -366,7 +378,7 @@ function SettingValue({
 				className="mt-1 min-h-7 whitespace-pre-wrap break-all rounded border border-baud-border bg-baud-panel/60 px-2 py-1.5 font-mono text-xs text-baud-text"
 				data-selectable-text="true"
 			>
-				{value === undefined ? "Not set" : formatScriptSettingValue(type, value)}
+				{value === undefined ? "Not set" : formatScriptSettingValue(type, value, itemType)}
 			</pre>
 		</div>
 	);

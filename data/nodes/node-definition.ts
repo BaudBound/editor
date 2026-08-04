@@ -22,6 +22,7 @@ import type {
 	SimulationSideEffect,
 	SimulationSideEffectResult,
 } from "@/utils/simulation-types";
+import type { VariableReferenceCandidate } from "../project/variables";
 import type { SelectOption } from "./definitions/options";
 
 export type NumericConfigContract = {
@@ -38,8 +39,14 @@ export type NumericConfigCondition = {
 	equals: string | boolean;
 };
 
+export type ConfigVisibilityCondition = {
+	key: string;
+	equals: string | boolean | readonly (string | boolean)[];
+};
+
 type NodeConfigFieldBase = {
 	colorPicker?: boolean;
+	identifier?: boolean;
 	key: string;
 	label: string;
 	nonEmpty?: boolean;
@@ -47,7 +54,7 @@ type NodeConfigFieldBase = {
 	required?: boolean;
 	help?: string;
 	validate?: (config: Record<string, JsonValue>) => string;
-	visibleWhen?: NumericConfigCondition;
+	visibleWhen?: ConfigVisibilityCondition;
 };
 
 export type VariableInputContract =
@@ -73,8 +80,26 @@ export type NodeConfigField = NodeConfigFieldBase &
 	(
 		| { numeric: NumericConfigContract; numericWhen?: never; type: "number" }
 		| { numeric: NumericConfigContract; numericWhen: NumericConfigCondition; type: "text" }
-		| { numeric?: never; numericWhen?: never; type: "select" | "string-list" | "switch" | "text" | "textarea" }
+		| {
+				numeric?: never;
+				numericWhen?: never;
+				type: "form-field-list" | "select" | "string-list" | "switch" | "text" | "textarea";
+		  }
 	);
+
+export function configVisibilityConditionMatches(
+	condition: ConfigVisibilityCondition | undefined,
+	config: Record<string, JsonValue>,
+) {
+	if (!condition) {
+		return true;
+	}
+
+	const expected = condition.equals;
+	return Array.isArray(expected)
+		? expected.includes(config[condition.key] as string | boolean)
+		: config[condition.key] === expected;
+}
 
 export type NodeDefinitionGroupId = "triggers" | "control" | "actions";
 
@@ -88,7 +113,7 @@ export type NodePortPolicy =
 	| { configKey: string; defaultOutput: string; kind: "switch-cases"; outputPrefix: string };
 
 export type NodePermissionPathRule = {
-	access: "delete" | "read" | "write";
+	access: "delete" | "read" | "watch" | "write";
 	configKey: string;
 };
 
@@ -176,6 +201,7 @@ export type NodeDefinition = {
 	simulation?: NodeSimulationDefinition;
 	supportedTargetRuntimes?: readonly TargetRuntime[];
 	validateConfig?: (config: Record<string, JsonValue>) => string[];
+	validateVariables?: (config: Record<string, JsonValue>, variables: readonly VariableReferenceCandidate[]) => string[];
 	validateGraph?: (params: { context: NodeGraphValidationContext; node: Node<ScriptNodeData> }) => string[];
 	validateTargetRuntime?: (params: { config: Record<string, JsonValue>; targetRuntime: TargetRuntime }) => string[];
 };

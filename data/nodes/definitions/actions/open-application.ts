@@ -30,8 +30,8 @@ export const openApplicationNode = defineNode({
 	icon: AppWindow,
 	kind: "action",
 	label: "Open Application",
-	permission: { name: "application.open", risk: "medium" },
-	risk: "medium",
+	permission: { name: "process.run", risk: "dangerous" },
+	risk: "dangerous",
 	runtimeOutputs: fallible([
 		{
 			name: "application_id",

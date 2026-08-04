@@ -15,6 +15,8 @@ import type {
 	SimulationVariableSnapshot,
 } from "@/lib/types";
 import { getEdgeExecutionOrder, getEdgeExecutionOrderErrors } from "@/utils/editor-graph";
+import { createHttpActionError } from "@/utils/http-action-contract";
+import { SimulationHttpClientError, sendAuthorizedSimulationHttpRequest } from "@/utils/simulation-http-client";
 import type {
 	NodeExecutionResult,
 	SimulationContext,
@@ -92,6 +94,7 @@ export async function createSimulationRun({
 	defaultVariables = [],
 	edges,
 	globalVariables = {},
+	httpSimulation,
 	nodes,
 	onStep,
 	overrides,
@@ -111,6 +114,10 @@ export async function createSimulationRun({
 		failed: false,
 		globalVariables: structuredClone(globalVariables),
 		halted: false,
+		httpSimulation: {
+			authorizedOrigins: new Set(httpSimulation.authorizedOrigins),
+			mode: httpSimulation.mode,
+		},
 		nodeOutputs: {},
 		nodesById: new Map(nodes.map((node) => [node.id, node])),
 		onStep,
@@ -336,23 +343,6 @@ async function executeResolvedNodeFrame(
 		}
 	}
 
-	if (node.data.actionType === "action.message_box" && !failed) {
-		const selectedButton =
-			sideEffectResults.find(
-				(sideEffectResult) => sideEffectResult.type === "message_box" && sideEffectResult.nodeId === node.id,
-			)?.button ??
-			getMessageBoxButtons(node)[0] ??
-			"ok";
-		context.nodeOutputs[node.id] = {
-			...(context.nodeOutputs[node.id] ?? {}),
-			button: selectedButton,
-		};
-		await pushStep(context, {
-			level: "info",
-			message: `[Simulation] MessageBox (${node.id}) returned "${selectedButton}".`,
-		});
-	}
-
 	const afterExecuteTraces =
 		(await getNodeDefinition(node.data.actionType)?.simulation?.afterExecute?.({
 			api: nodeSimulationApi,
@@ -517,7 +507,7 @@ async function processWhileFrame(
 
 	let conditionPassed: boolean;
 	try {
-		conditionPassed = evaluateIfNode(node, context);
+		conditionPassed = await evaluateIfNode(node, context);
 	} catch (error) {
 		context.failed = true;
 		await pushStep(context, {
@@ -641,7 +631,7 @@ async function determineOutputHandle(
 	}
 
 	if (node.data.actionType === "control.if") {
-		const result = evaluateIfNode(node, context);
+		const result = await evaluateIfNode(node, context);
 		await pushStep(context, {
 			level: "info",
 			message: `[Simulation] If / Else ${node.id} evaluated to ${result ? "true" : "false"}.`,
@@ -669,32 +659,36 @@ async function determineOutputHandle(
 	return "out";
 }
 
-function evaluateIfNode(node: Node<ScriptNodeData>, context: SimulationContext) {
+async function evaluateIfNode(node: Node<ScriptNodeData>, context: SimulationContext) {
 	const rows = Array.isArray(node.data.config.conditions) ? node.data.config.conditions.filter(isConditionRow) : [];
 
 	if (rows.length === 0) {
 		return false;
 	}
 
-	return rows.reduce((result, row, index) => {
+	let result = false;
+	for (const [index, row] of rows.entries()) {
 		const left = resolveTemplate(row.left, context);
 		const compared =
 			row.operator === "is_null_or_missing"
 				? !isTemplateDefined(row.left, context) || left === null
-				: getConditionEvaluationValue(
+				: await getConditionEvaluationValue(
 						left,
 						row.operator,
 						resolveTemplate(row.right, context),
 						resolveTemplate(row.rightEnd ?? "", context),
+						context.signal,
 					);
 		const rowResult = row.invert === true ? !compared : compared;
 
 		if (index === 0) {
-			return rowResult;
+			result = rowResult;
+			continue;
 		}
 
-		return row.combinator === "or" ? result || rowResult : result && rowResult;
-	}, false);
+		result = row.combinator === "or" ? result || rowResult : result && rowResult;
+	}
+	return result;
 }
 
 async function evaluateSwitchNode(node: Node<ScriptNodeData>, context: SimulationContext) {
@@ -769,8 +763,14 @@ function validateResolvedNumericNode(node: Node<ScriptNodeData>, context: Simula
 	return "";
 }
 
-function getConditionEvaluationValue(left: JsonValue, operator: string, right: JsonValue, rightEnd: JsonValue) {
-	const result = evaluateConditionValues(left, operator, right, rightEnd);
+async function getConditionEvaluationValue(
+	left: JsonValue,
+	operator: string,
+	right: JsonValue,
+	rightEnd: JsonValue,
+	signal?: AbortSignal,
+) {
+	const result = await evaluateConditionValues(left, operator, right, rightEnd, signal);
 	if ("error" in result) {
 		throw new Error(result.error);
 	}
@@ -930,11 +930,28 @@ async function executeHttpRequestNode(
 	const startedAt = performance.now();
 	let method = getConfigString(node, "method");
 	let url = getConfigString(node, "url");
-	let headers: Headers;
 	try {
 		method = normalizeHttpMethod(method);
+		if (context.httpSimulation.mode === "mock") {
+			return {
+				failed: false,
+				outputData: {
+					body: "",
+					duration_ms: 0,
+					headers: {},
+					status_code: 200,
+					status_text: "Mocked",
+				},
+			};
+		}
 		url = String(resolveTemplate(url, context)).trim();
-		headers = createHttpHeaders(node, context);
+		const origin = new URL(url).origin;
+		if (!context.httpSimulation.authorizedOrigins.has(origin)) {
+			throw new SimulationHttpClientError(
+				`Destination ${origin} was not authorized for this simulation.`,
+				"ORIGIN_NOT_AUTHORIZED",
+			);
+		}
 	} catch (error) {
 		return {
 			failed: true,
@@ -957,20 +974,25 @@ async function executeHttpRequestNode(
 	context.signal?.addEventListener("abort", forwardAbort, { once: true });
 
 	try {
+		const headers = createHttpHeaders(node, context);
 		const body = resolveHttpRequestBody(node, context, headers);
-		const response = await window.fetch(url, {
-			method,
-			headers,
-			body: method === "GET" || method === "HEAD" || body.length === 0 ? undefined : body,
-			signal: abortController.signal,
-		});
-		const responseBody = await response.text();
-		const responseHeaders = getResponseHeaders(response.headers);
+		const response = await sendAuthorizedSimulationHttpRequest(
+			{
+				authorizedOrigins: [...context.httpSimulation.authorizedOrigins],
+				body: method === "GET" || method === "HEAD" ? "" : body,
+				headers,
+				method,
+				timeoutMs: Math.round(timeoutSeconds * 1000),
+				url,
+			},
+			abortController.signal,
+		);
+		const responseBody = response.body;
 		const json = parseJsonValue(responseBody);
 		const outputData: Record<string, JsonValue> = {
-			status_code: response.status,
+			status_code: response.statusCode,
 			status_text: response.statusText,
-			headers: responseHeaders,
+			headers: response.headers,
 			body: responseBody,
 			duration_ms: Math.round(performance.now() - startedAt),
 		};
@@ -1051,6 +1073,8 @@ function createHttpHeaders(node: Node<ScriptNodeData>, context: SimulationContex
 			setSimulatedHttpHeader(headers, name, formatValue(value), context);
 		}
 	}
+	const userAgent = getConfigString(node, "userAgent");
+	if (userAgent.trim()) setSimulatedHttpHeader(headers, "user-agent", userAgent, context);
 
 	return headers;
 }
@@ -1074,18 +1098,7 @@ function setSimulatedHttpHeader(
 		throw new Error(`invalid HTTP header value for ${name}`);
 	}
 
-	if (name.toLowerCase() !== "user-agent") {
-		headers.set(name, value);
-	}
-}
-
-function getResponseHeaders(headers: Headers): Record<string, JsonValue> {
-	const responseHeaders: Record<string, JsonValue> = {};
-	headers.forEach((value, key) => {
-		responseHeaders[key] = value;
-	});
-
-	return responseHeaders;
+	headers.set(name, value);
 }
 
 function createHttpErrorObject(
@@ -1095,28 +1108,26 @@ function createHttpErrorObject(
 	durationMs: number,
 ): Record<string, JsonValue> {
 	const isTimeout = error instanceof DOMException && error.name === "AbortError";
-	const isBrowserFetchFailure = error instanceof TypeError;
+	const serviceError = error instanceof SimulationHttpClientError ? error : null;
 	const message = isTimeout
 		? `HTTP request timed out after ${durationMs}ms.`
-		: isBrowserFetchFailure
-			? "Browser fetch failed. The target may be blocking cross-origin browser requests with CORS, the page may be blocking mixed HTTP content, or the network request failed."
-			: error instanceof Error
-				? error.message
-				: "HTTP request failed.";
+		: error instanceof Error
+			? error.message
+			: "HTTP request failed.";
 
-	return {
-		message,
-		code: isTimeout ? "HTTP_TIMEOUT" : isBrowserFetchFailure ? "BROWSER_FETCH_BLOCKED" : "HTTP_REQUEST_FAILED",
-		type: "http",
-		retryable: true,
-		details: {
-			method,
-			url,
-			duration_ms: durationMs,
-			client_side: true,
-			possible_causes: ["cors", "mixed_content", "network"],
-		},
-	};
+	return createHttpActionError(message, isTimeout ? "HTTP_TIMEOUT" : (serviceError?.code ?? "HTTP_REQUEST_FAILED"), {
+		method,
+		destination: safeHttpOrigin(url),
+		duration_ms: durationMs,
+	});
+}
+
+function safeHttpOrigin(value: string) {
+	try {
+		return new URL(value).origin;
+	} catch {
+		return "invalid URL";
+	}
 }
 
 function createNodeSideEffects(node: Node<ScriptNodeData>, context: SimulationContext): SimulationSideEffect[] {
@@ -1158,19 +1169,6 @@ function getExecutionDetail(node: Node<ScriptNodeData>, _context: SimulationCont
 	}
 
 	return node.data.kind === "trigger" ? "Trigger fired." : "";
-}
-
-function getMessageBoxButtons(node: Node<ScriptNodeData>) {
-	switch (getConfigString(node, "buttons")) {
-		case "ok_cancel":
-			return ["ok", "cancel"];
-		case "yes_no":
-			return ["yes", "no"];
-		case "yes_no_cancel":
-			return ["yes", "no", "cancel"];
-		default:
-			return ["ok"];
-	}
 }
 
 function resolveJsonCompatibleInput(value: string, context: SimulationContext): JsonValue {

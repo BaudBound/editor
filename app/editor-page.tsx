@@ -31,7 +31,9 @@ import { ExportWizardModal } from "@/components/modals/export-wizard-modal";
 import { HelpModal } from "@/components/modals/help-modal";
 import { NodeFinderModal } from "@/components/modals/node-finder-modal";
 import { ProjectSettingsModal } from "@/components/modals/project-settings-modal";
+import { SimulationFormDialog } from "@/components/modals/simulation-form-dialog";
 import { SimulationMessageBoxDialog } from "@/components/modals/simulation-message-box-dialog";
+import { SimulationNetworkAuthorizationDialog } from "@/components/modals/simulation-network-authorization-dialog";
 import { VerificationErrorModal } from "@/components/modals/verification-error-modal";
 import { VerificationModal } from "@/components/modals/verification-modal";
 import { SaveRecoveryDialog } from "@/components/projects/save-recovery-dialog";
@@ -105,6 +107,7 @@ import {
 	type SimulationStep,
 	yieldSimulationTask,
 } from "@/utils/simulation";
+import { getSimulationHttpPreflight } from "@/utils/simulation-http-preflight";
 import { getSimulationStepDelay, getSimulationTriggers } from "@/utils/simulation-settings";
 import { executeSimulationSideEffects } from "@/utils/simulation-side-effects";
 import { renameVariableReferences, type VariableRename } from "@/utils/variable-reference-renaming";
@@ -195,10 +198,13 @@ function createSimulationPreflightCheck(
 }
 
 type SimulationMessageBoxState = Extract<SimulationSideEffect, { type: "message_box" }> | null;
+type SimulationFormDialogState = Extract<SimulationSideEffect, { type: "form_dialog" }> | null;
+type SimulationFormDialogResult = Extract<SimulationSideEffectResult, { type: "form_dialog" }>;
 
 type SimulationLifecycle = {
 	abortController: AbortController | null;
 	active: boolean;
+	authorizedHttpOrigins: ReadonlySet<string>;
 	runId: number;
 };
 
@@ -217,8 +223,17 @@ export function EditorPage({
 	const router = useRouter();
 	const handleCopyGraphRef = useRef<(nodeId?: string) => boolean>(() => false);
 	const nodeFocusRequestIdRef = useRef(0);
-	const simulationLifecycleRef = useRef<SimulationLifecycle>({ abortController: null, active: false, runId: 0 });
+	const simulationLifecycleRef = useRef<SimulationLifecycle>({
+		abortController: null,
+		active: false,
+		authorizedHttpOrigins: new Set(),
+		runId: 0,
+	});
 	const simulationMessageBoxResolveRef = useRef<((button: string) => void) | null>(null);
+	const simulationFormDialogResolveRef = useRef<
+		((result: SimulationFormDialogResult | "aborted" | "replaced") => void) | null
+	>(null);
+	const simulationNetworkAuthorizationResolveRef = useRef<((authorized: boolean) => void) | null>(null);
 	const simulationPersistentVariablesRef = useRef<Record<string, JsonValue>>(
 		Object.fromEntries(
 			initialProject.defaultVariables
@@ -280,6 +295,7 @@ export function EditorPage({
 		simulation: true,
 	});
 	const [simulationSettings, setSimulationSettings] = useState<SimulationSettings>({
+		httpMode: "mock",
 		speed: "realtime",
 	});
 	const [simulationOverrides, setSimulationOverrides] = useState<SimulationOverride[]>([]);
@@ -294,6 +310,8 @@ export function EditorPage({
 	const [activeSimulationNodeId, setActiveSimulationNodeId] = useState<string | null>(null);
 	const [simulationVariables, setSimulationVariables] = useState<SimulationVariableSnapshot[]>([]);
 	const [simulationMessageBox, setSimulationMessageBox] = useState<SimulationMessageBoxState>(null);
+	const [simulationFormDialog, setSimulationFormDialog] = useState<SimulationFormDialogState>(null);
+	const [simulationNetworkAuthorizationOrigins, setSimulationNetworkAuthorizationOrigins] = useState<string[]>([]);
 	const [systemLogs, setSystemLogs] = useState<LogEntry[]>(() =>
 		createConsoleLogs(
 			initialProject.settings.name,
@@ -329,6 +347,18 @@ export function EditorPage({
 		[scriptNodes, secretDeclarations, defaultVariables],
 	);
 	const riskLevel = useMemo(() => calculateRiskLevel(permissions), [permissions]);
+	const variableEntries = useMemo(
+		() =>
+			createVariablePanelEntries(
+				projectSettings,
+				scriptNodes,
+				simulationVariables,
+				secretDeclarations,
+				defaultVariables,
+				scriptSettings,
+			),
+		[projectSettings, scriptNodes, simulationVariables, secretDeclarations, defaultVariables, scriptSettings],
+	);
 	const exportSummary = useMemo(
 		() =>
 			createExportSummary(
@@ -355,6 +385,7 @@ export function EditorPage({
 				permissions,
 				defaultVariables,
 				secretDeclarations,
+				variables: variableEntries,
 				scriptName: projectSettings.name,
 				targetRuntimes: projectSettings.targetRuntimes,
 			}),
@@ -367,6 +398,7 @@ export function EditorPage({
 			projectSettings.name,
 			projectSettings.targetRuntimes,
 			secretDeclarations,
+			variableEntries,
 		],
 	);
 	const verificationSignature = useMemo(
@@ -380,18 +412,6 @@ export function EditorPage({
 				defaultVariables,
 			),
 		[projectSettings, scriptNodes, edges, assets, secretDeclarations, defaultVariables],
-	);
-	const variableEntries = useMemo(
-		() =>
-			createVariablePanelEntries(
-				projectSettings,
-				scriptNodes,
-				simulationVariables,
-				secretDeclarations,
-				defaultVariables,
-				scriptSettings,
-			),
-		[projectSettings, scriptNodes, simulationVariables, secretDeclarations, defaultVariables, scriptSettings],
 	);
 	const normalizedProjectSettings = {
 		...projectSettings,
@@ -460,7 +480,11 @@ export function EditorPage({
 		lifecycle.abortController?.abort(reason);
 		lifecycle.abortController = null;
 		lifecycle.active = false;
+		lifecycle.authorizedHttpOrigins = new Set();
 		lifecycle.runId += 1;
+		simulationNetworkAuthorizationResolveRef.current?.(false);
+		simulationNetworkAuthorizationResolveRef.current = null;
+		setSimulationNetworkAuthorizationOrigins([]);
 		setActiveScheduleTriggerId(null);
 		setActiveSimulationNodeId(null);
 	}, []);
@@ -509,13 +533,17 @@ export function EditorPage({
 		onUndo: history.undo,
 	});
 
-	const startSimulationLifecycle = useCallback((abortController: AbortController) => {
-		const lifecycle = simulationLifecycleRef.current;
-		lifecycle.abortController = abortController;
-		lifecycle.active = true;
-		lifecycle.runId += 1;
-		return lifecycle.runId;
-	}, []);
+	const startSimulationLifecycle = useCallback(
+		(abortController: AbortController, authorizedHttpOrigins: readonly string[]) => {
+			const lifecycle = simulationLifecycleRef.current;
+			lifecycle.abortController = abortController;
+			lifecycle.active = true;
+			lifecycle.authorizedHttpOrigins = new Set(authorizedHttpOrigins);
+			lifecycle.runId += 1;
+			return lifecycle.runId;
+		},
+		[],
+	);
 
 	const completeSimulationLifecycle = useCallback((runId: number) => {
 		const lifecycle = simulationLifecycleRef.current;
@@ -525,6 +553,7 @@ export function EditorPage({
 
 		lifecycle.abortController = null;
 		lifecycle.active = false;
+		lifecycle.authorizedHttpOrigins = new Set();
 		setActiveScheduleTriggerId(null);
 		setActiveSimulationNodeId(null);
 	}, []);
@@ -611,6 +640,27 @@ export function EditorPage({
 		expandPanel("bottom");
 	};
 
+	const requestSimulationNetworkAuthorization = useCallback(
+		(origins: readonly string[]) =>
+			new Promise<boolean>((resolve) => {
+				if (origins.length === 0) {
+					resolve(true);
+					return;
+				}
+				simulationNetworkAuthorizationResolveRef.current?.(false);
+				simulationNetworkAuthorizationResolveRef.current = resolve;
+				setSimulationNetworkAuthorizationOrigins([...origins]);
+			}),
+		[],
+	);
+
+	const completeSimulationNetworkAuthorization = useCallback((authorized: boolean) => {
+		const resolve = simulationNetworkAuthorizationResolveRef.current;
+		simulationNetworkAuthorizationResolveRef.current = null;
+		setSimulationNetworkAuthorizationOrigins([]);
+		resolve?.(authorized);
+	}, []);
+
 	const showSimulationMessageBox = useCallback(
 		(sideEffect: Extract<SimulationSideEffect, { type: "message_box" }>, signal: AbortSignal) =>
 			new Promise<string>((resolve) => {
@@ -620,6 +670,7 @@ export function EditorPage({
 				}
 
 				simulationMessageBoxResolveRef.current?.("replaced");
+				simulationFormDialogResolveRef.current?.("replaced");
 				const finish = (button: string) => {
 					signal.removeEventListener("abort", handleAbort);
 					if (simulationMessageBoxResolveRef.current === finish) {
@@ -637,12 +688,51 @@ export function EditorPage({
 		[],
 	);
 
+	const showSimulationFormDialog = useCallback(
+		(sideEffect: Extract<SimulationSideEffect, { type: "form_dialog" }>, signal: AbortSignal) =>
+			new Promise<SimulationFormDialogResult | "aborted" | "replaced">((resolve) => {
+				if (signal.aborted) {
+					resolve("aborted");
+					return;
+				}
+
+				simulationMessageBoxResolveRef.current?.("replaced");
+				simulationFormDialogResolveRef.current?.("replaced");
+				const finish = (result: SimulationFormDialogResult | "aborted" | "replaced") => {
+					signal.removeEventListener("abort", handleAbort);
+					if (simulationFormDialogResolveRef.current === finish) {
+						simulationFormDialogResolveRef.current = null;
+					}
+					setSimulationFormDialog(null);
+					resolve(result);
+				};
+				const handleAbort = () => finish("aborted");
+
+				simulationFormDialogResolveRef.current = finish;
+				setSimulationMessageBox(null);
+				setSimulationFormDialog(sideEffect);
+				signal.addEventListener("abort", handleAbort, { once: true });
+			}),
+		[],
+	);
+
 	const handleSimulationMessageBoxSelect = useCallback((button: string) => {
 		const resolve = simulationMessageBoxResolveRef.current;
 		simulationMessageBoxResolveRef.current = null;
 		setSimulationMessageBox(null);
 		resolve?.(button);
 	}, []);
+
+	const handleSimulationFormDialogComplete = useCallback(
+		(result: Omit<SimulationFormDialogResult, "nodeId" | "type">) => {
+			const resolve = simulationFormDialogResolveRef.current;
+			if (!resolve || !simulationFormDialog) return;
+			simulationFormDialogResolveRef.current = null;
+			setSimulationFormDialog(null);
+			resolve({ ...result, nodeId: simulationFormDialog.nodeId, type: "form_dialog" });
+		},
+		[simulationFormDialog],
+	);
 
 	const handleSimulationStep = useCallback(
 		async (step: SimulationStep, runId: number, signal: AbortSignal): Promise<SimulationSideEffectResult[]> => {
@@ -691,13 +781,14 @@ export function EditorPage({
 
 			const sideEffectResult = await executeSimulationSideEffects(step.sideEffects, assets, signal, {
 				showMessageBox: showSimulationMessageBox,
+				showFormDialog: showSimulationFormDialog,
 			});
 			if (sideEffectResult.traces.length > 0 && simulationLifecycleRef.current.runId === runId && !signal.aborted) {
 				flushSync(() => appendSimulationLogs(sideEffectResult.traces));
 			}
 			return sideEffectResult.results;
 		},
-		[appendOutputLogs, appendSimulationLogs, assets, showSimulationMessageBox],
+		[appendOutputLogs, appendSimulationLogs, assets, showSimulationMessageBox, showSimulationFormDialog],
 	);
 
 	const runSimulationTrigger = useCallback(
@@ -742,6 +833,10 @@ export function EditorPage({
 					defaultVariables,
 					scriptSettings,
 					globalVariables: simulationGlobalVariablesRef.current,
+					httpSimulation: {
+						authorizedOrigins: [...simulationLifecycleRef.current.authorizedHttpOrigins],
+						mode: simulationSettings.httpMode,
+					},
 					persistentVariables: simulationPersistentVariablesRef.current,
 					secretValues: createSimulationSecretValues(secretDeclarations, simulationSecretValues),
 					signal: abortController.signal,
@@ -780,14 +875,19 @@ export function EditorPage({
 			scriptNodes,
 			simulationSecretValues,
 			simulationOverrides,
+			simulationSettings.httpMode,
 			simulationSettings.speed,
 		],
 	);
 
 	const startSimulationSession = useCallback(
-		(initialLogs: SimulationTraceEntry[] = []) => {
+		(initialLogs: SimulationTraceEntry[] = [], authorizedHttpOrigins: readonly string[] = []) => {
 			const currentLifecycle = simulationLifecycleRef.current;
 			if (currentLifecycle.active && currentLifecycle.abortController) {
+				currentLifecycle.authorizedHttpOrigins = new Set([
+					...currentLifecycle.authorizedHttpOrigins,
+					...authorizedHttpOrigins,
+				]);
 				return currentLifecycle;
 			}
 
@@ -816,7 +916,7 @@ export function EditorPage({
 			}
 
 			const abortController = new AbortController();
-			const runId = startSimulationLifecycle(abortController);
+			startSimulationLifecycle(abortController, authorizedHttpOrigins);
 			expandPanel("bottom");
 			setSimulationStatus("waiting");
 			setSimulationLogs([
@@ -827,85 +927,113 @@ export function EditorPage({
 				},
 			]);
 			setSimulationVariables([]);
-			return { abortController, active: true, runId };
+			return simulationLifecycleRef.current;
 		},
 		[appendSimulationLogs, appendSystemLogs, expandPanel, scriptNodes, startSimulationLifecycle],
 	);
 
-	const startVerifiedSimulationSession = useCallback(() => {
-		const triggerNodes = getSimulationTriggers(scriptNodes);
-		const secretProblems = getSecretSimulationProblems(secretDeclarations, simulationSecretValues);
-		const settingProblems = getScriptSettingSimulationProblems(scriptSettings);
-		const simulationChecks: VerificationCheck[] = [
-			...verificationChecks,
-			createSimulationPreflightCheck(
-				"simulation-trigger",
-				"Simulation Trigger",
-				"Checking that at least one trigger is available before activating simulation.",
-				triggerNodes.length === 0 ? ["No trigger nodes are available."] : [],
-				`${triggerNodes.length} trigger${triggerNodes.length === 1 ? " is" : "s are"} available.`,
-			),
-			createSimulationPreflightCheck(
-				"simulation-secrets",
-				"Simulation Secrets",
-				"Checking required browser-session secret values before activating simulation.",
-				secretProblems,
-				"All required simulation secrets have values.",
-			),
-			createSimulationPreflightCheck(
-				"simulation-settings",
-				"Script Settings",
-				"Checking required Script Settings before activating simulation.",
-				settingProblems,
-				"All required Script Settings have a simulation override or package default.",
-			),
-		];
-		const packageSummary = summarizeVerification(verificationChecks);
-		const simulationSummary = summarizeVerification(simulationChecks);
-		const verificationLogs = createVerificationLogEntries("[Simulation] Preflight", simulationChecks);
+	const prepareVerifiedSimulationSession = useCallback(
+		async (triggerNodeId: string) => {
+			const triggerNodes = getSimulationTriggers(scriptNodes);
+			const secretProblems = getSecretSimulationProblems(secretDeclarations, simulationSecretValues);
+			const settingProblems = getScriptSettingSimulationProblems(scriptSettings);
+			const networkPreflight = getSimulationHttpPreflight(scriptNodes, edges, triggerNodeId);
+			const networkProblems = simulationSettings.httpMode === "live" ? networkPreflight.problems : [];
+			const simulationChecks: VerificationCheck[] = [
+				...verificationChecks,
+				createSimulationPreflightCheck(
+					"simulation-trigger",
+					"Simulation Trigger",
+					"Checking that at least one trigger is available before activating simulation.",
+					triggerNodes.length === 0 ? ["No trigger nodes are available."] : [],
+					`${triggerNodes.length} trigger${triggerNodes.length === 1 ? " is" : "s are"} available.`,
+				),
+				createSimulationPreflightCheck(
+					"simulation-secrets",
+					"Simulation Secrets",
+					"Checking required browser-session secret values before activating simulation.",
+					secretProblems,
+					"All required simulation secrets have values.",
+				),
+				createSimulationPreflightCheck(
+					"simulation-settings",
+					"Script Settings",
+					"Checking required Script Settings before activating simulation.",
+					settingProblems,
+					"All required Script Settings have a simulation override or package default.",
+				),
+				createSimulationPreflightCheck(
+					"simulation-network",
+					"HTTP Simulation",
+					"Checking network side effects and literal destinations before activating simulation.",
+					networkProblems,
+					simulationSettings.httpMode === "mock"
+						? `${networkPreflight.requestCount} reachable HTTP request node${networkPreflight.requestCount === 1 ? " will" : "s will"} be mocked without network access.`
+						: `${networkPreflight.requestCount} reachable HTTP request node${networkPreflight.requestCount === 1 ? " has" : "s have"} ${networkPreflight.origins.length} literal destination origin${networkPreflight.origins.length === 1 ? "" : "s"}.`,
+				),
+			];
+			const packageSummary = summarizeVerification(verificationChecks);
+			const simulationSummary = summarizeVerification(simulationChecks);
+			const verificationLogs = createVerificationLogEntries("[Simulation] Preflight", simulationChecks);
 
-		setVerificationRecord({ signature: verificationSignature, status: packageSummary.status });
-		appendSystemLogs(createVerificationLogEntries("Simulation preflight", simulationChecks));
+			setVerificationRecord({ signature: verificationSignature, status: packageSummary.status });
+			appendSystemLogs(createVerificationLogEntries("Simulation preflight", simulationChecks));
 
-		if (simulationSummary.status === "failed") {
-			setVerificationErrorDialog({
-				open: true,
-				title: "Simulation Blocked",
-				description: "The script or its required simulation inputs failed preflight. Nothing was started or activated.",
-				checks: simulationChecks,
-			});
-			appendSimulationLogs([
-				...verificationLogs,
-				{
-					level: "error",
-					message: "[Simulation] Preflight failed. Simulation remained inactive.",
-				},
-			]);
-			expandPanel("bottom");
-			return null;
-		}
+			if (simulationSummary.status === "failed") {
+				setVerificationErrorDialog({
+					open: true,
+					title: "Simulation Blocked",
+					description:
+						"The script or its required simulation inputs failed preflight. Nothing was started or activated.",
+					checks: simulationChecks,
+				});
+				appendSimulationLogs([
+					...verificationLogs,
+					{
+						level: "error",
+						message: "[Simulation] Preflight failed. Simulation remained inactive.",
+					},
+				]);
+				expandPanel("bottom");
+				return null;
+			}
 
-		const currentLifecycle = simulationLifecycleRef.current;
-		if (currentLifecycle.active && currentLifecycle.abortController) {
-			return currentLifecycle;
-		}
+			const currentLifecycle = simulationLifecycleRef.current;
+			const alreadyAuthorized = networkPreflight.origins.every((origin) =>
+				currentLifecycle.authorizedHttpOrigins.has(origin),
+			);
+			if (simulationSettings.httpMode === "live" && !alreadyAuthorized) {
+				const authorized = await requestSimulationNetworkAuthorization(networkPreflight.origins);
+				if (!authorized) {
+					appendSimulationLogs([
+						{ level: "warn", message: "[Simulation] Live HTTP authorization was cancelled. Nothing was started." },
+					]);
+					expandPanel("bottom");
+					return null;
+				}
+			}
 
-		return startSimulationSession(verificationLogs);
-	}, [
-		appendSimulationLogs,
-		appendSystemLogs,
-		expandPanel,
-		scriptNodes,
-		secretDeclarations,
-		simulationSecretValues,
-		scriptSettings,
-		startSimulationSession,
-		verificationChecks,
-		verificationSignature,
-	]);
+			return startSimulationSession(verificationLogs, networkPreflight.origins);
+		},
+		[
+			appendSimulationLogs,
+			appendSystemLogs,
+			edges,
+			expandPanel,
+			requestSimulationNetworkAuthorization,
+			scriptNodes,
+			secretDeclarations,
+			simulationSecretValues,
+			simulationSettings.httpMode,
+			scriptSettings,
+			startSimulationSession,
+			verificationChecks,
+			verificationSignature,
+		],
+	);
 
 	const handleTriggerSimulation = useCallback(
-		(triggerNodeId: string, payload: SimulationTriggerPayload) => {
+		async (triggerNodeId: string, payload: SimulationTriggerPayload) => {
 			if (simulationStatus === "running") {
 				appendSimulationLogs([
 					{
@@ -917,7 +1045,7 @@ export function EditorPage({
 				return;
 			}
 
-			const lifecycle = startVerifiedSimulationSession();
+			const lifecycle = await prepareVerifiedSimulationSession(triggerNodeId);
 			if (!lifecycle?.abortController) {
 				return;
 			}
@@ -930,11 +1058,11 @@ export function EditorPage({
 				triggerNodeId,
 			});
 		},
-		[appendSimulationLogs, expandPanel, runSimulationTrigger, simulationStatus, startVerifiedSimulationSession],
+		[appendSimulationLogs, expandPanel, prepareVerifiedSimulationSession, runSimulationTrigger, simulationStatus],
 	);
 
 	const handleStartScheduleSimulation = useCallback(
-		(triggerNodeId: string) => {
+		async (triggerNodeId: string) => {
 			if (activeScheduleTriggerId && activeScheduleTriggerId !== triggerNodeId) {
 				appendSimulationLogs([
 					{
@@ -956,7 +1084,7 @@ export function EditorPage({
 				return;
 			}
 
-			const lifecycle = startVerifiedSimulationSession();
+			const lifecycle = await prepareVerifiedSimulationSession(triggerNodeId);
 			if (!lifecycle?.abortController) {
 				return;
 			}
@@ -969,7 +1097,7 @@ export function EditorPage({
 				},
 			]);
 		},
-		[activeScheduleTriggerId, appendSimulationLogs, expandPanel, simulationStatus, startVerifiedSimulationSession],
+		[activeScheduleTriggerId, appendSimulationLogs, expandPanel, prepareVerifiedSimulationSession, simulationStatus],
 	);
 
 	const handleStopScheduleSimulation = useCallback(
@@ -994,6 +1122,20 @@ export function EditorPage({
 		setSimulationStatus("stopped");
 		appendSimulationLogs([{ level: "warn", message: "[Simulation] Stop requested by user." }]);
 	};
+
+	const handleSimulationSettingsChange = useCallback(
+		(settings: SimulationSettings) => {
+			if (settings.httpMode !== simulationSettings.httpMode && simulationLifecycleRef.current.active) {
+				abortSimulationLifecycle("HTTP simulation mode changed");
+				setSimulationStatus("stopped");
+				appendSimulationLogs([
+					{ level: "info", message: "[Simulation] Active session stopped because HTTP simulation mode changed." },
+				]);
+			}
+			setSimulationSettings(settings);
+		},
+		[abortSimulationLifecycle, appendSimulationLogs, simulationSettings.httpMode],
+	);
 
 	const handleSaveProjectSettings = (settings: ProjectSettings) => {
 		setProjectSettings(settings);
@@ -1592,7 +1734,7 @@ export function EditorPage({
 					collapsed={collapsed.right}
 					onAddSimulationOverride={handleAddSimulationOverride}
 					onRemoveSimulationOverride={handleRemoveSimulationOverride}
-					onSimulationSettingsChange={setSimulationSettings}
+					onSimulationSettingsChange={handleSimulationSettingsChange}
 					onStartScheduleSimulation={handleStartScheduleSimulation}
 					onStopSimulation={handleStopSimulation}
 					onStopScheduleSimulation={handleStopScheduleSimulation}
@@ -1688,7 +1830,18 @@ export function EditorPage({
 				onClose={() => setNodeFinderOpen(false)}
 				onSelectNode={handleFindNode}
 			/>
+			<SimulationNetworkAuthorizationDialog
+				open={simulationNetworkAuthorizationOrigins.length > 0}
+				origins={simulationNetworkAuthorizationOrigins}
+				onAuthorize={() => completeSimulationNetworkAuthorization(true)}
+				onCancel={() => completeSimulationNetworkAuthorization(false)}
+			/>
 			<SimulationMessageBoxDialog messageBox={simulationMessageBox} onSelect={handleSimulationMessageBoxSelect} />
+			<SimulationFormDialog
+				assets={assets}
+				dialog={simulationFormDialog}
+				onComplete={handleSimulationFormDialogComplete}
+			/>
 			<Toaster position="bottom-right" closeButton richColors />
 		</div>
 	);

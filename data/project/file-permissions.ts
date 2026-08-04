@@ -20,6 +20,8 @@ const sensitivePathMarkers = [
 
 export const fileReadPermission: PermissionSummary = { name: "file.read", risk: "medium" };
 export const readSensitiveFilePermission: PermissionSummary = { name: "file.read.any", risk: "dangerous" };
+export const fileWatchLimitedPermission: PermissionSummary = { name: "file.watch.limited", risk: "medium" };
+export const watchAnyFilePermission: PermissionSummary = { name: "file.watch.any", risk: "dangerous" };
 export const fileWriteLimitedPermission: PermissionSummary = { name: "file.write.limited", risk: "high" };
 export const writeAnyFilePermission: PermissionSummary = { name: "file.write.any", risk: "dangerous" };
 export const fileDeleteLimitedPermission: PermissionSummary = { name: "file.delete.limited", risk: "high" };
@@ -27,6 +29,10 @@ export const deleteAnyFilePermission: PermissionSummary = { name: "file.delete.a
 
 export function createReadFilePermission(path: JsonValue | undefined): PermissionSummary {
 	return isSensitiveOrUnboundedPath(configString(path)) ? readSensitiveFilePermission : fileReadPermission;
+}
+
+export function createWatchFilePermission(path: JsonValue | undefined): PermissionSummary {
+	return isSensitiveOrUnboundedPath(configString(path)) ? watchAnyFilePermission : fileWatchLimitedPermission;
 }
 
 export function createWriteFilePermission(path: JsonValue | undefined): PermissionSummary {

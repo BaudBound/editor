@@ -2,6 +2,7 @@ import type { Node } from "@xyflow/react";
 import { Volume2 } from "lucide-react";
 import type { ScriptNodeData } from "@/lib/types";
 import type { SimulationContext } from "@/utils/simulation-types";
+import { validateVariableInput } from "../../config-field-validation";
 import type { NodeSimulationApi } from "../../node-definition";
 import { defineNode } from "../../node-definition";
 import { actionAudio } from "../shared";
@@ -27,6 +28,11 @@ export const playSoundNode = defineNode({
 		return source === "file_path"
 			? [requiredConfig(config, "filePath", "audio file path")].filter(Boolean)
 			: [requiredConfig(config, "assetPath", "audio asset")].filter(Boolean);
+	},
+	validateVariables: (config, variables) => {
+		if (configString(config, "source") !== "file_path") return [];
+		const error = validateVariableInput(configString(config, "filePath"), variables, "file-path");
+		return error ? [`audio file path: ${error}`] : [];
 	},
 	validateGraph: ({ context, node }) => {
 		const source = configString(node.data.config, "source") === "file_path" ? "file_path" : "asset";

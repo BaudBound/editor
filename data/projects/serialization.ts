@@ -3,20 +3,26 @@ import type { EditorEdgeStyle } from "@/data/editor/flow-canvas";
 import { isEditorEdgeStyle } from "@/data/editor/flow-canvas";
 import { getNodeDefinition, getNodePorts, getRuntimeDataOutputs } from "@/data/nodes/registry";
 import { targetRuntimes } from "@/data/project/runtimes";
-import { inferListItemType, inferTypedValueType } from "@/data/project/typed-values";
+import {
+	inferListItemType,
+	inferTypedValueType,
+	normalizeListItemType,
+	validateTypedValue,
+} from "@/data/project/typed-values";
 import { variableTypes } from "@/data/project/variables";
-import type {
-	ActionType,
-	AssetKind,
-	DefaultVariable,
-	EditorAsset,
-	EditorComment,
-	JsonValue,
-	ProjectSettings,
-	RiskLevel,
-	ScriptNodeData,
-	ScriptSetting,
-	SecretDeclaration,
+import {
+	type ActionType,
+	type AssetKind,
+	type DefaultVariable,
+	type EditorAsset,
+	type EditorComment,
+	type JsonValue,
+	type ProjectSettings,
+	type RiskLevel,
+	type ScriptNodeData,
+	type ScriptSetting,
+	type SecretDeclaration,
+	scriptSettingTypes,
 } from "@/lib/types";
 import { isSelfConnection, withEdgeExecutionOrder } from "@/utils/editor-graph";
 import { DEFAULT_SCRIPT_VERSION } from "@/utils/script-repository";
@@ -531,60 +537,27 @@ function isSecretDeclaration(value: unknown): value is SecretDeclaration {
 }
 
 function isScriptSetting(value: unknown): value is ScriptSetting {
+	const type = isRecord(value) && typeof value.type === "string" ? value.type : "";
+	const itemType = isRecord(value) ? normalizeListItemType(value.itemType) : undefined;
 	if (
 		!isRecord(value) ||
 		typeof value.name !== "string" ||
 		typeof value.description !== "string" ||
 		typeof value.required !== "boolean" ||
-		!["string", "number", "boolean", "object", "list", "datetime", "duration", "file_path"].includes(
-			String(value.type),
-		) ||
-		(value.type === "list" &&
-			value.itemType !== undefined &&
-			!["string", "number", "boolean", "object", "datetime", "duration", "file_path"].includes(String(value.itemType)))
+		!scriptSettingTypes.includes(type as ScriptSetting["type"]) ||
+		(type === "list" ? !itemType : value.itemType !== undefined)
 	) {
 		return false;
 	}
 
 	return (
-		(value.defaultValue === undefined || scriptSettingValueMatchesType(value.type, value.defaultValue)) &&
-		(value.simulationValue === undefined || scriptSettingValueMatchesType(value.type, value.simulationValue))
+		(value.defaultValue === undefined ||
+			(isJsonValue(value.defaultValue) &&
+				validateTypedValue(type as ScriptSetting["type"], value.defaultValue, itemType) === null)) &&
+		(value.simulationValue === undefined ||
+			(isJsonValue(value.simulationValue) &&
+				validateTypedValue(type as ScriptSetting["type"], value.simulationValue, itemType) === null))
 	);
-}
-
-function scriptSettingValueMatchesType(type: unknown, value: unknown) {
-	if (!isJsonValue(value)) {
-		return false;
-	}
-	switch (type) {
-		case "string":
-		case "file_path":
-			return typeof value === "string";
-		case "number":
-			return typeof value === "number" && Number.isFinite(value);
-		case "boolean":
-			return typeof value === "boolean";
-		case "object":
-			return isRecord(value);
-		case "list":
-			return Array.isArray(value);
-		case "datetime":
-			return (
-				isRecord(value) &&
-				value.type === "datetime" &&
-				typeof value.value === "string" &&
-				!Number.isNaN(Date.parse(value.value))
-			);
-		case "duration":
-			return (
-				isRecord(value) &&
-				value.type === "duration" &&
-				typeof value.value === "number" &&
-				typeof value.unit === "string"
-			);
-		default:
-			return false;
-	}
 }
 
 function cloneEditorComment(comment: EditorComment): EditorComment {
@@ -618,19 +591,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function isDefaultVariable(value: unknown): value is DefaultVariable {
+	const type = isRecord(value) && typeof value.type === "string" ? value.type : "";
+	const itemType = isRecord(value) ? normalizeListItemType(value.itemType) : undefined;
 	return (
 		isRecord(value) &&
 		typeof value.name === "string" &&
 		typeof value.description === "string" &&
 		(value.scope === "runtime" || value.scope === "persistent") &&
-		typeof value.type === "string" &&
-		variableTypes.includes(value.type as DefaultVariable["type"]) &&
-		(value.type !== "list" ||
-			value.itemType === undefined ||
-			["string", "number", "boolean", "object", "datetime", "duration", "file_path"].includes(
-				String(value.itemType),
-			)) &&
-		isJsonValue(value.value)
+		variableTypes.includes(type as DefaultVariable["type"]) &&
+		(type === "list" ? !!itemType : value.itemType === undefined) &&
+		isJsonValue(value.value) &&
+		validateTypedValue(type as DefaultVariable["type"], value.value, itemType) === null
 	);
 }
 

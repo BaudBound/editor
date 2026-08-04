@@ -198,6 +198,13 @@ export const messageBoxTypeOptions: SelectOption[] = [
 export const messageBoxButtonOptions: SelectOption[] = [
 	{ label: "OK", value: "ok" },
 	{ label: "OK / Cancel", value: "ok_cancel" },
+	{ label: "Cancel / Confirm", value: "cancel_confirm" },
 	{ label: "Yes / No", value: "yes_no" },
 	{ label: "Yes / No / Cancel", value: "yes_no_cancel" },
+];
+
+export const desktopDialogSizeOptions: SelectOption[] = [
+	{ label: "Small", value: "small" },
+	{ label: "Medium", value: "medium" },
+	{ label: "Large", value: "large" },
 ];

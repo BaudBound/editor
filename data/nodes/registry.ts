@@ -1,6 +1,7 @@
 import type { Edge, Node, XYPosition } from "@xyflow/react";
 import {
 	Bot,
+	Clock,
 	Database,
 	FileCog,
 	FolderTree,
@@ -14,6 +15,7 @@ import {
 import {
 	createDeleteFilePermission,
 	createReadFilePermission,
+	createWatchFilePermission,
 	createWriteFilePermission,
 } from "@/data/project/file-permissions";
 import type {
@@ -29,6 +31,8 @@ import type {
 } from "@/lib/types";
 import { createGraphElementId } from "@/utils/graph-element-id";
 import { isDesktopTargetRuntime } from "../project/runtimes";
+import type { VariableReferenceCandidate } from "../project/variables";
+import { validateConfigField } from "./config-field-validation";
 import { beepNode } from "./definitions/actions/beep";
 import { calculateNode } from "./definitions/actions/calculate";
 import { clipboardNode } from "./definitions/actions/clipboard";
@@ -40,6 +44,7 @@ import { downloadFileNode } from "./definitions/actions/file-download";
 import { moveFileNode } from "./definitions/actions/file-move";
 import { readFileNode } from "./definitions/actions/file-read";
 import { writeFileNode } from "./definitions/actions/file-write";
+import { formDialogNode } from "./definitions/actions/form-dialog";
 import { formatTextNode } from "./definitions/actions/format-text";
 import { getActiveWindowNode } from "./definitions/actions/get-active-window";
 import { getClipboardNode } from "./definitions/actions/get-clipboard";
@@ -84,6 +89,7 @@ import { startupTriggerNode } from "./definitions/triggers/startup";
 import { webhookTriggerNode } from "./definitions/triggers/webhook";
 import { websocketTriggerNode } from "./definitions/triggers/websocket";
 import {
+	configVisibilityConditionMatches,
 	defaultInputPort,
 	defaultOutputPort,
 	failureErrorOutput,
@@ -125,6 +131,7 @@ const nodeDefinitions: NodeDefinition[] = [
 	websocketWriteNode,
 	notificationNode,
 	messageBoxNode,
+	formDialogNode,
 	getPixelColorNode,
 	readFileNode,
 	writeFileNode,
@@ -180,15 +187,20 @@ const actionPaletteCategories = [
 	{
 		id: "actions-output",
 		label: "Output & Timing",
-		icon: MessageSquare,
+		icon: Clock,
 		actionTypes: [
 			"action.log",
 			"action.delay",
 			"action.beep",
 			"action.notification",
-			"action.message_box",
 			"action.sound.play",
 		] satisfies ActionType[],
+	},
+	{
+		id: "actions-dialogs",
+		label: "Dialogs",
+		icon: MessageSquare,
+		actionTypes: ["action.message_box", "action.form_dialog"] satisfies ActionType[],
 	},
 	{
 		id: "actions-network",
@@ -517,6 +529,7 @@ export function getNodePermissions(actionType: ActionType, config: Record<string
 		(rule) =>
 			(rule.access === "delete" && definition.permission?.name === "file.delete.any") ||
 			(rule.access === "read" && definition.permission?.name === "file.read") ||
+			(rule.access === "watch" && definition.permission?.name === "file.watch.limited") ||
 			(rule.access === "write" && definition.permission?.name === "file.write.limited"),
 	);
 	const permissions = definition.permission && !replacesBasePermission ? [definition.permission] : [];
@@ -526,7 +539,9 @@ export function getNodePermissions(actionType: ActionType, config: Record<string
 				? createDeleteFilePermission(config[rule.configKey])
 				: rule.access === "read"
 					? createReadFilePermission(config[rule.configKey])
-					: createWriteFilePermission(config[rule.configKey]);
+					: rule.access === "watch"
+						? createWatchFilePermission(config[rule.configKey])
+						: createWriteFilePermission(config[rule.configKey]);
 		permissions.push(permission);
 	}
 
@@ -578,15 +593,20 @@ export function validateNodeConfigKeys(actionType: ActionType, config: Record<st
 		: [];
 }
 
-export function validateNodeConfig(actionType: ActionType, config: Record<string, JsonValue>) {
+export function validateNodeConfig(
+	actionType: ActionType,
+	config: Record<string, JsonValue>,
+	variables?: readonly VariableReferenceCandidate[],
+) {
 	const definition = getNodeDefinition(actionType);
 	const sanitizedConfig = sanitizeNodeConfig(actionType, config);
 	const keyErrors = validateNodeConfigKeys(actionType, sanitizedConfig);
 
 	return [
 		...keyErrors,
-		...(definition ? validateDeclaredConfigFields(definition.configFields ?? [], sanitizedConfig) : []),
+		...(definition ? validateDeclaredConfigFields(definition.configFields ?? [], sanitizedConfig, variables) : []),
 		...(definition?.validateConfig?.(sanitizedConfig) ?? []),
+		...(variables ? (definition?.validateVariables?.(sanitizedConfig, variables) ?? []) : []),
 	];
 }
 
@@ -607,14 +627,27 @@ function getAllowedNodeConfigKeys(definition: NodeDefinition) {
 	]);
 }
 
-function validateDeclaredConfigFields(fields: NodeConfigField[], config: Record<string, JsonValue>) {
+function validateDeclaredConfigFields(
+	fields: NodeConfigField[],
+	config: Record<string, JsonValue>,
+	variables?: readonly VariableReferenceCandidate[],
+) {
 	return fields.flatMap((field) => {
+		if (!configVisibilityConditionMatches(field.visibleWhen, config)) {
+			return [];
+		}
+
 		if (field.required !== false && !(field.key in config)) {
 			return [`Missing required config field: ${field.key}.`];
 		}
 
 		if (!(field.key in config)) {
 			return [];
+		}
+
+		if (variables) {
+			const error = validateConfigField(field, config, variables);
+			return error ? [`Invalid value for ${field.key}: ${error}`] : [];
 		}
 
 		const value = config[field.key];
@@ -628,6 +661,10 @@ function validateDeclaredConfigFields(fields: NodeConfigField[], config: Record<
 
 		if (field.type === "string-list" && (!Array.isArray(value) || value.some((item) => typeof item !== "string"))) {
 			return [`Invalid value for ${field.key}: expected an array of strings.`];
+		}
+
+		if (field.type === "form-field-list" && !Array.isArray(value)) {
+			return [`Invalid value for ${field.key}: expected a list of form components.`];
 		}
 
 		if (field.type === "select" && field.options && typeof value === "string") {

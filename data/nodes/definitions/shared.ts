@@ -1,12 +1,15 @@
 import type { Edge, Node } from "@xyflow/react";
+import type { VariableReferenceCandidate } from "@/data/project/variables";
 import type { JsonValue, ScriptNodeData } from "@/lib/types";
 import { conditionNumber } from "../condition-comparison";
+import { validateVariableInput } from "../config-field-validation";
 import {
 	booleanConditionOperatorOptions,
 	comparisonOperatorOptions,
 	ifElseAdditionalConditionOperatorOptions,
 	isBetweenConditionOperator,
 	isNumericConditionOperator,
+	isUnaryConditionOperator,
 } from "./options";
 import { isConditionRow } from "./rows";
 
@@ -127,6 +130,26 @@ export function validateConditionRowsConfig(
 		}
 
 		return errors;
+	});
+}
+
+export function validateConditionVariableInputs(
+	config: Record<string, JsonValue>,
+	variables: readonly VariableReferenceCandidate[],
+) {
+	if (!Array.isArray(config.conditions)) return [];
+	return config.conditions.flatMap((value, index) => {
+		if (!isConditionRow(value)) return [];
+		const contract = isNumericConditionOperator(value.operator) ? "numeric" : "any";
+		const inputs: Array<[string, string]> = [["value", value.left]];
+		if (!isUnaryConditionOperator(value.operator)) {
+			inputs.push([isBetweenConditionOperator(value.operator) ? "start value" : "target", value.right]);
+		}
+		if (isBetweenConditionOperator(value.operator)) inputs.push(["end value", value.rightEnd ?? ""]);
+		return inputs.flatMap(([label, input]) => {
+			const error = validateVariableInput(input, variables, contract);
+			return error ? [`condition ${index + 1} ${label}: ${error}`] : [];
+		});
 	});
 }
 

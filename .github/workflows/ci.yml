@@ -51,6 +51,8 @@ jobs:
         with:
           submodules: true
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - name: Create excluded build-context marker
+        run: printf 'must-not-enter-build-context\n' > .baudbound-build-context-marker
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
@@ -69,13 +71,73 @@ jobs:
             type=ref,event=pr
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ github.event_name != 'pull_request' }}
-      - name: Build Docker image
+      - name: Build Docker image for runtime verification
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           file: Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
+          load: true
+          push: false
+          tags: baudbound-editor-ci:verify
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=editor
           cache-to: type=gha,mode=max,scope=editor
+      - name: Verify final runtime image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="baudbound-editor-ci:verify"
+          test "$(docker image inspect --format '{{.Config.User}}' "$image")" = "nextjs"
+          test "$(docker image inspect --format '{{json .Config.Healthcheck.Test}}' "$image")" != "null"
+          docker run --rm --entrypoint sh "$image" -ceu '
+            test -f /app/server.js
+            test -d /app/.next/static
+            test -d /app/public
+            test ! -e /app/.baudbound-build-context-marker
+            test ! -e /app/.git
+            test ! -e /app/.env
+            test ! -e /app/.npmrc
+            test ! -e /app/pnpm-lock.yaml
+            test ! -e /app/tsconfig.json
+            test ! -e /app/tests
+            test ! -e /app/app
+            test ! -e /app/components
+            test ! -e /app/utils
+          '
+          container_id="$(docker run --detach \
+            --health-interval 1s \
+            --health-retries 20 \
+            --health-start-period 1s \
+            --health-timeout 3s \
+            "$image")"
+          cleanup() {
+            docker logs "$container_id" || true
+            docker rm --force "$container_id" >/dev/null || true
+          }
+          trap cleanup EXIT
+          health="starting"
+          for _ in $(seq 1 30); do
+            health="$(docker inspect --format '{{.State.Health.Status}}' "$container_id")"
+            if [ "$health" = "healthy" ]; then
+              break
+            fi
+            if [ "$health" = "unhealthy" ]; then
+              break
+            fi
+            sleep 1
+          done
+          test "$health" = "healthy"
+          test "$(docker exec "$container_id" id -u)" = "1001"
+          docker exec "$container_id" wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/
+          docker rm --force "$container_id" >/dev/null
+          trap - EXIT
+      - name: Publish Docker image
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=editor

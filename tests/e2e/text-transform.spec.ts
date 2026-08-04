@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import regexConformance from "../../contracts/regex-conformance.json";
 import { executeTextTransform, formatTextNode } from "../../data/nodes/definitions/actions/format-text";
 import type { JsonValue } from "../../lib/types";
 
@@ -16,8 +17,8 @@ function pipeline(input: JsonValue, operations: JsonValue[]) {
 	return { input, operations } as Record<string, JsonValue>;
 }
 
-test("editor runs text operations sequentially", () => {
-	const result = executeTextTransform({
+test("editor runs text operations sequentially", async () => {
+	const result = await executeTextTransform({
 		config: pipeline("  hello WORLD  ", [
 			{ id: "trim", operation: "trim" },
 			{ id: "case", operation: "sentence_case" },
@@ -32,8 +33,8 @@ test("editor runs text operations sequentially", () => {
 	});
 });
 
-test("editor passes list output between split and join operations", () => {
-	const result = executeTextTransform({
+test("editor passes list output between split and join operations", async () => {
+	const result = await executeTextTransform({
 		config: pipeline("one,two,three", [
 			{ id: "split", operation: "split", delimiter: "," },
 			{ id: "join", operation: "join", delimiter: " | " },
@@ -47,8 +48,8 @@ test("editor passes list output between split and join operations", () => {
 	});
 });
 
-test("editor returns list output when split is the final operation", () => {
-	const result = executeTextTransform({
+test("editor returns list output when split is the final operation", async () => {
+	const result = await executeTextTransform({
 		config: pipeline("one,two", [{ id: "split", operation: "split", delimiter: "," }]),
 		resolveTemplate,
 	});
@@ -59,8 +60,8 @@ test("editor returns list output when split is the final operation", () => {
 	});
 });
 
-test("editor rejects incompatible pipeline values", () => {
-	const result = executeTextTransform({
+test("editor rejects incompatible pipeline values", async () => {
+	const result = await executeTextTransform({
 		config: pipeline("text", [
 			{ id: "split", operation: "split", delimiter: "," },
 			{ id: "trim", operation: "trim" },
@@ -70,7 +71,7 @@ test("editor rejects incompatible pipeline values", () => {
 	expect(result.ok).toBe(false);
 });
 
-test("editor rejects non-portable and empty operation values", () => {
+test("editor rejects non-portable and empty operation values", async () => {
 	const cases: JsonValue[][] = [
 		[{ id: "replace", operation: "replace", search: "", replacement: "x" }],
 		[{ id: "split", operation: "split", delimiter: "" }],
@@ -82,7 +83,7 @@ test("editor rejects non-portable and empty operation values", () => {
 	];
 
 	for (const operations of cases) {
-		const result = executeTextTransform({
+		const result = await executeTextTransform({
 			config: pipeline("text", operations),
 			resolveTemplate,
 		});
@@ -90,16 +91,16 @@ test("editor rejects non-portable and empty operation values", () => {
 	}
 });
 
-test("editor trims safe integer fields and supports numbered regex captures", () => {
+test("editor trims safe integer fields and supports numbered regex captures", async () => {
 	expect(
-		executeTextTransform({
+		await executeTextTransform({
 			config: pipeline("abcd", [{ id: "substring", operation: "substring", start: " 1 ", length: " 2 " }]),
 			resolveTemplate,
 		}),
 	).toEqual({ ok: true, output: { items: [], text: "bc" } });
 
 	expect(
-		executeTextTransform({
+		await executeTextTransform({
 			config: pipeline("first:last", [
 				{
 					id: "regex",
@@ -111,6 +112,23 @@ test("editor trims safe integer fields and supports numbered regex captures", ()
 			resolveTemplate,
 		}),
 	).toEqual({ ok: true, output: { items: [], text: "last, first" } });
+});
+
+test("matches the shared linear-time regex replacement fixtures", async () => {
+	for (const fixture of regexConformance.replacement_cases) {
+		const result = await executeTextTransform({
+			config: pipeline(fixture.input, [
+				{
+					id: fixture.name,
+					operation: "regex_replace",
+					replacement: fixture.replacement,
+					search: fixture.pattern,
+				},
+			]),
+			resolveTemplate,
+		});
+		expect(result, fixture.name).toEqual({ ok: true, output: { items: [], text: fixture.output } });
+	}
 });
 
 test("text transform export retains only ordered operation fields", () => {

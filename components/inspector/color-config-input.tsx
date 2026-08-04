@@ -35,7 +35,6 @@ export function ColorConfigInput({
 }) {
 	const selectedVariable = variables.find((variable) => variable.token === value.trim());
 	const currentColor = colorValueToHex(selectedVariable?.value ?? value);
-	const colorVariables = variables.filter((variable) => variable.type === "color");
 	const [open, setOpen] = useState(false);
 	const [pickerStartColor, setPickerStartColor] = useState(currentColor ?? FALLBACK_COLOR);
 	const hasInteracted = useRef(false);
@@ -111,7 +110,8 @@ export function ColorConfigInput({
 					containerClassName="min-w-0 flex-1"
 					hasError={!!error}
 					value={value}
-					variables={colorVariables}
+					variableTypes="color"
+					variables={variables}
 					onChange={onChange}
 				/>
 			</div>

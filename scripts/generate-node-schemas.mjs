@@ -275,12 +275,13 @@ function createConfigSchema(definition) {
 		required.push("operations");
 	}
 
-	return {
+	const schema = {
 		type: "object",
 		additionalProperties: false,
 		...(required.length > 0 ? { required: required.sort() } : {}),
 		properties,
 	};
+	return schema;
 }
 
 function createVariableOperationConfigSchema(definition) {
@@ -457,7 +458,7 @@ function createTextTransformOperationsSchema() {
 
 function createConfigFieldSchema(field) {
 	if (field.type === "text" || field.type === "textarea") {
-		return { type: "string" };
+		return field.identifier ? { type: "string", pattern: "^[A-Za-z0-9_-]+$" } : { type: "string" };
 	}
 
 	if (field.type === "string-list") {
@@ -465,6 +466,10 @@ function createConfigFieldSchema(field) {
 			type: "array",
 			items: { type: "string" },
 		};
+	}
+
+	if (field.type === "form-field-list") {
+		return createFormDialogFieldsSchema();
 	}
 
 	if (field.type === "switch") {
@@ -496,6 +501,96 @@ function createConfigFieldSchema(field) {
 
 	return {
 		anyOf: [numberSchema, numberString],
+	};
+}
+
+function createFormDialogFieldsSchema() {
+	const commonInputProperties = {
+		type: { type: "string" },
+		key: { type: "string", minLength: 1, maxLength: 64, pattern: "^[A-Za-z0-9_-]+$" },
+		label: { type: "string", minLength: 1, maxLength: 200 },
+		description: { type: "string", maxLength: 2048 },
+		required: { type: "boolean" },
+	};
+	const input = (type, properties, required) => ({
+		type: "object",
+		additionalProperties: false,
+		required: ["type", "key", "label", "description", "required", ...required],
+		properties: { ...commonInputProperties, type: { const: type }, ...properties },
+	});
+	const textProperties = {
+		placeholder: { type: "string", maxLength: 512 },
+		defaultValue: { type: "string", maxLength: 16384 },
+	};
+	const choiceSchema = {
+		type: "array",
+		minItems: 1,
+		maxItems: 100,
+		items: {
+			type: "object",
+			additionalProperties: false,
+			required: ["key", "displayValue"],
+			properties: {
+				key: { type: "string", minLength: 1, maxLength: 512, pattern: "^[A-Za-z0-9_-]+$" },
+				displayValue: { type: "string", minLength: 1, maxLength: 512 },
+			},
+		},
+	};
+	const presentation = (type, properties = {}) => ({
+		type: "object",
+		additionalProperties: false,
+		required: ["type", "label", "description", ...Object.keys(properties)],
+		properties: {
+			type: { const: type },
+			label: { type: "string", maxLength: 200 },
+			description: { type: "string", maxLength: 2048 },
+			...properties,
+		},
+	});
+	const defaultValue = { type: "string", maxLength: 16384 };
+	return {
+		type: "array",
+		minItems: 1,
+		maxItems: 50,
+		items: {
+			oneOf: [
+				input("text", textProperties, ["placeholder", "defaultValue"]),
+				input("multiline", textProperties, ["placeholder", "defaultValue"]),
+				input("number", textProperties, ["placeholder", "defaultValue"]),
+				input("password", { placeholder: { type: "string", maxLength: 512 } }, ["placeholder"]),
+				input("checkbox", { defaultChecked: { type: "boolean" } }, ["defaultChecked"]),
+				input("single_choice", { choices: choiceSchema }, ["choices"]),
+				input("multi_choice", { choices: choiceSchema }, ["choices"]),
+				input("dropdown", { choices: choiceSchema }, ["choices"]),
+				input("date", { defaultValue }, ["defaultValue"]),
+				input("time", { defaultValue }, ["defaultValue"]),
+				input("datetime", { defaultValue, timezone: { type: "string", minLength: 1, maxLength: 128 } }, [
+					"defaultValue",
+					"timezone",
+				]),
+				input("color", { defaultValue }, ["defaultValue"]),
+				input("file", { multiple: { type: "boolean" } }, ["multiple"]),
+				input("folder", {}, []),
+				input(
+					"slider",
+					{
+						defaultValue,
+						minimum: { type: "string", minLength: 1, maxLength: 512 },
+						maximum: { type: "string", minLength: 1, maxLength: 512 },
+						step: { type: "string", minLength: 1, maxLength: 512 },
+					},
+					["defaultValue", "minimum", "maximum", "step"],
+				),
+				presentation("information", { accentColor: { type: "string", minLength: 1, maxLength: 512 } }),
+				presentation("section_heading", { accentColor: { type: "string", minLength: 1, maxLength: 512 } }),
+				presentation("divider", { accentColor: { type: "string", minLength: 1, maxLength: 512 } }),
+				presentation("image", {
+					assetPath: { type: "string", minLength: 1, maxLength: 1024 },
+					imageFit: { type: "string", enum: ["contain", "cover"] },
+					imageHeight: { type: "string", minLength: 1, maxLength: 512 },
+				}),
+			],
+		},
 	};
 }
 
@@ -637,8 +732,8 @@ function readPermissionPathRules(initializer, actionType) {
 			throw new Error(`${actionType} permissionPathRules entries must be object literals.`);
 		}
 		const access = getRequiredStringProperty(element, "access", actionType);
-		if (access !== "delete" && access !== "read" && access !== "write") {
-			throw new Error(`${actionType} permission path access must be delete, read, or write.`);
+		if (access !== "delete" && access !== "read" && access !== "watch" && access !== "write") {
+			throw new Error(`${actionType} permission path access must be delete, read, watch, or write.`);
 		}
 		return {
 			access,
@@ -712,6 +807,7 @@ function readConfigFields(initializer, actionType) {
 		const numericWhen = readNumericCondition(getPropertyInitializer(element, "numericWhen"), actionType, key);
 		const numeric = readNumericContract(getPropertyInitializer(element, "numeric"), type, numericWhen, actionType, key);
 		return {
+			identifier: getOptionalBooleanProperty(element, "identifier") === true,
 			key,
 			label,
 			numeric,

@@ -67,12 +67,40 @@ export function getScriptVersionError(value: string) {
 
 export function getRepositoryUrlError(value: string) {
 	if (!value.trim()) return "";
-	return validateRemoteUrl(value, "repository.json");
+	return getAnonymousPublicHttpsUrlError(value, "repository.json");
 }
 
 export function getDirectPackageUrlError(value: string) {
 	if (!value.trim()) return "Package URL is required.";
-	return validateRemoteUrl(value, ".bbs");
+	return getAnonymousPublicHttpsUrlError(value, ".bbs");
+}
+
+export function getAnonymousPublicHttpsUrlError(value: string, requiredFilename?: "repository.json" | ".bbs") {
+	if (utf8Length(value) > 2048) return "URL cannot exceed 2048 bytes.";
+	if (value !== value.trim()) return "URL cannot start or end with spaces.";
+	if (value.includes("?")) return "Public repository URLs cannot contain a query string.";
+	if (value.includes("#")) return "Public repository URLs cannot contain a fragment.";
+	if (/%(?:0a|0d|23|3f|40)/i.test(value)) {
+		return "URL cannot contain encoded credential or URL delimiters.";
+	}
+	try {
+		const url = new URL(value);
+		if (url.protocol !== "https:") return "Use an HTTPS URL.";
+		if (!url.hostname) return "URL must include a host.";
+		if (url.username || url.password) {
+			return "Public repository URLs cannot contain a username or password.";
+		}
+		const lastSegment = url.pathname.split("/").at(-1) ?? "";
+		if (requiredFilename === "repository.json" && lastSegment !== requiredFilename) {
+			return "Repository URL must point to a file named repository.json.";
+		}
+		if (requiredFilename === ".bbs" && !lastSegment.toLowerCase().endsWith(requiredFilename)) {
+			return "Package URL must point to a .bbs file.";
+		}
+		return "";
+	} catch {
+		return "Use a valid URL.";
+	}
 }
 
 export function createScriptPackageFilename(name: string, version: string) {
@@ -320,28 +348,6 @@ function validateRepositoryRelease(value: unknown, scriptLabel: string, errors: 
 		errors.push(`${label} published_at must be a UTC timestamp.`);
 	}
 	validateTextValue(errors, `${label} release notes`, value.release_notes, MAX_RELEASE_NOTES_BYTES, true);
-}
-
-function validateRemoteUrl(value: string, requiredFilename: "repository.json" | ".bbs") {
-	if (utf8Length(value) > 2048) return "URL cannot exceed 2048 bytes.";
-	if (value !== value.trim()) return "URL cannot start or end with spaces.";
-	try {
-		const url = new URL(value);
-		if (url.protocol !== "https:") return "Use an HTTPS URL.";
-		if (!url.hostname) return "URL must include a host.";
-		if (url.username || url.password) return "URL cannot contain a username or password.";
-		if (url.hash) return "URL cannot contain a fragment.";
-		const lastSegment = decodeURIComponent(url.pathname.split("/").at(-1) ?? "");
-		if (requiredFilename === "repository.json" && lastSegment !== requiredFilename) {
-			return "Repository URL must point to a file named repository.json.";
-		}
-		if (requiredFilename === ".bbs" && !lastSegment.toLowerCase().endsWith(requiredFilename)) {
-			return "Package URL must point to a .bbs file.";
-		}
-		return "";
-	} catch {
-		return "Use a valid URL.";
-	}
 }
 
 function repositorySummary(name: string, description: string) {

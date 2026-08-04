@@ -24,13 +24,14 @@ import {
 	requestPersistentEditorStorage,
 } from "@/data/storage/project-repository";
 import type { ProjectSettings } from "@/lib/types";
-import { exportBbsPackage, importBbsPackage, verifyBbsPackage } from "@/utils/bbs-package";
+import { exportBbsPackage, type ImportedBbsPackage, verifyAndImportBbsPackage } from "@/utils/bbs-package";
 import type { VerificationCheck } from "@/utils/verification";
 
 type PendingImport = { fileName: string; project: EditorProject };
 
 export function ProjectHome() {
 	const packageInputRef = useRef<HTMLInputElement>(null);
+	const importAbortControllerRef = useRef<AbortController | null>(null);
 	const [projects, setProjects] = useState<ProjectSummary[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [createOpen, setCreateOpen] = useState(false);
@@ -55,6 +56,8 @@ export function ProjectHome() {
 		document.addEventListener("contextmenu", disableNativeContextMenu);
 		return () => document.removeEventListener("contextmenu", disableNativeContextMenu);
 	}, []);
+
+	useEffect(() => () => importAbortControllerRef.current?.abort(), []);
 
 	const openProject = (projectId: string) => window.location.assign(`/projects/${projectId}`);
 
@@ -127,9 +130,12 @@ export function ProjectHome() {
 		const file = event.target.files?.[0];
 		event.target.value = "";
 		if (!file) return;
+		importAbortControllerRef.current?.abort();
+		const abortController = new AbortController();
+		importAbortControllerRef.current = abortController;
 
 		try {
-			const verification = await verifyBbsPackage(file);
+			const verification = await verifyAndImportBbsPackage(file, { signal: abortController.signal });
 			if (verification.summary.status !== "verified") {
 				setImportError({
 					checks: verification.checks,
@@ -137,7 +143,10 @@ export function ProjectHome() {
 				});
 				return;
 			}
-			const imported = await importBbsPackage(file);
+			if (!verification.imported) {
+				throw new Error("Verified package did not produce an import result.");
+			}
+			const imported = verification.imported;
 			const project = importedToProject(imported);
 			if (await projectExists(project.identity.id)) {
 				setPendingImport({ fileName: file.name, project });
@@ -147,6 +156,7 @@ export function ProjectHome() {
 			void requestPersistentEditorStorage();
 			openProject(created.identity.id);
 		} catch (error) {
+			if (error instanceof DOMException && error.name === "AbortError") return;
 			const message = toErrorMessage(error);
 			setImportError({
 				checks: [
@@ -160,6 +170,10 @@ export function ProjectHome() {
 				],
 				description: message,
 			});
+		} finally {
+			if (importAbortControllerRef.current === abortController) {
+				importAbortControllerRef.current = null;
+			}
 		}
 	};
 
@@ -292,7 +306,7 @@ export function ProjectHome() {
 	);
 }
 
-function importedToProject(imported: Awaited<ReturnType<typeof importBbsPackage>>): EditorProject {
+function importedToProject(imported: ImportedBbsPackage): EditorProject {
 	return {
 		assets: imported.assets,
 		comments: imported.comments,

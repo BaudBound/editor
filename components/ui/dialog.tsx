@@ -39,6 +39,7 @@ function DialogContent({
 	className,
 	children,
 	showCloseButton = true,
+	onEscapeKeyDown,
 	onFocusOutside,
 	onInteractOutside,
 	onPointerDownOutside,
@@ -66,6 +67,10 @@ function DialogContent({
 				onPointerDownOutside={(event) => {
 					onPointerDownOutside?.(event);
 					event.preventDefault();
+				}}
+				onEscapeKeyDown={(event) => {
+					onEscapeKeyDown?.(event);
+					if (document.querySelector('[data-option-combobox-open="true"]')) event.preventDefault();
 				}}
 				{...props}
 			>

@@ -11,8 +11,11 @@ import {
 	validateNodeConfig,
 } from "@/data/nodes/registry";
 import { validateWindowsHotkey } from "@/data/nodes/windows-key-contract";
+import { typedDatetimeIso } from "@/data/project/datetime";
 import { targetRuntimes } from "@/data/project/runtimes";
+import { userIdentifierPattern } from "@/data/project/user-identifier";
 import {
+	durationUnits,
 	getVariableOperationFixedType,
 	listItemTypes,
 	normalizeVariableOperation,
@@ -27,6 +30,7 @@ import {
 	type TargetRuntime,
 } from "@/lib/types";
 import { isSelfConnection } from "@/utils/editor-graph";
+import { getAnonymousPublicHttpsUrlError } from "@/utils/script-repository";
 
 export const canonicalCapabilities = [
 	"trigger.manual",
@@ -42,6 +46,7 @@ export const canonicalCapabilities = [
 	"action.delay",
 	"action.notification",
 	"action.message_box",
+	"action.form_dialog",
 	"action.http",
 	"action.webhook_response",
 	"action.websocket",
@@ -89,13 +94,14 @@ export const canonicalPermissions = [
 	"runtime.data.read",
 	"notification.show",
 	"messageBox.show",
+	"formDialog.show",
 	"http.request",
 	"file.download",
 	"file.read",
+	"file.watch.limited",
 	"file.copy",
 	"file.move",
 	"clipboard.write",
-	"application.open",
 	"window.query",
 	"process.query",
 	"serial.write",
@@ -109,6 +115,7 @@ export const canonicalPermissions = [
 	"file.delete.limited",
 	"file.delete.any",
 	"file.read.any",
+	"file.watch.any",
 	"file.write.any",
 	"clipboard.read",
 	"trigger.startup",
@@ -119,6 +126,7 @@ export const canonicalPermissions = [
 	"serial.input",
 	"window.focus",
 	"process.kill",
+	"process.observe",
 	"script.run",
 ] as const;
 
@@ -267,7 +275,7 @@ export function validateManifestContract(value: unknown) {
 				}
 				errors.push(...validateKnownFields(secret, secretFields, "manifest.json secret"));
 				const name = typeof secret.name === "string" ? secret.name : "";
-				if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || name.startsWith("system_") || name.startsWith("manifest_")) {
+				if (!userIdentifierPattern.test(name) || name.startsWith("system_") || name.startsWith("manifest_")) {
 					errors.push(`manifest.json secret name "${name}" is invalid or reserved.`);
 				}
 				if (names.has(name)) {
@@ -311,7 +319,7 @@ export function validateManifestContract(value: unknown) {
 				errors.push(...validateKnownFields(variable, variableFields, "manifest.json variable"));
 				const name = typeof variable.name === "string" ? variable.name : "";
 				const type = variable.type as (typeof variableTypes)[number];
-				if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || name.startsWith("system_") || name.startsWith("manifest_")) {
+				if (!userIdentifierPattern.test(name) || name.startsWith("system_") || name.startsWith("manifest_")) {
 					errors.push(`manifest.json variable name "${name}" is invalid or reserved.`);
 				}
 				if (names.has(name)) errors.push(`manifest.json contains duplicate variable name "${name}".`);
@@ -351,7 +359,7 @@ export function validateManifestContract(value: unknown) {
 				errors.push(...validateKnownFields(setting, settingFields, "manifest.json Script Setting"));
 				const name = typeof setting.name === "string" ? setting.name : "";
 				const type = setting.type as string;
-				if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+				if (!userIdentifierPattern.test(name)) {
 					errors.push(`manifest.json Script Setting name "${name}" is invalid.`);
 				}
 				if (names.has(name)) errors.push(`manifest.json contains duplicate Script Setting name "${name}".`);
@@ -384,22 +392,10 @@ function validateManifestRepositoryUrl(errors: string[], value: unknown) {
 		errors.push("manifest.json repository_url must be a string no longer than 2048 characters.");
 		return;
 	}
-	try {
-		const url = new URL(value);
-		const filename = decodeURIComponent(url.pathname.split("/").at(-1) ?? "");
-		if (
-			url.protocol !== "https:" ||
-			!url.hostname ||
-			url.username ||
-			url.password ||
-			url.hash ||
-			filename !== "repository.json"
-		) {
-			throw new Error("invalid repository URL");
-		}
-	} catch {
+	const error = getAnonymousPublicHttpsUrlError(value, "repository.json");
+	if (error) {
 		errors.push(
-			"manifest.json repository_url must be an HTTPS URL without credentials or a fragment and must end in repository.json.",
+			`manifest.json repository_url must be a public anonymous HTTPS URL ending in repository.json. ${error}`,
 		);
 	}
 }
@@ -534,12 +530,12 @@ function defaultValueMatchesType(type: string, value: unknown, itemType?: unknow
 	if (type === "object") return isJsonObject(value);
 	const object = asRecord(value);
 	if (type === "datetime") {
-		return object?.type === "datetime" && typeof object.value === "string" && !Number.isNaN(Date.parse(object.value));
+		return typedDatetimeIso(value as JsonValue) !== null;
 	}
 	return (
 		object?.type === "duration" &&
 		typeof object.unit === "string" &&
-		["milliseconds", "seconds", "minutes", "hours", "days"].includes(object.unit) &&
+		durationUnits.includes(object.unit as (typeof durationUnits)[number]) &&
 		typeof object.value === "number" &&
 		Number.isFinite(object.value) &&
 		object.value >= 0

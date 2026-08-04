@@ -1,3 +1,5 @@
+import type { JsonValue } from "@/lib/types";
+
 export const localTimeZoneValue = "__local__";
 
 export const initialTimeZoneOptions = [
@@ -25,6 +27,48 @@ export function formatDatetimeForTimeZone(iso: string, timeZone: string) {
 		return localTime.toISOString().slice(0, 19);
 	}
 	return formatDateParts(date, timeZone);
+}
+
+export function typedDatetimeIso(value: JsonValue): string | null {
+	if (!value || Array.isArray(value) || typeof value !== "object") return null;
+	if (value.type !== "datetime" || typeof value.value !== "string") return null;
+	const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[zZ]|([+-])(\d{2}):(\d{2}))$/.exec(
+		value.value,
+	);
+	if (!match) return null;
+	const [year, month, day, hour, minute, second] = match.slice(1, 7).map(Number);
+	const calendarProbe = new Date(0);
+	calendarProbe.setUTCFullYear(year, month - 1, day);
+	calendarProbe.setUTCHours(hour, minute, second, 0);
+	if (
+		calendarProbe.getUTCFullYear() !== year ||
+		calendarProbe.getUTCMonth() !== month - 1 ||
+		calendarProbe.getUTCDate() !== day ||
+		calendarProbe.getUTCHours() !== hour ||
+		calendarProbe.getUTCMinutes() !== minute ||
+		calendarProbe.getUTCSeconds() !== second ||
+		(match[7] !== undefined && (Number(match[8]) > 23 || Number(match[9]) > 59))
+	) {
+		return null;
+	}
+	return Number.isFinite(Date.parse(value.value)) ? value.value : null;
+}
+
+export function formatTypedDatetimeForTemporalInput(
+	value: JsonValue,
+	type: "date" | "datetime" | "time",
+	timeZone = localTimeZoneValue,
+) {
+	const iso = typedDatetimeIso(value);
+	if (!iso) return null;
+	try {
+		const formatted = formatDatetimeForTimeZone(iso, type === "datetime" ? timeZone : localTimeZoneValue);
+		if (type === "date") return formatted.slice(0, 10);
+		if (type === "time") return formatted.slice(11);
+		return formatted;
+	} catch {
+		return null;
+	}
 }
 
 export function datetimeInTimeZoneToIso(value: string, timeZone: string) {
