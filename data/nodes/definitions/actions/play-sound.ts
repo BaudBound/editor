@@ -21,6 +21,10 @@ export const playSoundNode = defineNode({
 	kind: "action",
 	label: "Play Sound",
 	permission: { name: "sound.play", risk: "medium" },
+	// Reading audio from the filesystem is a file read. Without this rule the
+	// path is never classified, so an absolute or templated audio path declared
+	// only sound.play at Medium risk while reading any file on the machine.
+	permissionPathRules: [{ access: "read", configKey: "filePath" }],
 	risk: "medium",
 	runnerType: "play_sound",
 	validateConfig: (config) => {
