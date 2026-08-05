@@ -1,6 +1,11 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import JSZip from "jszip";
+
+async function addFormDialogComponent(page: Page, formBuilder: Locator, type: string = "Text input"): Promise<void> {
+	await formBuilder.getByRole("button", { name: "Add form component" }).click();
+	await page.getByRole("option", { name: type, exact: true }).click();
+}
 
 test("editor shell loads the core controls", async ({ page }) => {
 	await openEditor(page);
@@ -146,6 +151,522 @@ test("simulation publishes each node output before completing and advancing its 
 		"second-completed",
 	]);
 	await expect(firstLogState).toHaveAttribute("data-simulation-state", "completed");
+});
+
+test("Message Dialog renders and returns the exact configured button set", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "Manual" }).click();
+	await page.getByRole("button", { name: "Dialogs" }).click();
+	await page.getByRole("button", { name: /^Message Dialog medium/ }).click();
+	await page.getByRole("button", { name: "Buttons", exact: true }).click();
+	await page.getByRole("option", { name: "Cancel / Confirm", exact: true }).click();
+	await page.getByRole("textbox", { name: "Title", exact: true }).fill("Confirm changes");
+	await page.getByRole("textbox", { name: "Message", exact: true }).fill("Apply the configured changes?");
+
+	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
+	const messageNode = page.locator(".react-flow__node").filter({ hasText: "Message Dialog" });
+	await manualNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
+	await messageNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+	const dialog = page.getByRole("dialog", { name: "Confirm changes" });
+	await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
+	await expect(dialog.getByRole("button", { name: "Confirm", exact: true })).toBeVisible();
+	await expect(dialog.getByRole("button", { name: "OK", exact: true })).toHaveCount(0);
+	await expect(dialog.getByRole("button", { name: "Yes", exact: true })).toHaveCount(0);
+	await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
+	await expect(dialog).toHaveCount(0);
+	const simulationTab = page.getByRole("button", { name: "Simulation", exact: true });
+	await simulationTab.click();
+	await expect(
+		simulationTab.locator("xpath=ancestor::section").getByText(/Message Dialog .* returned "confirm"\./),
+	).toBeVisible();
+});
+
+test("Form Dialog form builder shows only controls relevant to each component type", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "Manual" }).click();
+	await page.getByRole("button", { name: "Dialogs" }).click();
+	await page.getByRole("button", { name: /^Form Dialog medium/ }).click();
+	await page.getByRole("textbox", { name: "Window title" }).fill("Enter a value");
+	await page.getByRole("button", { name: "Edit form" }).click();
+	const formBuilder = page.getByRole("dialog", { name: "Edit form dialog" });
+	await expect(formBuilder.getByText("0/50", { exact: true })).toBeVisible();
+	await expect(formBuilder.getByRole("button", { name: /Component 1 type/ })).toHaveCount(0);
+	await addFormDialogComponent(page, formBuilder, "Password input");
+	await expect(formBuilder.getByRole("button", { name: "Component 1 type" })).toHaveCount(0);
+	const passwordOutlineItem = formBuilder.getByRole("button", { name: /Edit component 1/ });
+	await expect(passwordOutlineItem.locator("[data-form-component-type]")).toHaveText("Password input");
+	await expect(
+		formBuilder.getByRole("region", { name: "Selected component settings" }).locator("[data-form-component-type]"),
+	).toHaveText("Password input");
+	await expect(formBuilder.getByRole("textbox", { name: "Placeholder" })).toBeVisible();
+	await expect(formBuilder.getByRole("textbox", { name: "Default value" })).toHaveCount(0);
+	await formBuilder.getByRole("textbox", { name: "Output key" }).fill("Secret key_42-");
+	await expect(formBuilder.getByRole("textbox", { name: "Output key" })).toHaveValue("Secret key_42-");
+	await expect(
+		formBuilder.getByText("Key may contain only letters A-Z, a-z, numbers 0-9, hyphens, and underscores.", {
+			exact: true,
+		}),
+	).toBeVisible();
+	await formBuilder.getByRole("textbox", { name: "Output key" }).fill("Secret_key-42");
+	await formBuilder.getByRole("button", { name: "Remove component 1", exact: true }).click();
+	await addFormDialogComponent(page, formBuilder, "Single choice");
+	await formBuilder.getByRole("textbox", { name: "Key", exact: true }).fill("Choice key_1-");
+	await expect(formBuilder.getByRole("textbox", { name: "Key", exact: true })).toHaveValue("Choice key_1-");
+	await expect(
+		formBuilder.getByText("Key may contain only letters A-Z, a-z, numbers 0-9, hyphens, and underscores.", {
+			exact: true,
+		}),
+	).toBeVisible();
+	await formBuilder.getByRole("textbox", { name: "Key", exact: true }).fill("Choice_key-1");
+	await formBuilder.getByRole("button", { name: "Remove component 1", exact: true }).click();
+	await addFormDialogComponent(page, formBuilder, "Information");
+	await expect(formBuilder.getByRole("textbox", { name: "Output key" })).toHaveCount(0);
+	await expect(formBuilder.getByRole("switch", { name: "Required" })).toHaveCount(0);
+	await expect(formBuilder.getByRole("textbox", { name: "Accent color" })).toHaveValue("#5B8AF5");
+	await formBuilder.getByRole("button", { name: "Remove component 1", exact: true }).click();
+	await addFormDialogComponent(page, formBuilder, "Text input");
+	await formBuilder.getByRole("textbox", { name: "Output key" }).fill("answer");
+	await formBuilder.getByRole("textbox", { name: "Label", exact: true }).fill("Value");
+	await formBuilder.getByRole("button", { name: "Apply" }).click();
+
+	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
+	const promptNode = page.locator(".react-flow__node").filter({ hasText: "Form Dialog" });
+	await manualNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
+	await promptNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+	const dialog = page.getByRole("dialog", { name: "Enter a value" });
+	await expect(dialog).toBeVisible();
+	await dialog.getByRole("textbox", { name: "Value" }).fill("submitted text");
+	await dialog.getByRole("button", { name: "Submit", exact: true }).click();
+	await expect(dialog).toHaveCount(0);
+});
+
+test("Form Dialog temporal defaults use native pickers with an explicit variable mode", async ({ page }) => {
+	await openEditor(page);
+	await openProjectSettingsTab(page, "Script Settings");
+	await page.getByRole("button", { name: "Add setting" }).click();
+	const settingDialog = page.getByRole("dialog");
+	await settingDialog.getByRole("textbox", { name: "Name" }).fill("testvar");
+	await settingDialog.locator('[data-slot="select-trigger"]').first().click();
+	await page.getByRole("option", { name: "datetime", exact: true }).click();
+	await settingDialog.getByRole("switch", { name: "Use Simulation override" }).click();
+	await settingDialog.getByRole("combobox", { name: "Datetime timezone" }).click();
+	await page.getByRole("option", { name: "UTC", exact: true }).click();
+	await settingDialog
+		.locator('input[type="datetime-local"][aria-label="Simulation override"]')
+		.fill("2026-08-03T12:30:15");
+	await settingDialog.getByRole("button", { name: "Save", exact: true }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
+	await page.getByRole("button", { name: "Manual" }).click();
+	await page.getByRole("button", { name: "Dialogs" }).click();
+	await page.getByRole("button", { name: /^Form Dialog medium/ }).click();
+	await page.getByRole("textbox", { name: "Window title" }).fill("Datetime variable");
+	await page.getByRole("button", { name: "Edit form" }).click();
+	const formBuilder = page.getByRole("dialog", { name: "Edit form dialog" });
+
+	await addFormDialogComponent(page, formBuilder, "Date");
+	await formBuilder.getByRole("textbox", { name: "Label", exact: true }).fill("Run date");
+	const datePicker = formBuilder.locator('input[type="date"][aria-label="Default value"]');
+	await expect(datePicker).toBeVisible();
+	await datePicker.fill("2026-08-03");
+	await expect(datePicker).toHaveValue("2026-08-03");
+	await formBuilder.getByRole("button", { name: "Variable", exact: true }).click();
+	const variableInput = formBuilder.getByRole("textbox", { name: "Default value" });
+	await variableInput.fill("{{system_dat");
+	await expect(page.locator('[data-variable-suggestion="system_date"]')).toHaveCount(0);
+	await variableInput.fill("{{system_date}}");
+	await expect(
+		formBuilder.locator('[data-variable-token="system_date"][data-variable-status="type-mismatch"]'),
+	).toBeVisible();
+	await expect(
+		formBuilder.getByRole("alert").filter({ hasText: /system_date.*type string.*accepts datetime variables/i }),
+	).toBeVisible();
+	await variableInput.fill("{{settings.testv");
+	const suggestions = page.getByRole("listbox", { name: "Default value suggestions" });
+	await expect(suggestions.locator('[data-variable-suggestion="settings.testvar"]')).toBeVisible();
+	await suggestions.locator('[data-variable-suggestion="settings.testvar"]').click();
+	await expect(variableInput).toHaveValue("{{settings.testvar}}");
+	await formBuilder.getByRole("button", { name: "Picker", exact: true }).click();
+	await expect(datePicker).toHaveValue("");
+
+	await addFormDialogComponent(page, formBuilder, "Time");
+	await formBuilder.getByRole("textbox", { name: "Label", exact: true }).fill("Run time");
+	const timePicker = formBuilder.locator('input[type="time"][aria-label="Default value"]');
+	await expect(timePicker).toBeVisible();
+	await timePicker.fill("14:30:15");
+	await expect(timePicker).toHaveValue("14:30:15");
+
+	await addFormDialogComponent(page, formBuilder, "Date and time");
+	await formBuilder.getByRole("textbox", { name: "Label", exact: true }).fill("Run at");
+	const datetimePicker = formBuilder.locator('input[type="datetime-local"][aria-label="Default value"]');
+	await expect(datetimePicker).toBeVisible();
+	await datetimePicker.fill("2026-08-03T14:30:15");
+	await expect(datetimePicker).toHaveValue("2026-08-03T14:30:15");
+	await expect(formBuilder.getByText("Timezone", { exact: true })).toBeVisible();
+	await formBuilder.getByRole("button", { name: "Date and time timezone" }).click();
+	await page.getByRole("option", { name: "UTC", exact: true }).click();
+	await formBuilder.getByRole("button", { name: "Variable", exact: true }).click();
+	const datetimeVariableInput = formBuilder.getByRole("textbox", { name: "Default value" });
+	await datetimeVariableInput.fill("{{settings.testv");
+	const datetimeSuggestions = page.getByRole("listbox", { name: "Default value suggestions" });
+	await expect(datetimeSuggestions.locator('[data-variable-suggestion="settings.testvar"]')).toBeVisible();
+	await datetimeSuggestions.locator('[data-variable-suggestion="settings.testvar"]').click();
+	await expect(datetimeVariableInput).toHaveValue("{{settings.testvar}}");
+	await expect(formBuilder.getByText(/accepts text or datetime variables/i)).toHaveCount(0);
+	await formBuilder.getByRole("button", { name: "Apply" }).click();
+
+	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
+	const dialogNode = page.locator(".react-flow__node").filter({ hasText: "Form Dialog" });
+	await manualNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
+	await dialogNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+	const simulationDialog = page.getByRole("dialog", { name: "Datetime variable" });
+	await expect(simulationDialog.locator('input[type="datetime-local"]')).toHaveValue("2026-08-03T12:30:15");
+});
+
+test("Form Dialog information components render a configurable high-contrast accent panel", async ({ page }) => {
+	await openEditor(page);
+	await openProjectSettingsTab(page, "Script Settings");
+	await addTextScriptSetting(page, "NotAColor", "plain text");
+	await page.getByRole("button", { name: "Add setting" }).click();
+	const settingDialog = page.getByRole("dialog");
+	await settingDialog.getByRole("textbox", { name: "Name" }).fill("InformationAccent");
+	await settingDialog.locator('[data-slot="select-trigger"]').first().click();
+	await page.getByRole("option", { name: "color", exact: true }).click();
+	await settingDialog.getByRole("switch", { name: "Use Simulation override" }).click();
+	await settingDialog.getByRole("textbox", { name: "Simulation override" }).fill("#12AB34");
+	await settingDialog.getByRole("button", { name: "Save", exact: true }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
+	await page.getByRole("button", { name: "Manual" }).click();
+	await page.getByRole("button", { name: "Dialogs" }).click();
+	await page.getByRole("button", { name: /^Form Dialog medium/ }).click();
+	await page.getByRole("textbox", { name: "Window title" }).fill("Information preview");
+	await page.getByRole("button", { name: "Edit form" }).click();
+	const formBuilder = page.getByRole("dialog", { name: "Edit form dialog" });
+	await addFormDialogComponent(page, formBuilder, "Information");
+	await formBuilder.getByRole("textbox", { name: "Heading" }).fill("Deployment notice");
+	await formBuilder.getByRole("textbox", { name: "Content" }).fill("Review this information before continuing.");
+	const accentColor = formBuilder.getByRole("textbox", { name: "Accent color" });
+	await accentColor.fill("invalid");
+	await expect(formBuilder.getByRole("alert").filter({ hasText: /accent color must be #RRGGBB/i })).toBeVisible();
+	await expect(formBuilder.getByRole("button", { name: "1 issue must be resolved" })).toBeVisible();
+	await accentColor.fill("{{settings.InformationAcc");
+	const suggestions = page.getByRole("listbox", { name: "Accent color suggestions" });
+	await expect(suggestions.locator('[data-variable-suggestion="settings.NotAColor"]')).toHaveCount(0);
+	await suggestions.getByRole("option", { name: /\{\{settings\.InformationAccent\}\}/ }).click();
+	await expect(accentColor).toHaveValue("{{settings.InformationAccent}}");
+	await expect(formBuilder.getByRole("button", { name: "Open accent color color picker" })).toHaveCSS(
+		"background-color",
+		"rgb(18, 171, 52)",
+	);
+	await expect(formBuilder.getByRole("alert").filter({ hasText: /accent color must be #RRGGBB/i })).toHaveCount(0);
+	await formBuilder.getByRole("button", { name: "Apply" }).click();
+
+	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
+	const dialogNode = page.locator(".react-flow__node").filter({ hasText: "Form Dialog" });
+	await manualNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
+	await dialogNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+
+	const dialog = page.getByRole("dialog", { name: "Information preview" });
+	const information = dialog.locator("[data-form-dialog-information]");
+	await expect(information).toContainText("Deployment notice");
+	await expect(information).toHaveCSS("border-left-color", "rgb(18, 171, 52)");
+	const surface = await information.evaluate((element) => {
+		const style = getComputedStyle(element);
+		return { backgroundColor: style.backgroundColor, borderTopWidth: style.borderTopWidth };
+	});
+	expect(surface.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+	expect(surface.borderTopWidth).toBe("1px");
+	await dialog.getByRole("button", { name: "Submit", exact: true }).click();
+});
+
+test("Form Dialog choices validate duplicate keys and publish nested values in configured order", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "Manual" }).click();
+	await page.getByRole("textbox", { name: "Search blocks" }).fill("Form Dialog");
+	await page.getByRole("button", { name: /^Form Dialog medium/ }).click();
+	await page.getByRole("textbox", { name: "Window title" }).fill("Choose targets");
+	await page.getByRole("button", { name: "Edit form" }).click();
+	const formBuilder = page.getByRole("dialog", { name: "Edit form dialog" });
+	await addFormDialogComponent(page, formBuilder, "Multi choice");
+	await formBuilder.getByRole("textbox", { name: "Output key" }).fill("targets");
+	await formBuilder.getByRole("textbox", { name: "Label", exact: true }).fill("Targets");
+	await formBuilder.getByRole("textbox", { name: "Key", exact: true }).fill("first-key");
+	await formBuilder.getByRole("textbox", { name: "Displayed value", exact: true }).fill("First displayed value");
+	await formBuilder.getByRole("button", { name: "Add choice" }).click();
+	const secondKey = formBuilder.getByRole("textbox", { name: "Key", exact: true }).nth(1);
+	await secondKey.fill("first-key");
+	await expect(secondKey).toHaveAttribute("aria-invalid", "true");
+	await expect(formBuilder.getByText("Key must be unique.", { exact: true })).toHaveCount(2);
+	await secondKey.fill("second-key");
+	await expect(secondKey).not.toHaveAttribute("aria-invalid", "true");
+	await expect(formBuilder.getByText("Key must be unique.", { exact: true })).toHaveCount(0);
+	await formBuilder
+		.getByRole("textbox", { name: "Displayed value", exact: true })
+		.nth(1)
+		.fill("Second displayed value");
+	await formBuilder.getByRole("button", { name: "Apply" }).click();
+
+	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
+	const promptNode = page.locator(".react-flow__node").filter({ hasText: "Form Dialog" });
+	await manualNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
+	await promptNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+	const dialog = page.getByRole("dialog", { name: "Choose targets" });
+	await expect(dialog.getByText("first-key", { exact: true })).toHaveCount(0);
+	await expect(dialog.getByText("second-key", { exact: true })).toHaveCount(0);
+	await dialog.getByText("Second displayed value", { exact: true }).click();
+	await dialog.getByText("First displayed value", { exact: true }).click();
+	await dialog.getByRole("button", { name: "Submit", exact: true }).click();
+
+	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	const selectedChoices = page.locator('[data-variable-name$=".values.targets"] pre');
+	await expect(selectedChoices).toContainText("first-key");
+	await expect(selectedChoices).toContainText("second-key");
+	await expect(selectedChoices).not.toContainText("displayed value");
+});
+
+test("Form Dialog expanded controls publish typed simulator values", async ({ page }) => {
+	await openEditor(page);
+	await page.getByRole("button", { name: "Manual" }).click();
+	await page.getByRole("button", { name: "Dialogs" }).click();
+	await page.getByRole("button", { name: /^Form Dialog medium/ }).click();
+	await page.getByRole("textbox", { name: "Window title" }).fill("Expanded form");
+	await page.getByRole("button", { name: "Edit form" }).click();
+	const formBuilder = page.getByRole("dialog", { name: "Edit form dialog" });
+
+	await addFormDialogComponent(page, formBuilder, "Dropdown");
+	await formBuilder.getByRole("textbox", { name: "Output key" }).fill("environment");
+	await formBuilder.getByRole("textbox", { name: "Label", exact: true }).fill("Environment");
+	await formBuilder.getByRole("textbox", { name: "Key", exact: true }).fill("production");
+	await formBuilder.getByRole("textbox", { name: "Displayed value", exact: true }).fill("Production");
+
+	await addFormDialogComponent(page, formBuilder, "Slider");
+	await formBuilder.getByRole("textbox", { name: "Output key" }).fill("level");
+	await formBuilder.getByRole("textbox", { name: "Label", exact: true }).fill("Level");
+	await formBuilder.getByRole("textbox", { name: "Component 2 slider minimum" }).fill("0");
+	await formBuilder.getByRole("textbox", { name: "Component 2 slider maximum" }).fill("100");
+	await formBuilder.getByRole("textbox", { name: "Component 2 slider step" }).fill("5");
+	await formBuilder.getByRole("textbox", { name: "Component 2 slider default value" }).fill("50");
+
+	await addFormDialogComponent(page, formBuilder, "Date");
+	await formBuilder.getByRole("textbox", { name: "Output key" }).fill("runDate");
+	await formBuilder.getByRole("textbox", { name: "Label", exact: true }).fill("Run date");
+	await formBuilder.getByRole("textbox", { name: "Default value" }).fill("2026-08-03");
+
+	await addFormDialogComponent(page, formBuilder, "Color picker");
+	await formBuilder.getByRole("textbox", { name: "Output key" }).fill("theme");
+	await formBuilder.getByRole("textbox", { name: "Label", exact: true }).fill("Theme");
+	await formBuilder.getByRole("textbox", { name: "Default color" }).fill("#12AB34");
+
+	await addFormDialogComponent(page, formBuilder, "Section heading");
+	await formBuilder.getByRole("textbox", { name: "Heading" }).fill("Advanced values");
+	await formBuilder.getByRole("button", { name: "Apply" }).click();
+
+	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
+	const dialogNode = page.locator(".react-flow__node").filter({ hasText: "Form Dialog" });
+	await manualNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
+	await dialogNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+
+	const dialog = page.getByRole("dialog", { name: "Expanded form" });
+	await expect(dialog).toHaveAttribute("data-simulation-form-dialog-shell", "true");
+	await expect(dialog.getByText("BaudBound", { exact: true })).toBeVisible();
+	await expect(dialog.getByText("Requested by editor simulator", { exact: true })).toBeVisible();
+	await expect(dialog.locator("[data-simulation-form-dialog-content]")).toBeVisible();
+	await expect(dialog.locator("[data-simulation-form-dialog-footer]")).toBeVisible();
+	await page.setViewportSize({ width: 480, height: 700 });
+	await expect.poll(async () => (await dialog.boundingBox())?.width).toBeLessThanOrEqual(448);
+	expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+	await dialog.getByRole("combobox", { name: "Environment" }).click();
+	await page.getByRole("option", { name: "Production", exact: true }).click();
+	await dialog.getByRole("slider", { name: "Level" }).fill("75");
+	await dialog.getByLabel("Run date").fill("2026-08-04");
+	await dialog.getByRole("textbox", { name: "Theme", exact: true }).fill("#ABCDEF");
+	await expect(dialog.getByRole("heading", { name: "Advanced values" })).toBeVisible();
+	await dialog.getByRole("button", { name: "Submit", exact: true }).click();
+
+	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await expect(page.locator('[data-variable-name$=".values.environment"] pre')).toHaveText("production");
+	await expect(page.locator('[data-variable-name$=".values.level"] pre')).toHaveText("75");
+	await expect(page.locator('[data-variable-name$=".values.runDate"] pre')).toHaveText("2026-08-04");
+	await expect(page.locator('[data-variable-name$=".values.theme"] pre')).toHaveText("#ABCDEF");
+});
+
+test("Form Dialog display values suggest compatible variables while keys remain literal", async ({ page }) => {
+	await openEditor(page);
+
+	await openProjectSettingsTab(page, "Script Settings");
+	await addTextScriptSetting(page, "ChoiceLabel", "Production environment");
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
+	await page.getByRole("button", { name: "Manual" }).click();
+	await page.getByRole("button", { name: "Dialogs" }).click();
+	await page.getByRole("button", { name: /^Form Dialog medium/ }).click();
+	await page.getByRole("textbox", { name: "Window title" }).fill("Variable choice");
+	await page.getByRole("button", { name: "Edit form" }).click();
+	const formBuilder = page.getByRole("dialog", { name: "Edit form dialog" });
+	await addFormDialogComponent(page, formBuilder, "Single choice");
+	await formBuilder.getByRole("textbox", { name: "Output key" }).fill("target");
+	await formBuilder.getByRole("textbox", { name: "Label", exact: true }).fill("Target");
+
+	const choiceKey = formBuilder.getByRole("textbox", { name: "Key", exact: true });
+	await choiceKey.fill("{{settings.ChoiceKey}}");
+	await expect(page.getByRole("listbox", { name: "Key suggestions" })).toHaveCount(0);
+	await expect(
+		formBuilder.getByText("Key may contain only letters A-Z, a-z, numbers 0-9, hyphens, and underscores.", {
+			exact: true,
+		}),
+	).toBeVisible();
+	await choiceKey.fill("production");
+
+	const choiceLabel = formBuilder.getByRole("textbox", { name: "Displayed value", exact: true });
+	await choiceLabel.fill("{{settings.ChoiceL");
+	await page
+		.getByRole("listbox", { name: "Displayed value suggestions" })
+		.getByRole("option", { name: /\{\{settings\.ChoiceLabel\}\}/ })
+		.click();
+	await expect(choiceLabel).toHaveValue("{{settings.ChoiceLabel}}");
+	await formBuilder.getByRole("button", { name: "Apply" }).click();
+
+	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
+	const promptNode = page.locator(".react-flow__node").filter({ hasText: "Form Dialog" });
+	await manualNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
+	await promptNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+	const dialog = page.getByRole("dialog", { name: "Variable choice" });
+	await expect(dialog.getByText("Production environment", { exact: true })).toBeVisible();
+	await expect(dialog.getByText("production", { exact: true })).toHaveCount(0);
+	await dialog.getByText("Production environment", { exact: true }).click();
+	await dialog.getByRole("button", { name: "Submit", exact: true }).click();
+
+	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await expect(page.locator('[data-variable-name$=".values.target"] pre')).toHaveText("production");
+});
+
+test("Form Dialog form builder applies drafts atomically and discards cancelled edits", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "Dialogs" }).click();
+	await page.getByRole("button", { name: /^Form Dialog medium/ }).click();
+	await page.getByRole("button", { name: "Edit form" }).click();
+	let formBuilder = page.getByRole("dialog", { name: "Edit form dialog" });
+	await expect(formBuilder.getByText("0/50", { exact: true })).toBeVisible();
+	await addFormDialogComponent(page, formBuilder);
+	await formBuilder.getByRole("textbox", { name: "Output key" }).fill("cancelledKey");
+	await formBuilder.getByRole("textbox", { name: "Label", exact: true }).fill("Cancelled label");
+	await formBuilder.getByRole("button", { name: "Duplicate component 1" }).click();
+	await expect(formBuilder.getByRole("textbox", { name: "Output key" })).toHaveValue("cancelledKey2");
+	await formBuilder.getByRole("button", { name: "Cancel", exact: true }).click();
+
+	await page.getByRole("button", { name: "Edit form" }).click();
+	formBuilder = page.getByRole("dialog", { name: "Edit form dialog" });
+	await expect(formBuilder.getByText("0/50", { exact: true })).toBeVisible();
+	await expect(formBuilder.getByRole("textbox", { name: "Output key" })).toHaveCount(0);
+	await addFormDialogComponent(page, formBuilder);
+	await formBuilder.getByRole("textbox", { name: "Output key" }).fill("savedKey");
+	await formBuilder.getByRole("textbox", { name: "Label", exact: true }).fill("Saved label");
+	await formBuilder.getByRole("button", { name: "Apply" }).click();
+
+	await page.getByRole("button", { name: "Edit form" }).click();
+	formBuilder = page.getByRole("dialog", { name: "Edit form dialog" });
+	await expect(formBuilder.getByRole("textbox", { name: "Output key" })).toHaveValue("savedKey");
+	await expect(formBuilder.getByRole("textbox", { name: "Label", exact: true })).toHaveValue("Saved label");
+});
+
+test("Form Dialog form builder keeps component navigation usable on narrow screens", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "Dialogs" }).click();
+	await page.getByRole("button", { name: /^Form Dialog medium/ }).click();
+	await page.getByRole("button", { name: "Edit form" }).click();
+	await page.setViewportSize({ width: 390, height: 760 });
+
+	const formBuilder = page.getByRole("dialog", { name: "Edit form dialog" });
+	await expect(formBuilder.getByRole("tab", { name: "Components" })).toHaveAttribute("aria-selected", "true");
+	await formBuilder.getByRole("button", { name: "Add form component" }).click();
+	const addComponentMenu = formBuilder.getByRole("listbox");
+	await expect(addComponentMenu).toBeVisible();
+	const dialogBox = await formBuilder.boundingBox();
+	const menuBox = await addComponentMenu.boundingBox();
+	expect(dialogBox).not.toBeNull();
+	expect(menuBox).not.toBeNull();
+	expect(menuBox?.y).toBeGreaterThanOrEqual(dialogBox?.y ?? 0);
+	expect((menuBox?.y ?? 0) + (menuBox?.height ?? 0)).toBeLessThanOrEqual(
+		(dialogBox?.y ?? 0) + (dialogBox?.height ?? 0),
+	);
+	await page.getByRole("option", { name: "Text input", exact: true }).click();
+	await expect(formBuilder.getByRole("tab", { name: "Settings" })).toHaveAttribute("aria-selected", "true");
+	await formBuilder.getByRole("tab", { name: "Components" }).click();
+	await formBuilder.getByRole("button", { name: /^Edit component 1:/ }).click();
+	await expect(formBuilder.getByRole("tab", { name: "Settings" })).toHaveAttribute("aria-selected", "true");
+	await expect(formBuilder.getByRole("button", { name: "Component 1 type" })).toHaveCount(0);
+
+	const layout = await formBuilder.evaluate((element) => ({
+		bottom: element.getBoundingClientRect().bottom,
+		clientWidth: element.clientWidth,
+		left: element.getBoundingClientRect().left,
+		right: element.getBoundingClientRect().right,
+		scrollWidth: element.scrollWidth,
+		top: element.getBoundingClientRect().top,
+	}));
+	expect(layout.left).toBeGreaterThanOrEqual(0);
+	expect(layout.top).toBeGreaterThanOrEqual(0);
+	expect(layout.right).toBeLessThanOrEqual(390);
+	expect(layout.bottom).toBeLessThanOrEqual(760);
+	expect(layout.scrollWidth).toBe(layout.clientWidth);
+});
+
+test("Form Dialog component drag preview remains attached to the pointer", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "Dialogs" }).click();
+	await page.getByRole("button", { name: /^Form Dialog medium/ }).click();
+	await page.getByRole("button", { name: "Edit form" }).click();
+
+	const formBuilder = page.getByRole("dialog", { name: "Edit form dialog" });
+	await addFormDialogComponent(page, formBuilder);
+	const dragHandle = formBuilder.getByRole("button", { name: "Reorder component 1" });
+	const componentRow = formBuilder.getByRole("button", { name: /^Edit component 1:/ }).locator("..");
+	const handleBox = await dragHandle.boundingBox();
+	const rowBox = await componentRow.boundingBox();
+	expect(handleBox).not.toBeNull();
+	expect(rowBox).not.toBeNull();
+
+	const startX = (handleBox?.x ?? 0) + (handleBox?.width ?? 0) / 2;
+	const startY = (handleBox?.y ?? 0) + (handleBox?.height ?? 0) / 2;
+	const deltaX = 420;
+	const deltaY = 80;
+	await page.mouse.move(startX, startY);
+	await page.mouse.down();
+	await page.mouse.move(startX + deltaX, startY + deltaY, { steps: 3 });
+
+	const dragOverlay = page.locator("[data-reorder-drag-overlay]");
+	await expect(dragOverlay).toBeVisible();
+	const overlayBox = await dragOverlay.boundingBox();
+	expect(overlayBox).not.toBeNull();
+	expect(overlayBox?.x).toBeCloseTo((rowBox?.x ?? 0) + deltaX, 0);
+	expect(overlayBox?.y).toBeCloseTo((rowBox?.y ?? 0) + deltaY, 0);
+	await page.mouse.up();
+	await expect(dragOverlay).toHaveCount(0);
 });
 
 test("inspector fields show accessible inline validation and clear it after correction", async ({ page }) => {
@@ -689,6 +1210,38 @@ test("Script Setting type and timezone menus stay anchored and scroll vertically
 	expect(menuBoundsAfterScroll?.y).toBe(menuBoundsBeforeScroll.y);
 });
 
+test("Default Variables and Script Settings display typed values without internal JSON wrappers", async ({ page }) => {
+	await openEditor(page);
+	await openProjectSettingsTab(page, "Default Variables");
+	await page.getByRole("button", { name: "Add variable" }).click();
+	let valueDialog = page.getByRole("dialog");
+	await valueDialog.getByRole("textbox", { name: "Name" }).fill("Timeout");
+	await valueDialog.getByRole("combobox", { name: "Type" }).click();
+	await page.getByRole("option", { name: "duration", exact: true }).click();
+	await valueDialog.getByRole("spinbutton", { name: "Default value amount" }).fill("3");
+	await valueDialog.getByRole("button", { name: "Save", exact: true }).click();
+
+	const timeoutVariable = page.locator("article").filter({ hasText: "Timeout" });
+	await expect(timeoutVariable.locator("pre")).toHaveText("3 seconds");
+	await expect(timeoutVariable.locator("pre")).not.toContainText('"type"');
+
+	await page.getByRole("tab", { name: "Script Settings" }).click();
+	await page.getByRole("button", { name: "Add setting" }).click();
+	valueDialog = page.getByRole("dialog");
+	await valueDialog.getByRole("textbox", { name: "Name" }).fill("StartedAt");
+	await valueDialog.locator('[data-slot="select-trigger"]').first().click();
+	await page.getByRole("option", { name: "datetime", exact: true }).click();
+	await valueDialog.getByRole("switch", { name: "Use Package default" }).click();
+	await valueDialog.getByRole("combobox", { name: "Datetime timezone" }).click();
+	await page.getByRole("option", { name: "UTC", exact: true }).click();
+	await valueDialog.locator('input[type="datetime-local"][aria-label="Package default"]').fill("2026-08-03T12:30:15");
+	await valueDialog.getByRole("button", { name: "Save", exact: true }).click();
+
+	const datetimeSetting = page.locator("article").filter({ hasText: "StartedAt" });
+	await expect(datetimeSetting.locator("pre").first()).toHaveText("2026-08-03T12:30:15.000Z");
+	await expect(datetimeSetting.locator("pre").first()).not.toContainText('"type"');
+});
+
 test("Webhook response controls explain both modes and Read File is implicitly UTF-8", async ({ page }) => {
 	await openEditor(page);
 
@@ -734,6 +1287,55 @@ test("hotkey and color Script Settings use dedicated controls and color variable
 	await hotkeyDefault.press("Control+Shift+F8");
 	await expect(hotkeyDefault).toHaveValue("Ctrl+Shift+F8");
 	await settingDialog.getByRole("button", { name: "Save", exact: true }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+	await expect(page.getByText("unsaved changes", { exact: true })).toBeVisible();
+	await page.keyboard.press("Control+s");
+	await expect(page.getByText("saved", { exact: true })).toBeVisible();
+	const projectId = new URL(page.url()).pathname.split("/").at(-1);
+	if (!projectId) throw new Error("The editor URL does not contain a project id.");
+	const storedSettings = await page.evaluate(async (id) => {
+		const database = await new Promise<IDBDatabase>((resolve, reject) => {
+			const request = indexedDB.open("baudbound-editor", 1);
+			request.addEventListener("success", () => resolve(request.result), { once: true });
+			request.addEventListener("error", () => reject(request.error), { once: true });
+		});
+		try {
+			return await new Promise<unknown>((resolve, reject) => {
+				const request = database.transaction("projects", "readonly").objectStore("projects").get(id);
+				request.addEventListener("success", () =>
+					resolve((request.result as { scriptSettings?: unknown } | undefined)?.scriptSettings),
+				);
+				request.addEventListener("error", () => reject(request.error), { once: true });
+			});
+		} finally {
+			database.close();
+		}
+	}, projectId);
+	expect(storedSettings).toEqual([
+		{
+			description: "",
+			name: "Accent",
+			required: false,
+			simulationValue: "#123456",
+			type: "color",
+		},
+		{
+			defaultValue: "Ctrl+Shift+F8",
+			description: "",
+			name: "Shortcut",
+			required: false,
+			type: "hotkey",
+		},
+	]);
+	await page.reload({ waitUntil: "commit" });
+	await expect(page.getByRole("button", { name: "Open project settings" })).toBeVisible();
+	await openProjectSettingsTab(page, "Script Settings");
+	const accentSetting = page.locator("article").filter({ hasText: "Accent" });
+	const shortcutSetting = page.locator("article").filter({ hasText: "Shortcut" });
+	await expect(accentSetting).toContainText("color");
+	await expect(accentSetting).toContainText("#123456");
+	await expect(shortcutSetting).toContainText("hotkey");
+	await expect(shortcutSetting).toContainText("Ctrl+Shift+F8");
 	await page.getByRole("button", { name: "Save Settings" }).click();
 
 	await page.getByRole("button", { name: /Color Match low/ }).click();
@@ -986,6 +1588,22 @@ test("numeric fields autocomplete number variables and suspend literal stepping"
 	await page.getByRole("button", { name: "Increase Amount" }).click();
 	await expect(amountField).toHaveValue("1");
 	await expect(page.getByRole("button", { name: "Decrease Amount" })).toBeDisabled();
+
+	await amountField.fill("{{system_");
+	await expect(page.locator('[data-variable-suggestion="system_date"]')).toHaveCount(0);
+	await amountField.fill("{{system_date}}");
+	await expect(page.locator('[data-variable-token="system_date"][data-variable-status="type-mismatch"]')).toBeVisible();
+	await expect(
+		page.getByText('Variable "system_date" has type string; this field accepts numeric variables.', { exact: true }),
+	).toBeVisible();
+
+	await page.getByRole("button", { name: "Verify script" }).click();
+	await expect(page.getByRole("heading", { name: "Verification" })).toBeVisible();
+	await expect(
+		page.locator("[data-verification-result] li").filter({
+			hasText: /Delay.*Variable "system_date" has type string; this field accepts numeric variables/i,
+		}),
+	).toBeVisible();
 });
 
 test("Switch simulation follows the default output when no case matches", async ({ page }) => {
@@ -1822,10 +2440,8 @@ test("hostile package import is rejected before loading", async ({ page }, testI
 	await page.locator('input[type="file"]').setInputFiles(packagePath);
 
 	await expect(page.getByRole("heading", { name: "Import Rejected" })).toBeVisible();
-	await expect(
-		page.getByText("The imported package did not pass verification cleanly and was not loaded."),
-	).toBeVisible();
-	await expect(page.getByText("Package JSON")).toBeVisible();
+	await expect(page.getByText("assets/../: package entry path contains an unsafe segment.").first()).toBeVisible();
+	await expect(page.getByText("Package Read")).toBeVisible();
 });
 
 test("exported package preserves editor metadata and imports back", async ({ page }, testInfo) => {
@@ -1997,6 +2613,15 @@ async function openEditor(page: Page) {
 async function openProjectSettingsTab(page: Page, tab: "Default Variables" | "Secrets" | "Script Settings") {
 	await page.getByRole("button", { name: "Open project settings" }).click();
 	await page.getByRole("tab", { name: tab }).click();
+}
+
+async function addTextScriptSetting(page: Page, name: string, simulationValue: string) {
+	await page.getByRole("button", { name: "Add setting" }).click();
+	const dialog = page.getByRole("dialog");
+	await dialog.getByRole("textbox", { name: "Name" }).fill(name);
+	await dialog.getByRole("switch", { name: "Use Simulation override" }).click();
+	await dialog.getByRole("textbox", { name: "Simulation override" }).fill(simulationValue);
+	await dialog.getByRole("button", { name: "Save", exact: true }).click();
 }
 
 async function readPanelPreferences(page: Page) {

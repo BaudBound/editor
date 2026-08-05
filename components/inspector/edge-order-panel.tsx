@@ -1,6 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import { ArrowDown, ArrowUp, GripVertical, Unlink2 } from "lucide-react";
 import type { ReactNode } from "react";
+import { ReorderDragOverlay } from "@/components/common/reorder-drag-overlay";
 import { Button } from "@/components/ui/button";
 import { type ActiveReorderDragState, useReorderController } from "@/hooks/use-reorder-controller";
 import type { ScriptNodeData } from "@/lib/types";
@@ -158,18 +159,10 @@ export function EdgeOrderPanel({
 
 function FloatingEdgeRow({ drag, children }: { drag: ActiveReorderDragState; children: ReactNode }) {
 	return (
-		<div
-			className="pointer-events-none fixed z-9999 flex items-center gap-2 rounded border border-baud-red bg-baud-panel px-3 py-2 opacity-95 shadow-[0_18px_42px_rgba(0,0,0,0.38)]"
-			style={{
-				left: drag.pointerX - drag.pointerOffsetX,
-				minHeight: drag.cardHeight,
-				top: drag.pointerY - drag.pointerOffsetY,
-				width: drag.cardWidth,
-			}}
-		>
+		<ReorderDragOverlay className="flex items-center gap-2 px-3 py-2" drag={drag}>
 			<GripVertical size={16} className="text-baud-muted" />
 			<span className="truncate text-sm font-semibold text-white">{children}</span>
-		</div>
+		</ReorderDragOverlay>
 	);
 }
 

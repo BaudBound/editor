@@ -2,7 +2,13 @@ import { Info, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OptionCombobox } from "@/components/ui/option-combobox";
 import { AddOverrideControl } from "./add-override-control";
-import { normalizeSimulationSpeed, outcomeOptions, speedOptions } from "./simulator-options";
+import {
+	httpModeOptions,
+	normalizeSimulationHttpMode,
+	normalizeSimulationSpeed,
+	outcomeOptions,
+	speedOptions,
+} from "./simulator-options";
 import type { SimulatorPanelProps } from "./simulator-panel-types";
 import { TriggerInputCard } from "./trigger-input-card";
 
@@ -42,9 +48,8 @@ export function SimulatorPanel({
 					<div>
 						<div className="text-sm font-semibold text-white">Simulator</div>
 						<p className="mt-1 text-xs leading-5 text-baud-muted">
-							Run the verified graph through the editor simulator. Browser-capable actions run live, runner-only actions
-							are described in the simulation log, and overrides force selected nodes to use their success or failed
-							path.
+							Run the verified graph through the editor simulator. Runner-only actions are described in the simulation
+							log, and overrides force selected nodes to use their success or failed path.
 						</p>
 					</div>
 				</div>
@@ -71,6 +76,22 @@ export function SimulatorPanel({
 					value={settings.speed}
 					options={speedOptions}
 					onChange={(value) => onSettingsChange({ ...settings, speed: normalizeSimulationSpeed(value) })}
+				/>
+			</section>
+
+			<section className="space-y-2 rounded border border-baud-border bg-baud-soft/60 p-3">
+				<div>
+					<h3 className="text-xs font-bold tracking-[0.18em] text-baud-muted uppercase">HTTP Requests</h3>
+					<p className="mt-1 text-xs leading-5 text-baud-muted">
+						Mock mode has no network side effects. Live mode asks for destination approval before each simulation
+						session.
+					</p>
+				</div>
+				<OptionCombobox
+					ariaLabel="HTTP simulation mode"
+					value={settings.httpMode}
+					options={httpModeOptions}
+					onChange={(value) => onSettingsChange({ ...settings, httpMode: normalizeSimulationHttpMode(value) })}
 				/>
 			</section>
 

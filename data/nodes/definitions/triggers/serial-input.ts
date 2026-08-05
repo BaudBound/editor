@@ -1,5 +1,4 @@
 import { Usb } from "lucide-react";
-import { normalizeSerialDeviceId } from "@/data/project/serial";
 import { defineNode } from "../../node-definition";
 import { configString, requiredConfig } from "../validators";
 
@@ -10,14 +9,9 @@ export const serialInputTriggerNode = defineNode({
 		{
 			key: "deviceId",
 			label: "Device id",
+			identifier: true,
 			nonEmpty: true,
 			type: "text",
-			validate: (config) => {
-				const deviceId = configString(config, "deviceId").trim();
-				return deviceId && deviceId !== normalizeSerialDeviceId(deviceId)
-					? "Device id must use lowercase letters, numbers, underscores, or hyphens."
-					: "";
-			},
 		},
 	],
 	defaultConfig: () => ({

@@ -46,11 +46,7 @@ export function createSerialDeviceConfigs(nodes: Node<ScriptNodeData>[]): Serial
 }
 
 export function normalizeSerialDeviceId(value: string) {
-	return value
-		.trim()
-		.toLowerCase()
-		.replace(/[^a-z0-9_-]+/g, "-")
-		.replace(/^-+|-+$/g, "");
+	return value.trim();
 }
 
 function configString(value: JsonValue | undefined) {

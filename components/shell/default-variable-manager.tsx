@@ -13,8 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatDefaultValue, validateDefaultVariable } from "@/data/project/default-variables";
-import { createEmptyTypedValue, validateTypedValue } from "@/data/project/typed-values";
+import { validateDefaultVariable } from "@/data/project/default-variables";
+import { createEmptyTypedValue, formatTypedValueForDisplay, validateTypedValue } from "@/data/project/typed-values";
 import { type ListItemType, type VariableType, variableTypes } from "@/data/project/variables";
 import type { DefaultVariable, SecretDeclaration } from "@/lib/types";
 import type { VariableRename } from "@/utils/variable-reference-renaming";
@@ -160,7 +160,7 @@ export function DefaultVariableManager({ secrets, variables, onChange }: Default
 									className="mt-0.5 min-h-7 min-w-0 whitespace-pre-wrap break-all rounded border border-baud-border bg-baud-panel/60 px-2 py-1.5 font-mono text-xs leading-4 text-baud-text"
 									data-selectable-text="true"
 								>
-									{formatDefaultValue(variable.type, variable.value)}
+									{formatTypedValueForDisplay(variable.type, variable.value, variable.itemType)}
 								</pre>
 							</div>
 						</article>

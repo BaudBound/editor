@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+.secret-value-input::-ms-reveal,
+.secret-value-input::-ms-clear {
+	display: none;
+}
+
 @theme {
 	--color-baud-bg: #090b10;
 	--color-baud-canvas: #080a0f;

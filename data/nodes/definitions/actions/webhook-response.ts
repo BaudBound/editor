@@ -2,7 +2,7 @@ import { Reply } from "lucide-react";
 import type { JsonValue } from "@/lib/types";
 import type { SimulationContext } from "@/utils/simulation-types";
 import { defineNode, type NodeSimulationApi } from "../../node-definition";
-import { createHeaderRow, isHeaderRow } from "../rows";
+import { createHeaderRow, isHeaderRow, validateHeaderVariableInputs } from "../rows";
 import { fallible } from "../runtime-outputs";
 import { configString, requiredConfig } from "../validators";
 
@@ -90,6 +90,7 @@ export const webhookResponseNode = defineNode({
 			requiredConfig(config, "contentType", "webhook response content type"),
 			validateHeaders(config.headers),
 		].filter(Boolean),
+	validateVariables: (config, variables) => validateHeaderVariableInputs(config.headers, variables),
 	validateGraph: ({ context, node }) =>
 		canBeReachedFromWaitingWebhook(node.id, context.edges, context.nodes)
 			? []

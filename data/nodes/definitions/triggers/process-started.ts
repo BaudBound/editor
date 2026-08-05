@@ -24,6 +24,7 @@ export const processStartedTriggerNode = defineNode({
 	icon: AppWindow,
 	kind: "trigger",
 	label: "App / Process Started",
+	permission: { name: "process.observe", risk: "medium" },
 	risk: "medium",
 	runtimeOutputs: [
 		{

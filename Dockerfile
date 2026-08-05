@@ -10,6 +10,7 @@ RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
 COPY . ./
+RUN test ! -e /app/.baudbound-build-context-marker
 RUN pnpm build
 
 FROM node:24-alpine AS runner
@@ -28,4 +29,6 @@ RUN test -f server.js && test -d .next/static && test -d public
 USER nextjs
 
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+	CMD wget --no-verbose --tries=1 --spider "http://127.0.0.1:${PORT}/" || exit 1
 CMD ["node", "server.js"]

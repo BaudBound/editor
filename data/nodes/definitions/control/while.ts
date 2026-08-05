@@ -1,7 +1,7 @@
 import { RotateCw } from "lucide-react";
 import { defineNode } from "../../node-definition";
 import { createConditionRow } from "../rows";
-import { validateConditionRowsConfig, validateLoopBodyDoesNotReturn } from "../shared";
+import { validateConditionRowsConfig, validateConditionVariableInputs, validateLoopBodyDoesNotReturn } from "../shared";
 
 export const whileNode = defineNode({
 	actionType: "control.while",
@@ -16,5 +16,6 @@ export const whileNode = defineNode({
 	portPolicy: { kind: "fixed", inputs: ["input"], outputs: ["done", "loop"] },
 	risk: "low",
 	validateConfig: (config) => validateConditionRowsConfig(config, "while", true),
+	validateVariables: validateConditionVariableInputs,
 	validateGraph: ({ context, node }) => validateLoopBodyDoesNotReturn(node.id, context.edges, "loop"),
 });

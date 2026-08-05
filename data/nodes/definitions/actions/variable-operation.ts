@@ -1,4 +1,6 @@
 import { Database } from "lucide-react";
+import { typedDatetimeIso } from "@/data/project/datetime";
+import type { VariableReferenceCandidate } from "@/data/project/variables";
 import {
 	getVariableOperationFixedType,
 	type ListItemType,
@@ -11,6 +13,7 @@ import {
 } from "@/data/project/variables";
 import type { JsonValue } from "@/lib/types";
 import type { SimulationContext } from "@/utils/simulation-types";
+import { validateVariableInput } from "../../config-field-validation";
 import { defineNode, type NodeSimulationApi } from "../../node-definition";
 import { variableOperationOptions, variableScopeOptions, variableTypeOptions } from "../options";
 
@@ -19,7 +22,7 @@ export const variableOperationNode = defineNode({
 	capabilities: ["runtime.variables"],
 	configFields: [
 		{ key: "operation", label: "Operation", type: "select", options: variableOperationOptions },
-		{ key: "name", label: "Variable name", type: "text" },
+		{ key: "name", label: "Variable name", identifier: true, type: "text" },
 		{ key: "scope", label: "Scope", type: "select", options: variableScopeOptions },
 		{ key: "valueType", label: "Variable type", type: "select", options: variableTypeOptions, required: false },
 	],
@@ -101,6 +104,7 @@ export const variableOperationNode = defineNode({
 
 		return errors.filter(Boolean);
 	},
+	validateVariables: validateVariableOperationVariables,
 	simulation: {
 		createOutput: ({ api, context, node }) => {
 			try {
@@ -155,6 +159,33 @@ export const variableOperationNode = defineNode({
 		],
 	},
 });
+
+function validateVariableOperationVariables(
+	config: Record<string, JsonValue>,
+	variables: readonly VariableReferenceCandidate[],
+) {
+	const operation = normalizeVariableOperation(configString(config.operation));
+	if (["clear", "delete", "toggle_boolean", "remove_object_field"].includes(operation)) return [];
+	const targetType =
+		operation === "increment"
+			? "number"
+			: operation === "merge_object"
+				? "object"
+				: operation === "set_object_field"
+					? normalizeVariableType(configString(config.fieldValueType))
+					: operation === "append_list" || operation === "remove_list_items"
+						? "string"
+						: normalizeVariableType(configString(config.valueType));
+	const contract = variableTypeToContract(targetType);
+	const error = validateVariableInput(configString(config.value), variables, contract);
+	return error ? [`value: ${error}`] : [];
+}
+
+function variableTypeToContract(type: VariableType) {
+	if (type === "file_path") return "file-path" as const;
+	if (type === "number") return "numeric" as const;
+	return type;
+}
 
 type VariableOperationSimulationApi = {
 	formatValue: (value: JsonValue) => string;
@@ -395,14 +426,7 @@ function validateSimulationValue(
 			);
 		}
 		if (type === "datetime") {
-			return (
-				!!value &&
-				typeof value === "object" &&
-				!Array.isArray(value) &&
-				value.type === "datetime" &&
-				typeof value.value === "string" &&
-				!Number.isNaN(Date.parse(value.value))
-			);
+			return typedDatetimeIso(value) !== null;
 		}
 		return (
 			!!value &&

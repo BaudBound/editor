@@ -51,19 +51,10 @@ export function OptionCombobox({
 
 			setOpen(false);
 		};
-		const handleKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") {
-				setOpen(false);
-				triggerRef.current?.focus();
-			}
-		};
-
 		document.addEventListener("pointerdown", handlePointerDown);
-		document.addEventListener("keydown", handleKeyDown);
 
 		return () => {
 			document.removeEventListener("pointerdown", handlePointerDown);
-			document.removeEventListener("keydown", handleKeyDown);
 		};
 	}, [open]);
 
@@ -78,8 +69,17 @@ export function OptionCombobox({
 		setOpen(false);
 		triggerRef.current?.focus();
 	};
+	const handleEscapeKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+		if (!open || event.key !== "Escape") return false;
+		event.preventDefault();
+		event.stopPropagation();
+		setOpen(false);
+		triggerRef.current?.focus();
+		return true;
+	};
 
 	const handleTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+		if (handleEscapeKeyDown(event)) return;
 		if (event.key === "ArrowDown" || event.key === "ArrowUp") {
 			event.preventDefault();
 			setOpen(true);
@@ -105,7 +105,7 @@ export function OptionCombobox({
 	};
 
 	return (
-		<div ref={rootRef} className="relative">
+		<div ref={rootRef} className="relative" data-option-combobox-open={open || undefined}>
 			<button
 				ref={triggerRef}
 				type="button"
@@ -134,6 +134,7 @@ export function OptionCombobox({
 				<div
 					id={listboxId}
 					role="listbox"
+					onKeyDown={handleEscapeKeyDown}
 					className="absolute top-[calc(100%+6px)] left-0 z-[70] max-h-72 w-full min-w-full overflow-y-auto rounded-lg border border-baud-border bg-baud-panel p-1 text-baud-text shadow-md"
 				>
 					{options.length === 0 ? (

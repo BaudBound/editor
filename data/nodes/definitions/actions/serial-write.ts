@@ -1,4 +1,5 @@
 import { Usb } from "lucide-react";
+import { validateVariableInput } from "../../config-field-validation";
 import { defineNode } from "../../node-definition";
 import { configString, requiredConfig } from "../validators";
 
@@ -20,6 +21,10 @@ export const serialWriteNode = defineNode({
 		[requiredConfig(config, "deviceId", "serial device"), requiredConfig(config, "data", "serial write data")].filter(
 			Boolean,
 		),
+	validateVariables: (config, variables) => {
+		const error = validateVariableInput(configString(config, "data"), variables, "text");
+		return error ? [`serial write data: ${error}`] : [];
+	},
 	validateGraph: ({ context, node }) => {
 		const deviceId = configString(node.data.config, "deviceId").trim();
 		const hasTrigger = context.nodes.some(

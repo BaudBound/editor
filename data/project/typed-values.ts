@@ -1,5 +1,6 @@
 import { runtimeNumberContract, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
 import { validateWindowsHotkey } from "@/data/nodes/windows-key-contract";
+import { typedDatetimeIso } from "@/data/project/datetime";
 import {
 	type DurationUnit,
 	durationUnits,
@@ -72,12 +73,7 @@ export function validateTypedValue(type: TypedValueType, value: JsonValue, itemT
 			}
 			return null;
 		case "datetime":
-			return isRecord(value) &&
-				value.type === "datetime" &&
-				typeof value.value === "string" &&
-				!Number.isNaN(Date.parse(value.value))
-				? null
-				: "Select a valid date and time.";
+			return typedDatetimeIso(value) ? null : "Select a valid date and time.";
 		case "duration":
 			return isRecord(value) &&
 				value.type === "duration" &&
@@ -111,6 +107,47 @@ export function formatTypedValue(value: JsonValue | undefined) {
 	return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
+export function formatTypedValueForDisplay(
+	type: TypedValueType,
+	value: JsonValue | undefined,
+	itemType?: ListItemType,
+): string {
+	if (value === undefined) return "Not set";
+
+	switch (type) {
+		case "string":
+		case "file_path":
+		case "hotkey":
+		case "color":
+			return typeof value === "string" ? value : "Invalid value";
+		case "number":
+		case "boolean":
+			return String(value);
+		case "datetime":
+			return typedDatetimeIso(value) ?? "Invalid date and time";
+		case "duration": {
+			if (
+				!isRecord(value) ||
+				typeof value.value !== "number" ||
+				!Number.isFinite(value.value) ||
+				typeof value.unit !== "string" ||
+				!durationUnits.includes(value.unit as DurationUnit)
+			) {
+				return "Invalid duration";
+			}
+			return `${value.value} ${durationUnitLabel(value.unit as DurationUnit, value.value)}`;
+		}
+		case "list":
+			if (!Array.isArray(value)) return "Invalid list";
+			if (value.length === 0) return "No items";
+			return value
+				.map((item) => formatTypedValueForDisplay(itemType ?? inferTypedValueType(item) ?? "object", item))
+				.join("\n");
+		case "object":
+			return isRecord(value) ? JSON.stringify(value, null, 2) : "Invalid object";
+	}
+}
+
 export function parseObjectValue(rawValue: string): JsonValue | undefined {
 	try {
 		const parsed = JSON.parse(rawValue) as JsonValue;
@@ -132,4 +169,8 @@ export function inferTypedValueType(value: JsonValue): ListItemType | undefined 
 
 function isRecord(value: unknown): value is Record<string, JsonValue> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function durationUnitLabel(unit: DurationUnit, amount: number) {
+	return amount === 1 ? unit.replace(/s$/, "") : unit;
 }

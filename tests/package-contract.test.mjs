@@ -17,7 +17,7 @@ const runnerKeyboardContractPath = join(contractsRoot, "runner", "windows-keyboa
 const colorMatchCasesPath = join(contractsRoot, "runner", "color-match-cases.json");
 const conditionEqualityCasesPath = join(contractsRoot, "runner", "condition-equality-cases.json");
 
-test("Windows keyboard contract excludes unsupported macOS names and matches the generated runner contract", () => {
+test("Windows keyboard contract excludes unsupported modifier aliases and matches the generated runner contract", () => {
 	const editorContract = JSON.parse(read(editorKeyboardContractPath));
 	const runnerContract = JSON.parse(read(runnerKeyboardContractPath));
 	const modifierNames = editorContract.modifiers.flatMap((modifier) => [modifier.canonical, ...modifier.aliases]);
@@ -97,13 +97,19 @@ test("calculate and for-each reject arbitrary input while accepting variable exp
 });
 
 test("datetime values use selectable timezones while retaining UTC storage", async () => {
-	const { datetimeInTimeZoneToIso, formatDatetimeForTimeZone } = await loadDatetimeUtilities();
+	const { datetimeInTimeZoneToIso, formatDatetimeForTimeZone, formatTypedDatetimeForTemporalInput, typedDatetimeIso } =
+		await loadDatetimeUtilities();
 
 	assert.equal(datetimeInTimeZoneToIso("2026-01-15T12:00:00", "UTC"), "2026-01-15T12:00:00.000Z");
 	assert.equal(datetimeInTimeZoneToIso("2026-01-15T12:00:00", "Europe/Helsinki"), "2026-01-15T10:00:00.000Z");
 	assert.equal(datetimeInTimeZoneToIso("2026-07-15T12:00:00", "Europe/Helsinki"), "2026-07-15T09:00:00.000Z");
 	assert.equal(formatDatetimeForTimeZone("2026-07-15T09:00:00.000Z", "Europe/Helsinki"), "2026-07-15T12:00:00");
 	assert.equal(datetimeInTimeZoneToIso("2026-03-29T03:30:00", "Europe/Helsinki"), null);
+	const typedDatetime = { type: "datetime", value: "2026-08-03T12:30:15Z" };
+	assert.equal(typedDatetimeIso(typedDatetime), typedDatetime.value);
+	assert.equal(formatTypedDatetimeForTemporalInput(typedDatetime, "datetime", "UTC"), "2026-08-03T12:30:15");
+	assert.equal(formatTypedDatetimeForTemporalInput({ type: "datetime", value: "invalid" }, "datetime", "UTC"), null);
+	assert.equal(formatTypedDatetimeForTemporalInput({ type: "datetime", value: "2026-02-30T12:30:15Z" }, "date"), null);
 
 	const typedValueSource = read(join(appRoot, "data", "project", "typed-values.ts"));
 	assert.match(
@@ -129,11 +135,11 @@ test("editor supports the complete If / Else condition operator set", async () =
 	];
 
 	for (const [left, operator, right, expected] of cases) {
-		assert.equal(compareConditionValues(left, operator, right), expected, operator);
+		assert.equal(await compareConditionValues(left, operator, right), expected, operator);
 	}
-	assert.equal(compareConditionValues(5, "is_between", 1, 5), true, "inclusive range end");
-	assert.equal(compareConditionValues(1, "is_between", 1, 5), true, "inclusive range start");
-	assert.equal(compareConditionValues(6, "is_between", 1, 5), false, "outside range");
+	assert.equal(await compareConditionValues(5, "is_between", 1, 5), true, "inclusive range end");
+	assert.equal(await compareConditionValues(1, "is_between", 1, 5), true, "inclusive range start");
+	assert.equal(await compareConditionValues(6, "is_between", 1, 5), false, "outside range");
 
 	const optionsSource = read(join(appRoot, "data", "nodes", "definitions", "options.ts"));
 	for (const operator of [
@@ -269,6 +275,23 @@ test("script repository schema is strict and bounded", () => {
 	assert.equal(schema.$defs.release.properties.release_notes.maxLength, 8_000);
 });
 
+test("repository and package URLs must be public and anonymous", async () => {
+	const { getAnonymousPublicHttpsUrlError, getDirectPackageUrlError, getRepositoryUrlError } =
+		await loadScriptRepositoryUtilities();
+
+	assert.equal(getRepositoryUrlError("https://example.com/repository.json"), "");
+	assert.equal(getDirectPackageUrlError("https://example.com/releases/example.bbs"), "");
+	for (const value of [
+		"https://user:password@example.com/repository.json",
+		"https://example.com/repository.json?token=secret",
+		"https://example.com/repository.json?",
+		"https://example.com/repository.json#release",
+	]) {
+		assert.notEqual(getRepositoryUrlError(value), "", value);
+	}
+	assert.notEqual(getAnonymousPublicHttpsUrlError("https://example.com/download%3Ftoken=secret"), "");
+});
+
 test("package filenames contain a safe script name and exact version", async () => {
 	const { createScriptPackageFilename } = await loadScriptRepositoryUtilities();
 
@@ -364,6 +387,10 @@ test("generated numeric contract preserves exact editor ranges and conditional P
 	});
 	assert.equal(contract.nodes["control.repeat"].count.maximum, "18446744073709551615");
 	assert.equal(contract.nodes["trigger.schedule"].every.allows_variables, true);
+	assert.deepEqual(
+		contract.nodes["action.message_box"].timeoutSeconds,
+		contract.nodes["action.form_dialog"].timeoutSeconds,
+	);
 	for (const actionType of ["action.process.kill", "action.process.status", "action.window.focus"]) {
 		assert.deepEqual(contract.nodes[actionType].target.when, { key: "matchMode", equals: "pid" });
 		assert.equal(contract.nodes[actionType].target.maximum, "4294967295");
@@ -404,7 +431,7 @@ test("every generated numeric field passes the editor boundary matrix", async ()
 		}
 	}
 
-	assert.equal(testedFields, 19, "the numeric matrix must cover every currently declared root config field");
+	assert.equal(testedFields, 21, "the numeric matrix must cover every currently declared root config field");
 });
 
 test("custom numeric fields preserve precision, support variables, and replace native number inputs", async () => {
@@ -445,7 +472,8 @@ test("custom numeric fields preserve precision, support variables, and replace n
 
 	const numericFieldSource = read(join(appRoot, "components", "common", "numeric-field.tsx"));
 	assert.match(numericFieldSource, /VariableCodeInput/);
-	assert.match(numericFieldSource, /numericVariableTypes/);
+	assert.match(numericFieldSource, /variableTypes="numeric"/);
+	assert.match(numericFieldSource, /variables=\{variables\}/);
 	assert.match(numericFieldSource, /Minus/);
 	assert.match(numericFieldSource, /Plus/);
 
@@ -484,6 +512,14 @@ test("generated runner permission contract covers every editor node", () => {
 		{ access: "read", config_key: "sourcePath" },
 		{ access: "write", config_key: "destinationPath" },
 	]);
+	assert.deepEqual(contract.nodes["trigger.file_watch"], {
+		permission: { name: "file.watch.limited", risk: "medium" },
+		path_rules: [{ access: "watch", config_key: "path" }],
+	});
+	assert.deepEqual(contract.nodes["trigger.process_started"], {
+		permission: { name: "process.observe", risk: "medium" },
+		path_rules: [],
+	});
 	assert.equal(contract.nodes["trigger.manual"].permission, null);
 });
 
@@ -687,16 +723,85 @@ test("program schema includes every editor action type", () => {
 	}
 });
 
-test("program schema includes every editor runtime data type", () => {
+test("shared schemas exactly match every editor variable, setting, list-item, and runtime-output type", () => {
 	const typesSource = read(join(appRoot, "lib", "types.ts"));
+	const variablesSource = read(join(appRoot, "data", "project", "variables.ts"));
 	const runtimeDataTypeBlock = typesSource.match(/export type RuntimeDataType =([\s\S]*?);/)?.[1] ?? "";
 	const runtimeDataTypes = [...runtimeDataTypeBlock.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+	const editorVariableTypes = extractConstStringArray(variablesSource, "variableTypes");
+	const editorListItemTypes = extractConstStringArray(variablesSource, "listItemTypes");
+	const editorSettingTypes = extractConstStringArray(typesSource, "scriptSettingTypes");
 	const programSchema = JSON.parse(read(join(schemasRoot, "program.schema.json")));
-	const schemaRuntimeDataTypes = new Set(programSchema.$defs.runtimeDataType.enum);
+	const manifestSchema = JSON.parse(read(join(schemasRoot, "manifest.schema.json")));
+	const expectedProgramVariableTypes = [...new Set([...editorVariableTypes, ...runtimeDataTypes])];
 
 	assert.ok(runtimeDataTypes.length > 0, "RuntimeDataType union should not be empty");
-	for (const runtimeDataType of runtimeDataTypes) {
-		assert.ok(schemaRuntimeDataTypes.has(runtimeDataType), `${runtimeDataType} is missing from program.schema.json`);
+	assert.deepEqual(programSchema.$defs.runtimeDataType.enum, runtimeDataTypes);
+	assert.deepEqual([...programSchema.$defs.variableType.enum].sort(), expectedProgramVariableTypes.sort());
+	assert.deepEqual(manifestSchema.properties.variables.items.properties.type.enum, editorVariableTypes);
+	assert.deepEqual(manifestSchema.properties.variables.items.properties.item_type.enum, editorListItemTypes);
+	assert.deepEqual(manifestSchema.properties.settings.items.properties.type.enum, editorSettingTypes);
+	assert.deepEqual(manifestSchema.properties.settings.items.properties.item_type.enum, editorListItemTypes);
+	assert.equal(programSchema.$defs.variableType.enum.includes("http_response"), false);
+});
+
+test("shared manifest schema strictly validates custom variable and setting values", async () => {
+	const [{ default: Ajv2020 }, { default: addFormats }] = await Promise.all([
+		import("ajv/dist/2020.js"),
+		import("ajv-formats"),
+	]);
+	const manifestSchema = JSON.parse(read(join(schemasRoot, "manifest.schema.json")));
+	const ajv = new Ajv2020({ allErrors: true, strict: false });
+	addFormats(ajv);
+	const validate = ajv.compile(manifestSchema);
+	const manifest = {
+		format_version: 1,
+		script_language_version: 1,
+		id: "6db0f09c-2d76-4ea3-bb6b-9a093a04d8f7",
+		name: "custom-types",
+		version: "1.0.0",
+		created_with: "BaudBound Test",
+		created_at: "2026-08-03T12:00:00Z",
+		minimum_runner_version: "2.0.0",
+		variables: [
+			{
+				name: "started_at",
+				scope: "runtime",
+				type: "datetime",
+				value: { type: "datetime", value: "2026-08-03T12:00:00Z" },
+			},
+			{
+				name: "timeout",
+				scope: "runtime",
+				type: "duration",
+				value: { type: "duration", unit: "seconds", value: 3 },
+			},
+			{ name: "output", scope: "runtime", type: "file_path", value: "./output.txt" },
+		],
+		settings: [
+			{ name: "Shortcut", type: "hotkey", required: false, default_value: "Ctrl+Shift+F8" },
+			{ name: "Accent", type: "color", required: false, default_value: "#123ABC" },
+		],
+	};
+
+	assert.equal(validate(manifest), true, JSON.stringify(validate.errors));
+	for (const mutate of [
+		(candidate) => {
+			candidate.variables[0].value.value = "2026-02-30T12:00:00Z";
+		},
+		(candidate) => {
+			candidate.variables[1].value.unit = "weeks";
+		},
+		(candidate) => {
+			candidate.variables[1].value.value = -1;
+		},
+		(candidate) => {
+			candidate.variables[0].value.unexpected = true;
+		},
+	]) {
+		const invalid = structuredClone(manifest);
+		mutate(invalid);
+		assert.equal(validate(invalid), false, "invalid custom typed value should fail the shared schema");
 	}
 });
 
@@ -711,6 +816,24 @@ test("serial input stores only logical device ids in script packages", () => {
 	assert.doesNotMatch(serialInputSource, /key:\s*"port"/);
 	assert.doesNotMatch(serialInputSource, /validateUsbIdentity/);
 	assert.doesNotMatch(serialProjectSource, /baudRate|vendorId|productId|\bport\b/);
+});
+
+test("user-controlled identifiers share one portable schema contract", () => {
+	const expectedPattern = "^[A-Za-z0-9_-]+$";
+	const manifestSchema = JSON.parse(read(join(schemasRoot, "manifest.schema.json")));
+	const nodeSchemas = [
+		["runtime-set-variable.schema.json", "name"],
+		["trigger-serial-input.schema.json", "deviceId"],
+		["trigger-webhook.schema.json", "hookName"],
+	];
+
+	assert.equal(manifestSchema.properties.variables.items.properties.name.pattern, expectedPattern);
+	assert.equal(manifestSchema.properties.settings.items.properties.name.pattern, expectedPattern);
+	assert.equal(manifestSchema.properties.secrets.items.properties.name.pattern, expectedPattern);
+	for (const [schemaName, fieldName] of nodeSchemas) {
+		const schema = JSON.parse(read(join(schemasRoot, "nodes", schemaName)));
+		assert.equal(schema.$defs.config.properties[fieldName].pattern, expectedPattern);
+	}
 });
 
 test("Read File has an implicit UTF-8 contract without redundant encoding config", () => {
@@ -766,6 +889,42 @@ test("variable-capable trigger and keyboard fields are explicit while listener i
 	assert.doesNotMatch(extractConfigField(serial, "deviceId"), /usesVariables/);
 	assert.doesNotMatch(extractConfigField(webhook, "hookName"), /usesVariables/);
 	assert.doesNotMatch(extractConfigField(websocket, "path"), /usesVariables/);
+});
+
+test("variable-capable editor inputs declare and enforce type contracts", () => {
+	const definitions = readDefinitions();
+	const variableInputSource = read(join(appRoot, "components", "common", "variable-code-input.tsx"));
+	const validationSource = read(join(appRoot, "data", "nodes", "config-field-validation.ts"));
+	const registrySource = read(join(appRoot, "data", "nodes", "registry.ts"));
+	const verificationSource = read(join(appRoot, "utils", "verification.ts"));
+
+	for (const declaration of definitions.matchAll(/usesVariables:\s*true/g)) {
+		assert.match(
+			definitions.slice(declaration.index, declaration.index + 160),
+			/variableTypes:\s*"[a-z-]+"/,
+			"every variable-capable node field must declare its accepted variable contract",
+		);
+	}
+	assert.match(variableInputSource, /variableTypes:\s*VariableInputContract;/);
+	assert.match(variableInputSource, /filterCompatibleVariables\(variables, variableTypes\)/);
+	assert.match(variableInputSource, /data-variable-status=\{displayStatus\}/);
+	assert.match(variableInputSource, /displayStatus === "type-mismatch" && "bg-cyan-400\/20 text-cyan-300"/);
+	assert.match(validationSource, /datetime:\s*new Set\(\["datetime"\]\)/);
+	assert.match(validationSource, /string:\s*new Set\(\["string"\]\)/);
+	assert.match(
+		validationSource,
+		/numeric:\s*new Set\(\["number", "http_status_code", "duration_ms", "process_id", "exit_code"\]\)/,
+	);
+	assert.match(
+		validationSource,
+		/contract !== "any" && getVariableReferenceStatus\(reference, variables\) === "possible"/,
+	);
+	assert.match(registrySource, /validateConfigField\(field, config, variables\)/);
+	assert.match(registrySource, /definition\?\.validateVariables\?\.\(sanitizedConfig, variables\)/);
+	assert.match(
+		verificationSource,
+		/validateNodeConfig\(node\.data\.actionType, node\.data\.config, availableVariables\)/,
+	);
 });
 
 test("delay and schedule intervals use the shared millisecond duration contract", () => {
@@ -935,7 +1094,6 @@ test("native Windows-only desktop nodes declare target runtime compatibility", (
 	for (const actionType of [
 		"action.keyboard",
 		"action.keyboard.type_text",
-		"action.message_box",
 		"action.mouse",
 		"action.mouse.move",
 		"action.pixel.get",
@@ -970,29 +1128,100 @@ test("window-title process matching has config-sensitive Windows Desktop validat
 	}
 });
 
-test("removed Apple target runtimes are not exposed or accepted", () => {
-	const targetRuntimeSource = read(join(appRoot, "data", "project", "runtimes.ts"));
-	const typeSource = read(join(appRoot, "lib", "types.ts"));
+test("target runtime contracts expose only Windows and Linux", () => {
 	const capabilitiesSchema = JSON.parse(read(join(schemasRoot, "capabilities.schema.json")));
-	const removedTargetPrefix = ["mac", "OS"].join("");
 
-	assert.ok(!targetRuntimeSource.includes(removedTargetPrefix));
-	assert.ok(!typeSource.includes(removedTargetPrefix));
-	assert.ok(
-		!capabilitiesSchema.properties.target_runtimes.items.enum.some((targetRuntime) =>
-			targetRuntime.includes(removedTargetPrefix),
-		),
-		"capabilities schema must not expose removed Apple runtimes",
-	);
+	assert.deepEqual(capabilitiesSchema.properties.target_runtimes.items.enum, [
+		"Linux Headless",
+		"Windows Headless",
+		"Windows Desktop",
+		"Linux Desktop",
+	]);
 });
 
-test("message box schemas expose only native dialog options", () => {
+test("message box schemas expose every configured dialog option", () => {
 	const messageBoxSchema = JSON.parse(read(join(schemasRoot, "nodes", "action-message-box.schema.json")));
-	const buttons = messageBoxSchema.$defs.config.properties.buttons.enum;
-	const types = messageBoxSchema.$defs.config.properties.type.enum;
+	const simulationSource = read(join(appRoot, "components", "modals", "simulation-message-box-dialog.tsx"));
+	const definitionSource = read(join(appRoot, "data", "nodes", "definitions", "actions", "message-box.ts"));
+	const optionsSource = read(join(appRoot, "data", "nodes", "definitions", "options.ts"));
+	const config = messageBoxSchema.$defs.config;
+	const buttons = config.properties.buttons.enum;
+	const types = config.properties.type.enum;
 
-	assert.deepEqual([...buttons].sort(), ["ok", "ok_cancel", "yes_no", "yes_no_cancel"].sort());
+	assert.deepEqual([...buttons].sort(), ["cancel_confirm", "ok", "ok_cancel", "yes_no", "yes_no_cancel"].sort());
 	assert.deepEqual([...types].sort(), ["error", "info", "warning"].sort());
+	assert.ok(config.required.includes("dialogSize"));
+	assert.deepEqual(config.properties.dialogSize.enum, ["small", "medium", "large"]);
+	assert.deepEqual(config.properties.timeoutSeconds.anyOf, [
+		{ type: "number", exclusiveMinimum: 0, maximum: 86400 },
+		{ type: "string", minLength: 1 },
+	]);
+	assert.match(simulationSource, /simulationDialogSizeClasses\[messageBox\.dialogSize\]/);
+	assert.match(simulationSource, /SimulationDialogTimeoutCountdown/);
+	assert.match(simulationSource, /size-8/);
+	assert.match(optionsSource, /label: "Cancel \/ Confirm", value: "cancel_confirm"/);
+	assert.match(definitionSource, /case "ok_cancel":\s*return \["cancel", "ok"\]/);
+	assert.match(definitionSource, /case "cancel_confirm":\s*return \["cancel", "confirm"\]/);
+	assert.match(definitionSource, /case "yes_no":\s*return \["no", "yes"\]/);
+	assert.match(definitionSource, /case "yes_no_cancel":\s*return \["cancel", "no", "yes"\]/);
+	assert.match(definitionSource, /resolveDesktopDialogTimeout/);
+});
+
+test("form dialog schema exposes every strict component contract", () => {
+	const formDialogSchema = JSON.parse(read(join(schemasRoot, "nodes", "action-form-dialog.schema.json")));
+	const config = formDialogSchema.$defs.config;
+	const fields = config.properties.fields.items.oneOf;
+	const informationField = config.properties.fields.items.oneOf.find(
+		(field) => field.properties.type.const === "information",
+	);
+	const imageField = fields.find((field) => field.properties.type.const === "image");
+	const singleChoiceField = fields.find((field) => field.properties.type.const === "single_choice");
+	const sliderField = fields.find((field) => field.properties.type.const === "slider");
+	const textField = fields.find((field) => field.properties.type.const === "text");
+
+	assert.ok(config.required.includes("dialogSize"));
+	assert.deepEqual(config.properties.dialogSize.enum, ["small", "medium", "large"]);
+	assert.equal(config.properties.fields.minItems, 1);
+	assert.deepEqual(fields.map((field) => field.properties.type.const).sort(), [
+		"checkbox",
+		"color",
+		"date",
+		"datetime",
+		"divider",
+		"dropdown",
+		"file",
+		"folder",
+		"image",
+		"information",
+		"multi_choice",
+		"multiline",
+		"number",
+		"password",
+		"section_heading",
+		"single_choice",
+		"slider",
+		"text",
+		"time",
+	]);
+	assert.ok(informationField.required.includes("accentColor"));
+	assert.deepEqual(informationField.properties.accentColor, { type: "string", minLength: 1, maxLength: 512 });
+	assert.ok(imageField.required.includes("assetPath"));
+	assert.deepEqual(imageField.properties.imageFit.enum, ["contain", "cover"]);
+	assert.equal(textField.properties.key.pattern, "^[A-Za-z0-9_-]+$");
+	assert.equal(singleChoiceField.properties.choices.items.properties.key.pattern, "^[A-Za-z0-9_-]+$");
+	assert.ok(sliderField.required.includes("minimum"));
+	assert.ok(sliderField.required.includes("maximum"));
+	assert.ok(sliderField.required.includes("step"));
+});
+
+test("form dialogs require components and keep stable form actions", () => {
+	const builderSource = read(join(appRoot, "components", "inspector", "form-dialog-builder.tsx"));
+	const simulationSource = read(join(appRoot, "components", "modals", "simulation-form-dialog.tsx"));
+
+	assert.match(builderSource, /return "At least one component is required"/);
+	assert.match(simulationSource, />\s*Submit\s*</);
+	assert.doesNotMatch(simulationSource, /fields\.length\s*===\s*0/);
+	assert.doesNotMatch(simulationSource, /Confirm/);
 });
 
 test("generated node schemas restrict config keys to editor-owned node config fields", () => {
@@ -1087,6 +1316,7 @@ test("file permissions are derived from node config paths", async () => {
 	const readFileSource = read(join(appRoot, "data", "nodes", "definitions", "actions", "file-read.ts"));
 	const writeFileSource = read(join(appRoot, "data", "nodes", "definitions", "actions", "file-write.ts"));
 	const copyFileSource = read(join(appRoot, "data", "nodes", "definitions", "actions", "file-copy.ts"));
+	const watchFileSource = read(join(appRoot, "data", "nodes", "definitions", "triggers", "file-watch.ts"));
 
 	assert.match(analysisSource, /getNodePermissions\(node\.data\.actionType, node\.data\.config\)/);
 	assert.match(contractSource, /getNodePermissions\(actionType, config\)/);
@@ -1098,16 +1328,19 @@ test("file permissions are derived from node config paths", async () => {
 	assert.match(writeFileSource, /permissionPathRules: \[\{ access: "write", configKey: "path" \}\]/);
 	assert.match(copyFileSource, /\{ access: "read", configKey: "sourcePath" \}/);
 	assert.match(copyFileSource, /\{ access: "write", configKey: "destinationPath" \}/);
+	assert.match(watchFileSource, /permissionPathRules: \[\{ access: "watch", configKey: "path" \}\]/);
 	const deleteFileSource = read(join(appRoot, "data", "nodes", "definitions", "actions", "file-delete.ts"));
 	assert.match(deleteFileSource, /permissionPathRules: \[\{ access: "delete", configKey: "path" \}\]/);
 
-	const { createDeleteFilePermission, createReadFilePermission, createWriteFilePermission } =
+	const { createDeleteFilePermission, createReadFilePermission, createWatchFilePermission, createWriteFilePermission } =
 		await loadFilePermissionUtilities();
 	assert.equal(createReadFilePermission("workspace/input.txt").name, "file.read");
+	assert.equal(createWatchFilePermission("workspace/input").name, "file.watch.limited");
 	assert.equal(createWriteFilePermission("workspace/output.txt").name, "file.write.limited");
 	assert.equal(createDeleteFilePermission("workspace/output.txt").name, "file.delete.limited");
 	for (const path of ["../outside.txt", "nested/../../outside.txt", "..\\outside.txt"]) {
 		assert.equal(createReadFilePermission(path).name, "file.read.any", path);
+		assert.equal(createWatchFilePermission(path).name, "file.watch.any", path);
 		assert.equal(createWriteFilePermission(path).name, "file.write.any", path);
 		assert.equal(createDeleteFilePermission(path).name, "file.delete.any", path);
 	}
@@ -1115,24 +1348,33 @@ test("file permissions are derived from node config paths", async () => {
 
 test("editor enforces bounded package ingestion limits", () => {
 	const assetsSource = read(join(appRoot, "data", "project", "assets.ts"));
+	const archiveSource = read(join(appRoot, "utils", "bbs-package-archive.ts"));
+	const archiveClientSource = read(join(appRoot, "utils", "package-archive-worker-client.ts"));
 	const limitsSource = read(join(appRoot, "data", "project", "package-limits.ts"));
-	const packageSource = read(join(appRoot, "utils", "bbs-package.ts"));
+	const workerSource = read(join(appRoot, "utils", "bbs-package.worker.ts"));
 	const limits = JSON.parse(read(join(schemasRoot, "package-limits.json")));
 
-	assert.equal(limits.version, 1);
+	assert.equal(limits.version, 2);
 	assert.ok(limits.max_entry_count > 0);
 	assert.ok(limits.max_asset_bytes > 0);
 	assert.ok(limits.max_total_uncompressed_bytes >= limits.max_asset_bytes);
 	assert.match(limitsSource, /contracts\/package-limits\.json/);
 	assert.match(assetsSource, /packageLimits\.max_asset_bytes/);
-	assert.match(packageSource, /assertZipWithinPackageLimits/);
+	assert.match(archiveSource, /file\.size > packageLimits\.max_archive_bytes/);
+	assert.match(archiveSource, /readArchiveWithWorker/);
+	assert.match(archiveClientSource, /worker\.terminate\(\)/);
+	assert.match(workerSource, /validateCentralDirectory\(file\)/);
+	assert.match(workerSource, /new Uint8Array\(centralEntry\.uncompressedSize\)/);
+	assert.doesNotMatch(workerSource, /const chunks:/);
+	assert.match(workerSource, /totalUncompressed > packageLimits\.max_total_uncompressed_bytes/);
+	assert.match(workerSource, /totalUncompressed \/ file\.size > packageLimits\.max_expansion_ratio/);
 });
 
 test("package asset validation requires zip assets and manifest assets to match exactly", () => {
 	const packageSource = read(join(appRoot, "utils", "bbs-package.ts"));
 
 	assert.match(packageSource, /function collectPackageAssetManifest/);
-	assert.match(packageSource, /validatePackageAssetEntries\(getZipAssetEntries\(zip\)\)/);
+	assert.match(packageSource, /validatePackageAssetEntries\(getArchiveEntries\(archive\)\)/);
 	assert.match(packageSource, /asset file is not declared in manifest\.json assets/);
 	assert.match(packageSource, /is listed in manifest but missing from zip/);
 	assert.match(packageSource, /duplicate manifest asset path/);
@@ -1231,7 +1473,13 @@ async function loadColorMatcher() {
 
 async function loadConditionComparison() {
 	const typescript = await import("typescript");
-	const source = read(join(appRoot, "data", "nodes", "condition-comparison.ts"));
+	const safeRegexStubUrl = `data:text/javascript;base64,${Buffer.from(
+		'export async function runSafeRegex() { throw new Error("regex execution is outside this contract test"); }',
+	).toString("base64")}`;
+	const source = read(join(appRoot, "data", "nodes", "condition-comparison.ts")).replace(
+		'"@/utils/safe-regex"',
+		JSON.stringify(safeRegexStubUrl),
+	);
 	const compiled = typescript.transpileModule(source, {
 		compilerOptions: {
 			module: typescript.ModuleKind.ESNext,

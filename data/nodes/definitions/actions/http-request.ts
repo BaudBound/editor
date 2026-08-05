@@ -5,7 +5,7 @@ import type { SimulationContext } from "@/utils/simulation-types";
 import type { NodeSimulationApi } from "../../node-definition";
 import { defineNode } from "../../node-definition";
 import { httpBodyFormatOptions, httpMethodOptions } from "../options";
-import { createHeaderRow } from "../rows";
+import { createHeaderRow, validateHeaderVariableInputs } from "../rows";
 import { fallible } from "../runtime-outputs";
 import { requiredConfig, staticHttpUrlConfig, staticPositiveNumberConfig } from "../validators";
 
@@ -110,23 +110,16 @@ export const httpRequestNode = defineNode({
 			requiredConfig(config, "url", "request URL"),
 			staticPositiveNumberConfig(config, "timeoutSeconds", "timeout seconds"),
 		].filter(Boolean),
+	validateVariables: (config, variables) => validateHeaderVariableInputs(config.headers, variables),
 	simulation: {
 		createOutput: ({ api, context, node }) => api.executeHttpRequest(node, context),
 		describe: ({ api, context, failed, node }) => {
-			const traces = [
+			return [
 				{
 					level: failed ? ("error" as const) : ("info" as const),
 					message: `[Simulation] HTTP Request (${node.id}) ${failed ? "failed" : "succeeded"}. ${getHttpExecutionDetail(api, node, context)}`,
 				},
 			];
-			if (api.getConfigString(node, "userAgent").trim()) {
-				traces.push({
-					level: "info",
-					message:
-						"[Simulation limitation] Browsers do not allow this simulation to set User-Agent. The runner will send the configured User-Agent.",
-				});
-			}
-			return traces;
 		},
 	},
 });
@@ -172,6 +165,9 @@ function isJsonContentTypeHeader(value: JsonValue) {
 function getHttpExecutionDetail(api: NodeSimulationApi, node: Node<ScriptNodeData>, context: SimulationContext) {
 	const output = context.nodeOutputs[node.id];
 	const method = api.getConfigString(node, "method");
+	if (context.httpSimulation.mode === "mock") {
+		return `${method} request was mocked without network access.`;
+	}
 	const url = api.formatValue(api.resolveTemplate(api.getConfigString(node, "url"), context));
 
 	if (output?.error && typeof output.error === "object" && !Array.isArray(output.error)) {

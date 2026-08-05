@@ -9,7 +9,7 @@ export const webhookTriggerNode = defineNode({
 	capabilities: ["trigger.webhook"],
 	configFields: [
 		{ key: "method", label: "Method", type: "select", options: httpMethodOptions },
-		{ key: "hookName", label: "Hook name", type: "text", nonEmpty: true },
+		{ key: "hookName", label: "Hook name", identifier: true, type: "text", nonEmpty: true },
 		{
 			key: "waitForResponse",
 			label: "Wait for response node",

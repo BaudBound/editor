@@ -4,9 +4,11 @@ import { Fragment, type ReactNode, type PointerEvent as ReactPointerEvent, useEf
 import { CopyTextButton } from "@/components/common/copy-text-button";
 import { FieldError } from "@/components/common/field-error";
 import { NumericField } from "@/components/common/numeric-field";
+import { ReorderDragOverlay } from "@/components/common/reorder-drag-overlay";
 import { TypedValueEditor } from "@/components/common/typed-value-editor";
 import { VariableCodeInput, type VariableCompletion } from "@/components/common/variable-code-input";
 import { ColorConfigInput } from "@/components/inspector/color-config-input";
+import { FormDialogBuilder } from "@/components/inspector/form-dialog-builder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OptionCombobox } from "@/components/ui/option-combobox";
@@ -14,7 +16,6 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { inspectorTabs } from "@/data/editor/inspector-tabs";
 import {
-	filterCompatibleVariables,
 	getEffectiveVariableContract,
 	validateConfigField,
 	validateVariableReferences,
@@ -48,7 +49,12 @@ import {
 	type SwitchCaseRow,
 	type TextTransformOperationRow,
 } from "@/data/nodes/definitions/rows";
-import type { NodeConfigField, NumericConfigContract, VariableInputContract } from "@/data/nodes/node-definition";
+import {
+	configVisibilityConditionMatches,
+	type NodeConfigField,
+	type NumericConfigContract,
+	type VariableInputContract,
+} from "@/data/nodes/node-definition";
 import { numericContractApplies, runtimeNumberContract } from "@/data/nodes/numeric-validation";
 import { createDefaultNodeConfig, getNodeConfigFields } from "@/data/nodes/registry";
 import { validateSwitchCaseName, validateSwitchCaseValue } from "@/data/nodes/switch-validation";
@@ -278,11 +284,8 @@ function PropertiesPanel({
 	}
 
 	const defaultConfig = createDefaultNodeConfig(selectedNode.data.actionType);
-	const fields = getNodeConfigFields(selectedNode.data.actionType).filter(
-		(field) =>
-			!field.visibleWhen ||
-			(selectedNode.data.config[field.visibleWhen.key] ?? defaultConfig[field.visibleWhen.key]) ===
-				field.visibleWhen.equals,
+	const fields = getNodeConfigFields(selectedNode.data.actionType).filter((field) =>
+		configVisibilityConditionMatches(field.visibleWhen, { ...defaultConfig, ...selectedNode.data.config }),
 	);
 	const variableCompletions = createVariableCompletions(variables);
 	const configVariableCompletions =
@@ -419,6 +422,7 @@ function PropertiesPanel({
 						{visibleFields.map((field) => (
 							<ConfigField
 								key={field.key}
+								assets={assets}
 								config={selectedNode.data.config}
 								field={field}
 								numericContract={
@@ -450,6 +454,7 @@ function PropertiesPanel({
 }
 
 function ConfigField({
+	assets,
 	config,
 	field,
 	numericContract,
@@ -457,6 +462,7 @@ function ConfigField({
 	variableCompletions,
 	onChange,
 }: {
+	assets: EditorAsset[];
 	config: Record<string, JsonValue>;
 	field: NodeConfigField;
 	numericContract?: NumericConfigContract;
@@ -469,9 +475,7 @@ function ConfigField({
 	const inputValue = valueToInputString(value);
 	const validationConfig = value === undefined ? config : { ...config, [field.key]: value };
 	const error = validateConfigField(field, validationConfig, variableCompletions);
-	const compatibleVariables = field.usesVariables
-		? filterCompatibleVariables(variableCompletions, getEffectiveVariableContract(field, validationConfig))
-		: [];
+	const variableTypes = getEffectiveVariableContract(field, validationConfig);
 
 	return (
 		<div>
@@ -486,7 +490,7 @@ function ConfigField({
 					required={field.required !== false}
 					validationError={error}
 					value={inputValue}
-					variables={compatibleVariables}
+					variables={variableCompletions}
 				/>
 			) : field.colorPicker ? (
 				<ColorConfigInput
@@ -494,7 +498,7 @@ function ConfigField({
 					errorId={errorId}
 					label={field.label}
 					value={inputValue}
-					variables={compatibleVariables}
+					variables={variableCompletions}
 					onChange={onChange}
 				/>
 			) : field.type === "select" ? (
@@ -528,8 +532,16 @@ function ConfigField({
 					label={field.label}
 					value={value}
 					variableCompletions={variableCompletions}
-					compatibleVariableCompletions={compatibleVariables}
-					variableTypes={getEffectiveVariableContract(field, validationConfig)}
+					variableTypes={variableTypes}
+					onChange={onChange}
+				/>
+			) : field.type === "form-field-list" ? (
+				<FormDialogBuilder
+					assets={assets}
+					error={error}
+					errorId={errorId}
+					value={value}
+					variables={variableCompletions}
 					onChange={onChange}
 				/>
 			) : field.type === "textarea" && field.usesVariables ? (
@@ -540,7 +552,8 @@ function ConfigField({
 					hasError={!!error}
 					value={inputValue}
 					multiline
-					variables={compatibleVariables}
+					variableTypes={variableTypes}
+					variables={variableCompletions}
 					onChange={onChange}
 				/>
 			) : field.type === "textarea" ? (
@@ -559,7 +572,8 @@ function ConfigField({
 					ariaDescribedBy={error ? errorId : undefined}
 					hasError={!!error}
 					value={inputValue}
-					variables={compatibleVariables}
+					variableTypes={variableTypes}
+					variables={variableCompletions}
 					onChange={onChange}
 				/>
 			) : (
@@ -573,7 +587,9 @@ function ConfigField({
 					onChange={(event) => onChange(event.target.value)}
 				/>
 			)}
-			{!numericContract && field.type !== "string-list" && <FieldError id={errorId} message={error} />}
+			{!numericContract && field.type !== "string-list" && field.type !== "form-field-list" && (
+				<FieldError id={errorId} message={error} />
+			)}
 			{field.help && <p className="mt-1 text-xs leading-4 text-baud-muted">{field.help}</p>}
 		</div>
 	);
@@ -585,7 +601,6 @@ function StringListField({
 	label,
 	value,
 	variableCompletions,
-	compatibleVariableCompletions,
 	variableTypes,
 	onChange,
 }: {
@@ -594,7 +609,6 @@ function StringListField({
 	label: string;
 	value: JsonValue | undefined;
 	variableCompletions: VariableCompletion[];
-	compatibleVariableCompletions: VariableCompletion[];
 	variableTypes: VariableInputContract;
 	onChange: (value: JsonValue) => void;
 }) {
@@ -618,7 +632,8 @@ function StringListField({
 							ariaLabel={`${label} ${index + 1}`}
 							hasError={!!itemErrors[index]}
 							value={item}
-							variables={compatibleVariableCompletions}
+							variableTypes={variableTypes}
+							variables={variableCompletions}
 							onChange={(nextValue) => updateItem(index, nextValue)}
 						/>
 						<FieldError id={`${errorId}-${index}`} message={itemErrors[index]} />
@@ -799,6 +814,7 @@ function ConditionValueInput({
 				value={value}
 				usesVariables
 				variableCompletions={variableCompletions}
+				variableTypes="any"
 				onChange={onChange}
 			/>
 		);
@@ -816,7 +832,7 @@ function ConditionValueInput({
 				contract={runtimeNumberContract}
 				validationError={numericVariableError}
 				value={value}
-				variables={filterCompatibleVariables(variableCompletions, "numeric")}
+				variables={variableCompletions}
 				onChange={onChange}
 			/>
 		</div>
@@ -854,6 +870,7 @@ function SwitchConfigPanel({
 				value={switchValue}
 				usesVariables
 				variableCompletions={variableCompletions}
+				variableTypes="any"
 				onChange={(value) => onChange("value", value)}
 			/>
 			<ul ref={caseReorder.listRef} className="space-y-3" aria-label="Switch cases">
@@ -907,6 +924,7 @@ function SwitchConfigPanel({
 								value={switchCase.value}
 								usesVariables
 								variableCompletions={variableCompletions}
+								variableTypes="any"
 								onChange={(value) => updateSwitchCase(cases, switchCase.id, { value }, onChange)}
 							/>
 						</li>
@@ -949,6 +967,7 @@ function TextTransformConfigPanel({
 				value={valueToInputString(config.input)}
 				usesVariables
 				variableCompletions={variableCompletions}
+				variableTypes="any"
 				onChange={(value) => onChange("input", value)}
 			/>
 			<p className="text-xs leading-4 text-baud-muted">
@@ -1123,7 +1142,8 @@ function TextTransformRowInput({
 			label={label}
 			value={row[field]}
 			usesVariables
-			variableCompletions={filterCompatibleVariables(variableCompletions, variableTypes)}
+			variableCompletions={variableCompletions}
+			variableTypes={variableTypes}
 			onChange={(value) => updateTextTransformOperation(rows, row.id, { [field]: value }, onChange)}
 		/>
 	);
@@ -1405,7 +1425,8 @@ function VariableOperationConfigPanel({
 						type={getVariableOperationInputType(operation, selectedType, fieldValueType)}
 						value={draftValue}
 						hasError={!!valueValidationMessage}
-						variables={filterCompatibleVariables(variableCompletions, inputVariableTypes)}
+						variableTypes={inputVariableTypes}
+						variables={variableCompletions}
 						onChange={handleValueChange}
 					/>
 				)}
@@ -1423,6 +1444,7 @@ function VariableOperationValueInput({
 	itemType,
 	type,
 	value,
+	variableTypes,
 	variables,
 	onChange,
 }: {
@@ -1432,6 +1454,7 @@ function VariableOperationValueInput({
 	itemType?: ListItemType;
 	type: VariableType;
 	value: string;
+	variableTypes: VariableInputContract;
 	variables: VariableCompletion[];
 	onChange: (value: string) => void;
 }) {
@@ -1447,6 +1470,7 @@ function VariableOperationValueInput({
 					value={value}
 					multiline
 					hasError={hasError}
+					variableTypes={variableTypes}
 					variables={variables}
 					onChange={onChange}
 				/>
@@ -1479,6 +1503,7 @@ function VariableOperationValueInput({
 						value={value}
 						multiline
 						hasError={hasError}
+						variableTypes={variableTypes}
 						variables={variables}
 						onChange={onChange}
 					/>
@@ -1592,37 +1617,49 @@ function HttpHeadersPanel({
 				<span className="font-mono text-xs uppercase tracking-[0.14em] text-baud-muted">Headers</span>
 				<AddButton compact label="Add header" onClick={() => onChange("headers", [...headers, createHeaderRow()])} />
 			</div>
-			{headers.map((header) => (
-				<div key={header.id} className="grid grid-cols-[1fr_1fr_24px] gap-2">
-					<Input
-						value={header.name}
-						onChange={(event) => updateHeader(headers, header.id, { name: event.target.value }, onChange)}
-						placeholder="Header"
-						className="min-w-0 bg-baud-panel px-2"
-					/>
-					<VariableCodeInput
-						ariaLabel="Header value"
-						value={header.value}
-						variables={variableCompletions}
-						onChange={(value) => updateHeader(headers, header.id, { value }, onChange)}
-						placeholder="Value"
-					/>
-					<Button
-						type="button"
-						onClick={() =>
-							onChange(
-								"headers",
-								headers.filter((row) => row.id !== header.id),
-							)
-						}
-						aria-label="Remove header"
-						size="icon"
-						variant="destructive"
-					>
-						<X size={13} />
-					</Button>
-				</div>
-			))}
+			{headers.map((header) => {
+				const valueError =
+					validateVariableReferences(header.value, variableCompletions) ||
+					validateVariableReferenceTypes(header.value, variableCompletions, "string");
+				const errorId = `header-${header.id}-value-error`;
+				return (
+					<div key={header.id} className="grid grid-cols-[1fr_1fr_24px] items-start gap-2">
+						<Input
+							value={header.name}
+							onChange={(event) => updateHeader(headers, header.id, { name: event.target.value }, onChange)}
+							placeholder="Header"
+							className="min-w-0 bg-baud-panel px-2"
+						/>
+						<div className="min-w-0">
+							<VariableCodeInput
+								ariaDescribedBy={valueError ? errorId : undefined}
+								ariaLabel="Header value"
+								hasError={!!valueError}
+								value={header.value}
+								variableTypes="string"
+								variables={variableCompletions}
+								onChange={(value) => updateHeader(headers, header.id, { value }, onChange)}
+								placeholder="Value"
+							/>
+							<FieldError id={errorId} message={valueError} />
+						</div>
+						<Button
+							type="button"
+							onClick={() =>
+								onChange(
+									"headers",
+									headers.filter((row) => row.id !== header.id),
+								)
+							}
+							aria-label="Remove header"
+							size="icon"
+							variant="destructive"
+						>
+							<X size={13} />
+						</Button>
+					</div>
+				);
+			})}
 		</div>
 	);
 }
@@ -1680,7 +1717,8 @@ function PlaySoundConfigPanel({
 					label="File path"
 					value={valueToInputString(config.filePath)}
 					usesVariables
-					variableCompletions={filterCompatibleVariables(variableCompletions, "file-path")}
+					variableCompletions={variableCompletions}
+					variableTypes="file-path"
 					onChange={(value) => onChange("filePath", value)}
 				/>
 			)}
@@ -1729,12 +1767,14 @@ function SerialWriteConfigPanel({
 			<TextInput
 				error={
 					(!valueToInputString(config.data).trim() ? "Data is required." : "") ||
-					validateVariableReferences(valueToInputString(config.data), variableCompletions)
+					validateVariableReferences(valueToInputString(config.data), variableCompletions) ||
+					validateVariableReferenceTypes(valueToInputString(config.data), variableCompletions, "text")
 				}
 				label="Data"
 				value={valueToInputString(config.data)}
 				usesVariables
 				variableCompletions={variableCompletions}
+				variableTypes="text"
 				onChange={(value) => onChange("data", value)}
 			/>
 		</div>
@@ -1917,16 +1957,26 @@ function TextInput({
 	onChange,
 	hasError,
 	usesVariables,
-	variableCompletions = [],
+	variableCompletions,
+	variableTypes,
 }: {
 	error?: string;
 	label: string;
 	value: string;
 	onChange: (value: string) => void;
 	hasError?: boolean;
-	usesVariables?: boolean;
-	variableCompletions?: VariableCompletion[];
-}) {
+} & (
+	| {
+			usesVariables: true;
+			variableCompletions: VariableCompletion[];
+			variableTypes: VariableInputContract;
+	  }
+	| {
+			usesVariables?: false;
+			variableCompletions?: never;
+			variableTypes?: never;
+	  }
+)) {
 	const inputId = useId();
 	const errorId = `${inputId}-error`;
 	const invalid = !!error || !!hasError;
@@ -1943,6 +1993,7 @@ function TextInput({
 					ariaDescribedBy={error ? errorId : undefined}
 					value={value}
 					hasError={invalid}
+					variableTypes={variableTypes}
 					variables={variableCompletions}
 					onChange={onChange}
 				/>
@@ -2094,18 +2145,9 @@ function FloatingSwitchCaseCard({ switchCase, drag }: { switchCase: SwitchCaseRo
 
 function FloatingReorderCard({ drag, children }: { drag: ActiveReorderDragState; children: ReactNode }) {
 	return (
-		<div
-			className="pointer-events-none fixed z-9999 space-y-2 rounded border border-baud-red bg-baud-panel p-2 opacity-95 shadow-[0_18px_42px_rgba(0,0,0,0.38)]"
-			style={{
-				left: drag.pointerX - drag.pointerOffsetX,
-				minHeight: drag.cardHeight,
-				top: drag.pointerY - drag.pointerOffsetY,
-				transform: "rotate(0.7deg)",
-				width: drag.cardWidth,
-			}}
-		>
+		<ReorderDragOverlay className="space-y-2 p-2" drag={drag} style={{ transform: "rotate(0.7deg)" }}>
 			{children}
-		</div>
+		</ReorderDragOverlay>
 	);
 }
 

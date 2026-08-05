@@ -3,6 +3,11 @@
 import { AlertTriangle, Info, OctagonX } from "lucide-react";
 import type { ComponentType } from "react";
 import { useId } from "react";
+import { simulationDialogSizeClasses } from "@/components/modals/simulation-dialog-size";
+import {
+	SimulationDialogTimeoutCountdown,
+	useSimulationDialogTimeout,
+} from "@/components/modals/simulation-dialog-timeout";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -36,12 +41,15 @@ const variantClassName: Record<MessageBoxSideEffect["variant"], string> = {
 export function SimulationMessageBoxDialog({ messageBox, onSelect }: SimulationMessageBoxDialogProps) {
 	const titleId = useId();
 	const Icon = messageBox ? variantIcon[messageBox.variant] : Info;
+	const timeoutDeadline = useSimulationDialogTimeout(messageBox?.timeoutSeconds, messageBox?.nodeId ?? null, () =>
+		onSelect("timeout"),
+	);
 
 	return (
 		<Dialog open={!!messageBox} onOpenChange={() => undefined}>
 			<DialogContent
 				aria-labelledby={titleId}
-				className="sm:max-w-lg"
+				className={`${messageBox ? simulationDialogSizeClasses[messageBox.dialogSize] : simulationDialogSizeClasses.medium} grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-lg bg-baud-bg p-0 ring-baud-border`}
 				showCloseButton={false}
 				onEscapeKeyDown={(event) => event.preventDefault()}
 				onInteractOutside={(event) => event.preventDefault()}
@@ -49,28 +57,33 @@ export function SimulationMessageBoxDialog({ messageBox, onSelect }: SimulationM
 			>
 				{messageBox && (
 					<>
-						<DialogHeader className="grid grid-cols-[32px_minmax(0,1fr)] gap-x-3">
-							<Icon className={`mt-0.5 size-6 ${variantClassName[messageBox.variant]}`} />
-							<div className="min-w-0 space-y-2">
-								<DialogTitle id={titleId} className="text-base text-baud-text">
-									{messageBox.title || "Message"}
-								</DialogTitle>
-								<DialogDescription className="whitespace-pre-wrap break-words text-sm leading-5 text-baud-muted">
+						<div className="min-h-0 overflow-y-auto px-5 py-5">
+							<DialogHeader className="min-w-0 gap-0 text-left">
+								<div className="flex min-w-0 items-center gap-3">
+									<Icon className={`size-8 shrink-0 ${variantClassName[messageBox.variant]}`} />
+									<DialogTitle id={titleId} className="min-w-0 break-words text-base text-baud-text">
+										{messageBox.title || "Message"}
+									</DialogTitle>
+								</div>
+								<DialogDescription className="mt-4 whitespace-pre-wrap break-words text-sm leading-5 text-baud-muted">
 									{messageBox.message}
 								</DialogDescription>
+							</DialogHeader>
+						</div>
+						<DialogFooter className="min-w-0 flex-wrap items-center justify-between gap-3 border-t border-baud-border bg-baud-panel px-5 py-3 sm:justify-between">
+							<SimulationDialogTimeoutCountdown deadline={timeoutDeadline} />
+							<div className="ml-auto flex min-w-0 flex-wrap justify-end gap-2">
+								{messageBox.buttons.map((button) => (
+									<Button
+										key={button}
+										type="button"
+										onClick={() => onSelect(button)}
+										variant={button === "cancel" || button === "no" ? "outline" : "toolbar"}
+									>
+										{formatButtonLabel(button)}
+									</Button>
+								))}
 							</div>
-						</DialogHeader>
-						<DialogFooter className="bg-baud-panel">
-							{messageBox.buttons.map((button) => (
-								<Button
-									key={button}
-									type="button"
-									onClick={() => onSelect(button)}
-									variant={button === "cancel" || button === "no" ? "outline" : "toolbar"}
-								>
-									{formatButtonLabel(button)}
-								</Button>
-							))}
 						</DialogFooter>
 					</>
 				)}

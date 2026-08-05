@@ -22,14 +22,14 @@ import {
 } from "./numeric-field-model";
 import { VariableCodeInput, type VariableCompletion } from "./variable-code-input";
 
-const numericVariableTypes = new Set(["number", "http_status_code", "duration_ms", "process_id", "exit_code"]);
-
 export type NumericFieldProps = {
 	allowVariables?: boolean;
+	ariaDescribedBy?: string;
 	ariaLabel?: string;
 	className?: string;
 	compact?: boolean;
 	contract: NumericConfigContract;
+	controlClassName?: string;
 	disabled?: boolean;
 	id?: string;
 	onBlur?: FocusEventHandler<HTMLInputElement | HTMLTextAreaElement>;
@@ -47,10 +47,12 @@ export type NumericFieldProps = {
 
 export function NumericField({
 	allowVariables = false,
+	ariaDescribedBy,
 	ariaLabel = "Numeric value",
 	className,
 	compact = false,
 	contract,
+	controlClassName,
 	disabled = false,
 	id,
 	onBlur,
@@ -78,14 +80,12 @@ export function NumericField({
 	}, [externalValue]);
 
 	const error = getNumericDraftError(draft, contract, allowVariables, required) || validationError || "";
+	const describedBy = [ariaDescribedBy, error && showError ? errorId : ""].filter(Boolean).join(" ") || undefined;
 	const currentAriaValue = numericAriaValue(draft);
 	const minimum = finiteNumber(contract.minimum);
 	const maximum = finiteNumber(contract.maximum);
 	const canDecrease = canStep(draft, contract, -1, step);
 	const canIncrease = canStep(draft, contract, 1, step);
-	const matchingVariables = allowVariables
-		? variables.filter((variable) => numericVariableTypes.has(variable.type))
-		: [];
 
 	const updateDraft = (next: string) => {
 		draftRef.current = next;
@@ -123,6 +123,7 @@ export function NumericField({
 	const increasePress = useRepeatingPress(() => applyStep(1));
 	const inputClassName = cn(
 		"h-8 min-w-0 border-0 bg-transparent px-2.5 text-left font-mono text-sm tabular-nums text-baud-text outline-none placeholder:text-baud-muted disabled:cursor-not-allowed disabled:opacity-50",
+		controlClassName && "h-full",
 		compact && "px-2 text-xs",
 	);
 
@@ -136,13 +137,14 @@ export function NumericField({
 						? "border-baud-danger shadow-[0_0_0_2px_rgb(224_92_92/0.14)]"
 						: "border-baud-border focus-within:border-baud-red/75 focus-within:shadow-[0_0_0_2px_rgb(230_45_62/0.14)]",
 					disabled && "opacity-60",
+					controlClassName,
 				)}
 			>
 				{allowVariables ? (
 					<VariableCodeInput
 						id={inputId}
 						ariaLabel={ariaLabel}
-						ariaDescribedBy={error && showError ? errorId : undefined}
+						ariaDescribedBy={describedBy}
 						className="rounded-none border-0 bg-transparent shadow-none focus-within:border-0 focus-within:shadow-none"
 						contentClassName={cn("text-left tabular-nums", compact && "px-2 text-xs")}
 						containerClassName="min-w-0"
@@ -156,13 +158,14 @@ export function NumericField({
 						placeholder={placeholder}
 						readOnly={readOnly}
 						value={draft}
-						variables={matchingVariables}
+						variableTypes="numeric"
+						variables={variables}
 					/>
 				) : (
 					<input
 						id={inputId}
 						aria-label={ariaLabel}
-						aria-describedby={error && showError ? errorId : undefined}
+						aria-describedby={describedBy}
 						aria-invalid={!!error || undefined}
 						aria-valuemax={maximum}
 						aria-valuemin={minimum}

@@ -12,6 +12,10 @@ export type SimulationSideEffectHandlers = {
 		sideEffect: Extract<SimulationSideEffect, { type: "message_box" }>,
 		signal: AbortSignal,
 	) => Promise<string>;
+	showFormDialog: (
+		sideEffect: Extract<SimulationSideEffect, { type: "form_dialog" }>,
+		signal: AbortSignal,
+	) => Promise<Extract<SimulationSideEffectResult, { type: "form_dialog" }> | "aborted" | "replaced">;
 };
 
 export async function executeSimulationSideEffects(
@@ -38,6 +42,14 @@ export async function executeSimulationSideEffects(
 			const button = await handlers.showMessageBox(sideEffect, signal);
 			if (button !== "aborted" && button !== "replaced") {
 				results.push({ type: "message_box", nodeId: sideEffect.nodeId, button });
+			}
+			continue;
+		}
+
+		if (sideEffect.type === "form_dialog") {
+			const result = await handlers.showFormDialog(sideEffect, signal);
+			if (result !== "aborted" && result !== "replaced") {
+				results.push(result);
 			}
 			continue;
 		}

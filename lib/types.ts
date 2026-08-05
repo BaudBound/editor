@@ -36,6 +36,7 @@ export type ActionType =
 	| "action.websocket.write"
 	| "action.notification"
 	| "action.message_box"
+	| "action.form_dialog"
 	| "action.pixel.get"
 	| "action.file.read"
 	| "action.file.download"
@@ -262,8 +263,10 @@ export type SimulationOverride = {
 };
 
 export type SimulationSpeed = "realtime" | "slowdown-100" | "slowdown-300" | "slowdown-700";
+export type SimulationHttpMode = "mock" | "live";
 
 export type SimulationSettings = {
+	httpMode: SimulationHttpMode;
 	speed: SimulationSpeed;
 };
 

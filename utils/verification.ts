@@ -7,6 +7,7 @@ import {
 } from "@/data/nodes/registry";
 import { isAllowedPackageFile, validateEditorAssets, validatePackageAssetPaths } from "@/data/project/assets";
 import { builtInVariableNames } from "@/data/project/built-in-variables";
+import type { VariableReferenceCandidate } from "@/data/project/variables";
 import {
 	createConfiguredVariableDefinitions,
 	createNodeOutputVariables,
@@ -53,6 +54,7 @@ type CreateVerificationChecksOptions = {
 	secretDeclarations?: SecretDeclaration[];
 	scriptName: string;
 	targetRuntimes: TargetRuntime[];
+	variables?: readonly VariableReferenceCandidate[];
 };
 
 export type PackageVerificationContext = {
@@ -210,9 +212,12 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 		id: "entry-points",
 		title: "Entry points",
 		description: "Checking trigger nodes that can start the script.",
-		run: ({ nodes }) => {
+		run: ({ nodes, variables }) => {
 			const triggerCount = nodes.filter((node) => node.data.kind === "trigger").length;
-			const invalidTriggerConfig = getInvalidNodeConfigKeys(nodes.filter((node) => node.data.kind === "trigger"));
+			const invalidTriggerConfig = getInvalidNodeConfigKeys(
+				nodes.filter((node) => node.data.kind === "trigger"),
+				variables,
+			);
 
 			if (invalidTriggerConfig.length > 0) {
 				return {
@@ -285,10 +290,10 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 		id: "variables",
 		title: "Variables",
 		description: "Checking variable writes and read-only runtime references.",
-		run: ({ assets, defaultVariables, edges, nodes, secretDeclarations }) => {
+		run: ({ assets, defaultVariables, edges, nodes, secretDeclarations, variables }) => {
 			const invalidWrites = getInvalidVariableWrites(nodes);
 			const invalidGraphConfigs = getInvalidNodeGraphConfigs(nodes, edges, assets);
-			const invalidNodeConfigKeys = getInvalidNodeConfigKeys(nodes);
+			const invalidNodeConfigKeys = getInvalidNodeConfigKeys(nodes, variables);
 			const invalidDefaults = getInvalidDefaultVariables(defaultVariables ?? [], nodes, secretDeclarations ?? []);
 			const errors = [...invalidWrites, ...invalidGraphConfigs, ...invalidNodeConfigKeys, ...invalidDefaults];
 
@@ -362,7 +367,7 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 			const manualTriggers = context.nodes.filter((node) => node.data.actionType === "trigger.manual");
 			const invalidVariableWrites = getInvalidVariableWrites(context.nodes);
 			const invalidGraphConfigs = getInvalidNodeGraphConfigs(context.nodes, context.edges, context.assets);
-			const invalidNodeConfigKeys = getInvalidNodeConfigKeys(context.nodes);
+			const invalidNodeConfigKeys = getInvalidNodeConfigKeys(context.nodes, context.variables);
 			const invalidAssets = validateEditorAssets(context.assets).errors;
 			const invalidTargetRuntime = getTargetRuntimeCompatibilityErrors(context.nodes, context.targetRuntimes);
 			const invalidDefaults = getInvalidDefaultVariables(
@@ -697,12 +702,14 @@ function getTargetRuntimeCompatibilityErrors(nodes: Node<ScriptNodeData>[], targ
 	);
 }
 
-function getInvalidNodeConfigKeys(nodes: Node<ScriptNodeData>[]) {
-	return nodes.flatMap((node) =>
-		validateNodeConfig(node.data.actionType, node.data.config).map(
+function getInvalidNodeConfigKeys(nodes: Node<ScriptNodeData>[], variables?: readonly VariableReferenceCandidate[]) {
+	return nodes.flatMap((node) => {
+		const availableVariables =
+			node.data.kind === "trigger" ? variables?.filter((variable) => variable.preTrigger) : variables;
+		return validateNodeConfig(node.data.actionType, node.data.config, availableVariables).map(
 			(error) => `${getNodeLocation(node)} > Configuration: ${error}`,
-		),
-	);
+		);
+	});
 }
 
 function getInvalidNodeGraphConfigs(nodes: Node<ScriptNodeData>[], edges: Edge[], assets: EditorAsset[]) {

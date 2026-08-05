@@ -11,6 +11,12 @@ import {
 	useState,
 } from "react";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import {
+	filterCompatibleVariables,
+	formatVariableInputContract,
+	isVariableTypeCompatible,
+} from "@/data/nodes/config-field-validation";
+import type { VariableInputContract } from "@/data/nodes/node-definition";
 import { getVariableReferenceStatus, type VariableReferenceCandidate } from "@/data/project/variables";
 import type { JsonValue } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -44,6 +50,7 @@ export type VariableCodeInputProps = {
 	placeholder?: string;
 	readOnly?: boolean;
 	value: string;
+	variableTypes: VariableInputContract;
 	variables: VariableCompletion[];
 };
 
@@ -72,6 +79,7 @@ export function VariableCodeInput({
 	placeholder,
 	readOnly,
 	value,
+	variableTypes,
 	variables,
 }: VariableCodeInputProps) {
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -86,7 +94,8 @@ export function VariableCodeInput({
 	const lineNumberWidth = `calc(${String(lineCount).length}ch + 1.5rem)`;
 	const textLayerStyle = multiline ? { paddingLeft: `calc(${lineNumberWidth} + 0.625rem)` } : undefined;
 	const completion = getCompletionState(value, caretPosition);
-	const suggestions = completion ? getSuggestions(variables, completion.query) : [];
+	const compatibleVariables = filterCompatibleVariables(variables, variableTypes);
+	const suggestions = completion ? getSuggestions(compatibleVariables, completion.query) : [];
 	const showSuggestions = isFocused && !suggestionsDismissed && !!completion && suggestions.length > 0;
 	const lineNumbers = Array.from({ length: lineCount }, (_, index) => index + 1);
 	const activeSuggestion = suggestions[activeSuggestionIndex] ?? suggestions[0];
@@ -228,7 +237,7 @@ export function VariableCodeInput({
 								)}
 							>
 								{value ? (
-									renderHighlightedValue(value, variables)
+									renderHighlightedValue(value, variables, variableTypes)
 								) : (
 									<span className="text-baud-muted">{placeholder}</span>
 								)}
@@ -369,7 +378,7 @@ function getSuggestions(variables: VariableCompletion[], query: string) {
 		.slice(0, 12);
 }
 
-function renderHighlightedValue(value: string, variables: VariableCompletion[]) {
+function renderHighlightedValue(value: string, variables: VariableCompletion[], variableTypes: VariableInputContract) {
 	const elements: ReactNode[] = [];
 	const variablePattern = /\{\{[^{}]*\}\}/g;
 	let lastIndex = 0;
@@ -386,18 +395,25 @@ function renderHighlightedValue(value: string, variables: VariableCompletion[]) 
 		const normalizedName = name.trim();
 		const hasSpacing = name !== normalizedName;
 		const status = getVariableReferenceStatus(normalizedName, variables);
-		const displayStatus = status === "known" && hasSpacing ? "possible" : status;
+		const variable = variables.find((candidate) => candidate.name === normalizedName);
+		const displayStatus =
+			status === "known" && hasSpacing
+				? "possible"
+				: status === "known" && variable && !isVariableTypeCompatible(variable.type, variableTypes)
+					? "type-mismatch"
+					: status;
 
 		elements.push(
 			<span
 				key={`variable-${start}`}
-				title={getVariableReferenceTitle(displayStatus, hasSpacing)}
+				title={getVariableReferenceTitle(displayStatus, hasSpacing, variable?.type, variableTypes)}
 				data-variable-token={normalizedName}
 				data-variable-status={displayStatus}
 				className={cn(
 					"rounded-sm px-0.5 font-semibold",
 					displayStatus === "known" && "bg-emerald-400/20 text-emerald-300",
 					displayStatus === "possible" && "bg-amber-400/20 text-amber-300",
+					displayStatus === "type-mismatch" && "bg-cyan-400/20 text-cyan-300",
 					displayStatus === "invalid" && "bg-baud-danger/20 text-baud-danger",
 				)}
 			>
@@ -415,13 +431,22 @@ function renderHighlightedValue(value: string, variables: VariableCompletion[]) 
 	return elements;
 }
 
-function getVariableReferenceTitle(status: "invalid" | "known" | "possible", hasSpacing: boolean) {
+function getVariableReferenceTitle(
+	status: "invalid" | "known" | "possible" | "type-mismatch",
+	hasSpacing: boolean,
+	actualType: VariableCompletion["type"] | undefined,
+	expectedType: VariableInputContract,
+) {
 	if (status === "known") {
 		return "This variable reference is known.";
 	}
 
 	if (hasSpacing) {
 		return "Remove the spaces inside this variable reference.";
+	}
+
+	if (status === "type-mismatch") {
+		return `This variable has type ${actualType}; this field accepts ${formatVariableInputContract(expectedType)} variables.`;
 	}
 
 	if (status === "possible") {

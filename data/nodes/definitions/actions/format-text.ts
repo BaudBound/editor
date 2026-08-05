@@ -1,5 +1,8 @@
 import { TextCursorInput } from "lucide-react";
+import type { VariableReferenceCandidate } from "@/data/project/variables";
 import type { JsonValue } from "@/lib/types";
+import { runSafeRegex, validateSafeRegexPattern } from "@/utils/safe-regex";
+import { validateVariableInput } from "../../config-field-validation";
 import { defineNode, withFailureErrorOutput } from "../../node-definition";
 import { textTransformOperationOptions } from "../options";
 import {
@@ -44,11 +47,13 @@ export const formatTextNode = defineNode({
 	runnerType: "format_text",
 	sanitizeConfig: sanitizeTextTransformConfig,
 	validateConfig: validateTextTransformConfig,
+	validateVariables: validateTextTransformVariableInputs,
 	simulation: {
-		createOutput: ({ api, context, node }) => {
-			const result = executeTextTransform({
+		createOutput: async ({ api, context, node }) => {
+			const result = await executeTextTransform({
 				config: node.data.config,
 				resolveTemplate: (value) => api.resolveTemplate(value, context),
+				signal: context.signal,
 			});
 			if (!result.ok) {
 				return {
@@ -82,19 +87,24 @@ export const formatTextNode = defineNode({
 type ExecuteTextTransformParams = {
 	config: Record<string, JsonValue>;
 	resolveTemplate: (value: string) => JsonValue;
+	signal?: AbortSignal;
 };
 
 type TextTransformResult =
 	| { ok: true; output: Record<string, JsonValue> }
 	| { error: string; ok: false; operationIndex: number };
 
-export function executeTextTransform({ config, resolveTemplate }: ExecuteTextTransformParams): TextTransformResult {
+export async function executeTextTransform({
+	config,
+	resolveTemplate,
+	signal,
+}: ExecuteTextTransformParams): Promise<TextTransformResult> {
 	const operations = getTextTransformOperationRows(config.operations);
 	let current = resolveTemplate(configString(config.input));
 
 	try {
 		for (const [index, row] of operations.entries()) {
-			const result = executeOperation(current, row, resolveTemplate);
+			const result = await executeOperation(current, row, resolveTemplate, signal);
 			if (!result.ok) {
 				return { ...result, operationIndex: index + 1 };
 			}
@@ -113,11 +123,12 @@ export function executeTextTransform({ config, resolveTemplate }: ExecuteTextTra
 	}
 }
 
-function executeOperation(
+async function executeOperation(
 	current: JsonValue,
 	row: TextTransformOperationRow,
 	resolveTemplate: (value: string) => JsonValue,
-): { ok: true; value: JsonValue } | { error: string; ok: false } {
+	signal?: AbortSignal,
+): Promise<{ ok: true; value: JsonValue } | { error: string; ok: false }> {
 	const operation = normalizeTextTransformOperation(row.operation);
 	if (!operation) {
 		return { error: `Unsupported text transform operation "${row.operation}".`, ok: false };
@@ -160,7 +171,8 @@ function executeOperation(
 	if (operation === "regex_replace") {
 		const portabilityError = portableRegexError(search, replacement);
 		if (portabilityError) return { error: portabilityError, ok: false };
-		return { ok: true, value: current.replace(new RegExp(search, "gu"), replacement) };
+		const result = await runSafeRegex({ input: current, operation: "replace", pattern: search, replacement }, signal);
+		return { ok: true, value: result.value };
 	}
 	if (operation === "split") return { ok: true, value: current.split(delimiter) };
 	if (operation === "substring") {
@@ -207,6 +219,21 @@ function validateTextTransformConfig(config: Record<string, JsonValue>) {
 	return errors;
 }
 
+function validateTextTransformVariableInputs(
+	config: Record<string, JsonValue>,
+	variables: readonly VariableReferenceCandidate[],
+) {
+	return getTextTransformOperationRows(config.operations).flatMap((row, index) =>
+		textTransformValidatedFields.flatMap((field) => {
+			const value = row[field];
+			if (!value) return [];
+			const contract = field === "start" || field === "length" || field === "targetLength" ? "numeric" : "text";
+			const error = validateVariableInput(value, variables, contract);
+			return error ? [`operation ${index + 1} ${field}: ${error}`] : [];
+		}),
+	);
+}
+
 export function validateTextTransformField(
 	row: TextTransformOperationRow,
 	field: keyof Omit<TextTransformOperationRow, "id" | "operation">,
@@ -220,11 +247,8 @@ export function validateTextTransformField(
 		return operation === "regex_replace" ? "Regex pattern is required." : "Search text is required.";
 	}
 	if (field === "search" && operation === "regex_replace" && value) {
-		try {
-			new RegExp(value, "u");
-		} catch {
-			return "Regex pattern is invalid.";
-		}
+		const patternError = validateSafeRegexPattern(value);
+		if (patternError) return patternError;
 		return portableRegexError(value, row.replacement);
 	}
 	if (field === "delimiter" && (operation === "split" || operation === "join") && !value) {

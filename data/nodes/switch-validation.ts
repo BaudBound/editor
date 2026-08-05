@@ -1,4 +1,6 @@
+import type { VariableReferenceCandidate } from "@/data/project/variables";
 import type { JsonValue } from "@/lib/types";
+import { validateVariableInput } from "./config-field-validation";
 import { isSwitchCaseRow, type SwitchCaseRow } from "./definitions/rows";
 
 export function validateSwitchConfig(config: Record<string, JsonValue>) {
@@ -35,6 +37,22 @@ export function validateSwitchConfig(config: Record<string, JsonValue>) {
 	}
 
 	return errors;
+}
+
+export function validateSwitchVariableInputs(
+	config: Record<string, JsonValue>,
+	variables: readonly VariableReferenceCandidate[],
+) {
+	const inputs: Array<[string, string]> = [["switch value", typeof config.value === "string" ? config.value : ""]];
+	if (Array.isArray(config.cases)) {
+		for (const [index, value] of config.cases.entries()) {
+			if (isSwitchCaseRow(value)) inputs.push([`case ${index + 1} value`, value.value]);
+		}
+	}
+	return inputs.flatMap(([label, input]) => {
+		const error = validateVariableInput(input, variables, "any");
+		return error ? [`${label}: ${error}`] : [];
+	});
 }
 
 export function validateSwitchCaseName(cases: SwitchCaseRow[], caseId: string) {

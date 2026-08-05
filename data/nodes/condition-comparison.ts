@@ -1,9 +1,7 @@
 import type { JsonValue } from "@/lib/types";
+import { runSafeRegex } from "@/utils/safe-regex";
 
 const DECIMAL_NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
-const MAX_REGEX_PATTERN_LENGTH = 256;
-const UNSAFE_REGEX_PATTERN =
-	/(\([^)]*[+*][^)]*\)[+*?])|(\[[^\]]+\][+*?].*\[[^\]]+\][+*?])|((?:\.\*){2,})|((?:\w|\)|\]|\.|\+|\*)\{\d+,?\d*\}[+*?])/;
 
 export function conditionValuesEqual(left: JsonValue, right: JsonValue) {
 	if (left === right) {
@@ -34,24 +32,26 @@ export function conditionNumber(value: JsonValue) {
 	return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-export function compareConditionValues(
+export async function compareConditionValues(
 	left: JsonValue,
 	operator: string,
 	right: JsonValue,
 	rightEnd: JsonValue = null,
+	signal?: AbortSignal,
 ) {
-	const result = evaluateConditionValues(left, operator, right, rightEnd);
+	const result = await evaluateConditionValues(left, operator, right, rightEnd, signal);
 	return result.error ? false : result.value;
 }
 
 export type ConditionEvaluationResult = { error?: never; value: boolean } | { error: string; value?: never };
 
-export function evaluateConditionValues(
+export async function evaluateConditionValues(
 	left: JsonValue,
 	operator: string,
 	right: JsonValue,
 	rightEnd: JsonValue = null,
-): ConditionEvaluationResult {
+	signal?: AbortSignal,
+): Promise<ConditionEvaluationResult> {
 	const leftText = conditionValueToText(left);
 	const rightText = conditionValueToText(right);
 	const leftNumber = conditionNumber(left);
@@ -82,7 +82,7 @@ export function evaluateConditionValues(
 		case "ends_with":
 			return conditionResult(leftText.endsWith(rightText));
 		case "regex_match":
-			return safeRegexMatch(leftText, rightText);
+			return await safeRegexMatch(leftText, rightText, signal);
 		case "is_empty":
 			return conditionResult(isConditionValueEmpty(left));
 		case "is_true":
@@ -167,21 +167,13 @@ function isConditionValueEmpty(value: JsonValue) {
 	return typeof value === "object" && Object.keys(value).length === 0;
 }
 
-function safeRegexMatch(value: string, pattern: string) {
-	if (pattern.length > MAX_REGEX_PATTERN_LENGTH) {
-		return {
-			error: `regex pattern exceeds ${MAX_REGEX_PATTERN_LENGTH} characters`,
-		} satisfies ConditionEvaluationResult;
-	}
-	if (UNSAFE_REGEX_PATTERN.test(pattern)) {
-		return { error: "regex pattern is unsafe to simulate" } satisfies ConditionEvaluationResult;
-	}
-
+async function safeRegexMatch(value: string, pattern: string, signal?: AbortSignal) {
 	try {
-		return conditionResult(new RegExp(pattern).test(value));
+		const result = await runSafeRegex({ input: value, operation: "match", pattern }, signal);
+		return conditionResult(result.matched);
 	} catch (error) {
 		return {
-			error: `invalid regex pattern: ${error instanceof Error ? error.message : "unknown syntax error"}`,
+			error: error instanceof Error ? error.message : "regular expression execution failed",
 		} satisfies ConditionEvaluationResult;
 	}
 }

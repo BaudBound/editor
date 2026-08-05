@@ -1,4 +1,6 @@
+import type { VariableReferenceCandidate } from "@/data/project/variables";
 import type { JsonValue } from "@/lib/types";
+import { validateVariableInput } from "../config-field-validation";
 
 export type ConditionRow = {
 	id: string;
@@ -111,7 +113,21 @@ export function isSwitchCaseRow(value: JsonValue): value is SwitchCaseRow {
 }
 
 export function isHeaderRow(value: JsonValue): value is HeaderRow {
-	return isRecord(value) && typeof value.id === "string" && typeof value.name === "string";
+	return (
+		isRecord(value) && typeof value.id === "string" && typeof value.name === "string" && typeof value.value === "string"
+	);
+}
+
+export function validateHeaderVariableInputs(
+	value: JsonValue | undefined,
+	variables: readonly VariableReferenceCandidate[],
+) {
+	if (!Array.isArray(value)) return [];
+	return value.flatMap((candidate, index) => {
+		if (!isHeaderRow(candidate)) return [];
+		const error = validateVariableInput(candidate.value, variables, "string");
+		return error ? [`header ${index + 1} value: ${error}`] : [];
+	});
 }
 
 export function isTextTransformOperationRow(value: JsonValue): value is TextTransformOperationRow {

@@ -1,8 +1,10 @@
+import { validateUserIdentifier } from "@/data/project/user-identifier";
 import type { VariableReferenceCandidate } from "@/data/project/variables";
 import { getVariableReferenceStatus } from "@/data/project/variables";
 import type { JsonValue } from "@/lib/types";
 import { validateStaticColor } from "./color-match";
-import type { NodeConfigField, VariableInputContract } from "./node-definition";
+import { getFormDialogFields } from "./form-dialog-fields";
+import { configVisibilityConditionMatches, type NodeConfigField, type VariableInputContract } from "./node-definition";
 import { numericContractApplies, validateNumericConfigValue } from "./numeric-validation";
 
 const TEMPLATE_PATTERN = /\{\{([^{}]*)}}/g;
@@ -12,13 +14,13 @@ const compatibleTypes: Record<VariableInputContract, ReadonlySet<string> | undef
 	color: new Set(["color"]),
 	datetime: new Set(["datetime"]),
 	duration: new Set(["duration"]),
-	"file-path": new Set(["file_path", "string"]),
+	"file-path": new Set(["file_path"]),
 	"keyboard-key": new Set(["keyboard_key"]),
 	list: new Set(["list"]),
 	numeric: new Set(["number", "http_status_code", "duration_ms", "process_id", "exit_code"]),
 	object: new Set(["object", "http_headers"]),
-	string: new Set(["string", "file_content", "file_path", "keyboard_key", "color"]),
-	text: undefined,
+	string: new Set(["string"]),
+	text: new Set(["string", "file_content"]),
 };
 
 export function validateConfigField(
@@ -26,7 +28,7 @@ export function validateConfigField(
 	config: Record<string, JsonValue>,
 	variables: readonly VariableReferenceCandidate[] = [],
 ) {
-	if (field.visibleWhen && config[field.visibleWhen.key] !== field.visibleWhen.equals) {
+	if (!configVisibilityConditionMatches(field.visibleWhen, config)) {
 		return "";
 	}
 
@@ -47,6 +49,16 @@ export function validateConfigField(
 	const typeError = validateFieldType(field, value);
 	if (typeError) {
 		return typeError;
+	}
+
+	if (field.identifier) {
+		if (typeof value !== "string") {
+			return `${field.label} must be text.`;
+		}
+		const identifierError = validateUserIdentifier(value, field.label);
+		if (identifierError) {
+			return identifierError;
+		}
 	}
 
 	if (numericContractApplies(field, config)) {
@@ -79,9 +91,7 @@ export function validateConfigField(
 	}
 
 	const variableContract = getEffectiveVariableContract(field, config);
-	const values = Array.isArray(value)
-		? value.filter((item): item is string => typeof item === "string")
-		: [String(value)];
+	const values = getVariableAwareStrings(value);
 	for (const candidate of values) {
 		const variableError =
 			validateVariableReferences(candidate, variables) ||
@@ -111,8 +121,11 @@ export function filterCompatibleVariables<TVariable extends VariableReferenceCan
 	variables: readonly TVariable[],
 	contract: VariableInputContract,
 ) {
-	const allowedTypes = compatibleTypes[contract];
-	return allowedTypes ? variables.filter((variable) => allowedTypes.has(variable.type)) : [...variables];
+	return variables.filter((variable) => isVariableTypeCompatible(variable.type, contract));
+}
+
+export function isVariableTypeCompatible(type: VariableReferenceCandidate["type"], contract: VariableInputContract) {
+	return compatibleTypes[contract]?.has(type) ?? true;
 }
 
 export function validateVariableReferenceTypes(
@@ -120,20 +133,26 @@ export function validateVariableReferenceTypes(
 	variables: readonly VariableReferenceCandidate[],
 	contract: VariableInputContract,
 ) {
-	const allowedTypes = compatibleTypes[contract];
-	if (!allowedTypes) {
-		return "";
-	}
-
 	for (const match of value.matchAll(TEMPLATE_PATTERN)) {
 		const reference = match[1]?.trim() ?? "";
 		const variable = variables.find((candidate) => candidate.name === reference);
-		if (variable && !allowedTypes.has(variable.type)) {
-			return `Variable "${reference}" has type ${variable.type}; this field accepts ${formatContract(contract)} variables.`;
+		if (variable && !isVariableTypeCompatible(variable.type, contract)) {
+			return `Variable "${reference}" has type ${variable.type}; this field accepts ${formatVariableInputContract(contract)} variables.`;
+		}
+		if (!variable && contract !== "any" && getVariableReferenceStatus(reference, variables) === "possible") {
+			return `Variable "${reference}" has an unknown type; this field accepts ${formatVariableInputContract(contract)} variables. Use a declared typed variable or output.`;
 		}
 	}
 
 	return "";
+}
+
+export function validateVariableInput(
+	value: string,
+	variables: readonly VariableReferenceCandidate[],
+	contract: VariableInputContract,
+) {
+	return validateVariableReferences(value, variables) || validateVariableReferenceTypes(value, variables, contract);
 }
 
 export function validateVariableReferences(value: string, variables: readonly VariableReferenceCandidate[]) {
@@ -165,6 +184,11 @@ function validateFieldType(field: NodeConfigField, value: JsonValue) {
 			? ""
 			: `${field.label} must be a list of text values.`;
 	}
+	if (field.type === "form-field-list") {
+		return Array.isArray(value) && getFormDialogFields(value).length === value.length
+			? ""
+			: `${field.label} must be a list of valid form components.`;
+	}
 	if (field.type === "select") {
 		if (typeof value !== "string") {
 			return `${field.label} must be selected.`;
@@ -179,6 +203,10 @@ function validateFieldType(field: NodeConfigField, value: JsonValue) {
 	return "";
 }
 
+function getVariableAwareStrings(value: JsonValue) {
+	return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [String(value)];
+}
+
 function isEmptyValue(value: JsonValue) {
 	return typeof value === "string" ? !value.trim() : false;
 }
@@ -187,7 +215,7 @@ function isFullTemplateReference(value: string) {
 	return /^\{\{\s*[^{}]+\s*}}$/.test(value);
 }
 
-function formatContract(contract: VariableInputContract) {
+export function formatVariableInputContract(contract: VariableInputContract) {
 	return contract.replace("-", " ");
 }
 
