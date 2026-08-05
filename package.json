@@ -10,7 +10,7 @@
 		"e2e": "playwright test",
 		"schemas:check": "node scripts/generate-node-schemas.mjs --check",
 		"schemas:generate": "node scripts/generate-node-schemas.mjs",
-		"test": "node --experimental-strip-types --test \"tests/*.test.mjs\" \"tests/*.test.mts\"",
+		"test": "node --experimental-strip-types --import \"./tests/register-aliases.mjs\" --test \"tests/*.test.mjs\" \"tests/*.test.mts\"",
 		"typecheck": "tsc --noEmit",
 		"lint": "biome check",
 		"verify:release": "pnpm lint && pnpm typecheck && pnpm schemas:check && pnpm test && pnpm build && pnpm e2e",

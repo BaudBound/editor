@@ -88,19 +88,15 @@ export type NodePort = {
 
 export type RuntimeDataType =
 	| "string"
-	| "number"
+	| "integer"
+	| "float"
 	| "boolean"
 	| "object"
 	| "list"
-	| "file_content"
-	| "file_path"
-	| "http_headers"
-	| "http_status_code"
-	| "duration_ms"
-	| "process_id"
-	| "exit_code"
+	| "color"
 	| "keyboard_key"
-	| "color";
+	| "datetime"
+	| "duration";
 
 export type RuntimeDataOutput = {
 	name: string;

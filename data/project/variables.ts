@@ -6,20 +6,23 @@ import type { JsonValue, RuntimeDataType, ScriptNodeData } from "@/lib/types";
 
 export const variableTypes = [
 	"string",
-	"number",
+	"integer",
+	"float",
 	"boolean",
 	"object",
 	"list",
+	"color",
+	"keyboard_key",
 	"datetime",
 	"duration",
-	"file_path",
 ] as const;
 
 export type VariableType = (typeof variableTypes)[number];
 
-export const listItemTypes = ["string", "number", "boolean", "object", "datetime", "duration", "file_path"] as const;
+// A list element can be any type except a list, so nesting stays one level.
+export const listItemTypes = variableTypes.filter((type) => type !== "list");
 
-export type ListItemType = (typeof listItemTypes)[number];
+export type ListItemType = Exclude<VariableType, "list">;
 
 export const durationUnits = ["milliseconds", "seconds", "minutes", "hours", "days"] as const;
 
