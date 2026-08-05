@@ -183,17 +183,20 @@ export type SecretDeclaration = {
 	type: "string";
 };
 
+// Script Settings are declared with the same ten types as variables and node
+// outputs. The list previously spelled a keyboard key "hotkey" and carried
+// "number" and "file_path", which no longer exist.
 export const scriptSettingTypes = [
 	"string",
-	"number",
+	"integer",
+	"float",
 	"boolean",
 	"object",
 	"list",
+	"color",
+	"keyboard_key",
 	"datetime",
 	"duration",
-	"file_path",
-	"hotkey",
-	"color",
 ] as const;
 
 export type ScriptSettingType = (typeof scriptSettingTypes)[number];

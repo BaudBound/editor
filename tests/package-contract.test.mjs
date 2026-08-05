@@ -729,7 +729,9 @@ test("shared schemas exactly match every editor variable, setting, list-item, an
 	const runtimeDataTypeBlock = typesSource.match(/export type RuntimeDataType =([\s\S]*?);/)?.[1] ?? "";
 	const runtimeDataTypes = [...runtimeDataTypeBlock.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
 	const editorVariableTypes = extractConstStringArray(variablesSource, "variableTypes");
-	const editorListItemTypes = extractConstStringArray(variablesSource, "listItemTypes");
+	// listItemTypes is derived from variableTypes rather than written out, so
+	// the two lists cannot drift. A list element may be any type except a list.
+	const editorListItemTypes = editorVariableTypes.filter((type) => type !== "list");
 	const editorSettingTypes = extractConstStringArray(typesSource, "scriptSettingTypes");
 	const programSchema = JSON.parse(read(join(schemasRoot, "program.schema.json")));
 	const manifestSchema = JSON.parse(read(join(schemasRoot, "manifest.schema.json")));
@@ -776,10 +778,10 @@ test("shared manifest schema strictly validates custom variable and setting valu
 				type: "duration",
 				value: { type: "duration", unit: "seconds", value: 3 },
 			},
-			{ name: "output", scope: "runtime", type: "file_path", value: "./output.txt" },
+			{ name: "output", scope: "runtime", type: "string", value: "./output.txt" },
 		],
 		settings: [
-			{ name: "Shortcut", type: "hotkey", required: false, default_value: "Ctrl+Shift+F8" },
+			{ name: "Shortcut", type: "keyboard_key", required: false, default_value: "Ctrl+Shift+F8" },
 			{ name: "Accent", type: "color", required: false, default_value: "#123ABC" },
 		],
 	};
@@ -1714,27 +1716,35 @@ test("Script Settings are typed package metadata and read only simulation values
 	assert.equal(settingsSchema.maxItems, 256);
 	assert.deepEqual(settingsSchema.items.properties.type.enum, [
 		"string",
-		"number",
+		"integer",
+		"float",
 		"boolean",
 		"object",
 		"list",
+		"color",
+		"keyboard_key",
 		"datetime",
 		"duration",
-		"file_path",
-		"hotkey",
-		"color",
 	]);
 	assert.deepEqual(settingsSchema.items.properties.item_type.enum, [
 		"string",
-		"number",
+		"integer",
+		"float",
 		"boolean",
 		"object",
+		"color",
+		"keyboard_key",
 		"datetime",
 		"duration",
-		"file_path",
 	]);
 	assert.equal(settingsSchema.items.allOf.length, 10);
-	assert.doesNotMatch(JSON.stringify(manifestSchema.properties.variables.items.properties.type.enum), /hotkey|color/);
+	// Settings and variables now share one vocabulary. "hotkey" was a third
+	// spelling of a keyboard key and no longer exists anywhere.
+	assert.deepEqual(
+		settingsSchema.items.properties.type.enum,
+		manifestSchema.properties.variables.items.properties.type.enum,
+	);
+	assert.doesNotMatch(JSON.stringify(manifestSchema), /hotkey/);
 	assert.match(settingSource, /createSimulationScriptSettingValues/);
 	assert.match(packageSource, /settings:\s*params\.scriptSettings\.map/);
 	assert.match(simulationSource, /createSimulationScriptSettingValues/);
