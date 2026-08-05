@@ -38,3 +38,10 @@ Thumbs.db
 *.sqlite3
 *.bbs.tmp
 
+
+# Planning notes live outside the repositories
+/plan/
+/!plans/
+*-PLAN.md
+*_plan.md
+*-plan.md
