@@ -807,7 +807,7 @@ test("Schedule triggers can start and stop their simulator timer", async ({ page
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("interval");
 	await variableDialog.getByRole("combobox", { name: "Type" }).click();
-	await page.getByRole("option", { name: "number" }).click();
+	await page.getByRole("option", { name: "float" }).click();
 	await variableDialog.getByRole("spinbutton", { name: "Default value" }).fill("25");
 	await variableDialog.getByRole("button", { name: "Save" }).click();
 	await page.getByRole("button", { name: "Save Settings" }).click();
@@ -1281,7 +1281,7 @@ test("hotkey and color Script Settings use dedicated controls and color variable
 	settingDialog = page.getByRole("dialog");
 	await settingDialog.getByRole("textbox", { name: "Name" }).fill("Shortcut");
 	await settingDialog.locator('[data-slot="select-trigger"]').first().click();
-	await page.getByRole("option", { name: "hotkey", exact: true }).click();
+	await page.getByRole("option", { name: "keyboard_key", exact: true }).click();
 	await settingDialog.getByRole("switch", { name: "Use Package default" }).click();
 	const hotkeyDefault = settingDialog.getByRole("textbox", { name: "Package default" });
 	await hotkeyDefault.press("Control+Shift+F8");
@@ -1324,7 +1324,7 @@ test("hotkey and color Script Settings use dedicated controls and color variable
 			description: "",
 			name: "Shortcut",
 			required: false,
-			type: "hotkey",
+			type: "keyboard_key",
 		},
 	]);
 	await page.reload({ waitUntil: "commit" });
@@ -1334,7 +1334,7 @@ test("hotkey and color Script Settings use dedicated controls and color variable
 	const shortcutSetting = page.locator("article").filter({ hasText: "Shortcut" });
 	await expect(accentSetting).toContainText("color");
 	await expect(accentSetting).toContainText("#123456");
-	await expect(shortcutSetting).toContainText("hotkey");
+	await expect(shortcutSetting).toContainText("keyboard_key");
 	await expect(shortcutSetting).toContainText("Ctrl+Shift+F8");
 	await page.getByRole("button", { name: "Save Settings" }).click();
 
@@ -1464,7 +1464,7 @@ test("variable editors do not insert example values", async ({ page }) => {
 	await expect(page.getByText(/^Example:/)).toHaveCount(0);
 
 	await page.getByRole("button", { name: "Variable type" }).click();
-	await page.getByRole("option", { name: "number" }).click();
+	await page.getByRole("option", { name: "integer" }).click();
 	await expect(page.getByRole("textbox", { name: "Value" })).toHaveValue("");
 
 	await page.getByRole("button", { name: "Operation", exact: true }).click();
@@ -1480,7 +1480,7 @@ test("variable editors do not insert example values", async ({ page }) => {
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("combobox", { name: "Type" }).click();
-	await page.getByRole("option", { name: "file_path" }).click();
+	await page.getByRole("option", { name: "string" }).click();
 	await expect(variableDialog.getByRole("textbox", { name: "Default value" })).toHaveValue("");
 	await variableDialog.getByRole("button", { name: "Cancel" }).click();
 	await page.keyboard.press("Escape");
@@ -1496,7 +1496,7 @@ test("persistent variable simulation carries changes into the next run", async (
 	await variableDialog.getByRole("combobox", { name: "Scope" }).click();
 	await page.getByRole("option", { name: "persistent" }).click();
 	await variableDialog.getByRole("combobox", { name: "Type" }).click();
-	await page.getByRole("option", { name: "number" }).click();
+	await page.getByRole("option", { name: "integer" }).click();
 	await variableDialog.getByRole("spinbutton", { name: "Default value" }).fill("0");
 	await variableDialog.getByRole("button", { name: "Save" }).click();
 	await page.getByRole("button", { name: "Save Settings" }).click();
@@ -1550,7 +1550,7 @@ test("numeric fields autocomplete number variables and suspend literal stepping"
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("distance");
 	await variableDialog.getByRole("combobox", { name: "Type" }).click();
-	await page.getByRole("option", { name: "number" }).click();
+	await page.getByRole("option", { name: "integer" }).click();
 	await variableDialog.getByRole("spinbutton", { name: "Default value" }).fill("12");
 	await variableDialog.getByRole("button", { name: "Save" }).click();
 	await page.getByRole("button", { name: "Save Settings" }).click();
@@ -1594,7 +1594,10 @@ test("numeric fields autocomplete number variables and suspend literal stepping"
 	await amountField.fill("{{system_date}}");
 	await expect(page.locator('[data-variable-token="system_date"][data-variable-status="type-mismatch"]')).toBeVisible();
 	await expect(
-		page.getByText('Variable "system_date" has type string; this field accepts numeric variables.', { exact: true }),
+		page.getByText(
+			'Variable "system_date" has type string; this field accepts float variables. Add a cast such as {{system_date|float}} to convert it.',
+			{ exact: true },
+		),
 	).toBeVisible();
 
 	await page.getByRole("button", { name: "Verify script" }).click();
@@ -2455,7 +2458,7 @@ test("exported package preserves editor metadata and imports back", async ({ pag
 	await page.getByRole("combobox", { name: "Scope" }).click();
 	await page.getByRole("option", { name: "persistent" }).click();
 	await page.getByRole("combobox", { name: "Type" }).click();
-	await page.getByRole("option", { name: "number" }).click();
+	await page.getByRole("option", { name: "integer" }).click();
 	await page.getByRole("spinbutton", { name: "Default value" }).fill("10");
 	await page.getByRole("button", { name: "Save", exact: true }).click();
 	await page.getByRole("button", { name: "Save Settings" }).click();
@@ -2494,7 +2497,7 @@ test("exported package preserves editor metadata and imports back", async ({ pag
 			description: "",
 			name: "counter",
 			scope: "persistent",
-			type: "number",
+			type: "integer",
 			value: 10,
 		},
 	]);

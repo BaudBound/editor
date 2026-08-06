@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { splitCast, validateVariableReferenceTypes } from "../data/nodes/config-field-validation.ts";
 import { variableTypes } from "../data/project/variables.ts";
-import { castSimulatedValue, validateSimulatedValue } from "../utils/simulation.ts";
+import { castSimulatedValue, validateSimulatedValue } from "../utils/value-cast.ts";
 
 const appRoot = fileURLToPath(new URL("..", import.meta.url));
 const vocabularyPath = join(appRoot, "contracts", "type-vocabulary.json");

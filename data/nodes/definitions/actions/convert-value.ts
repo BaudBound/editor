@@ -1,7 +1,7 @@
 import { ArrowRightLeft } from "lucide-react";
 import type { VariableType } from "@/data/project/variables";
 import type { JsonValue } from "@/lib/types";
-import { castSimulatedValue } from "@/utils/simulation";
+import { castSimulatedValue } from "@/utils/value-cast";
 import { defineNode, withFailureErrorOutput } from "../../node-definition";
 import type { SelectOption } from "../options";
 import { requiredConfig } from "../validators";
