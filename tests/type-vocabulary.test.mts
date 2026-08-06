@@ -9,6 +9,7 @@ import {
 	validateVariableInput,
 	validateVariableReferenceTypes,
 } from "../data/nodes/config-field-validation.ts";
+import { validateConditionVariableInputs } from "../data/nodes/definitions/shared.ts";
 import { variableTypes } from "../data/project/variables.ts";
 import { castSimulatedValue, validateSimulatedValue } from "../utils/value-cast.ts";
 
@@ -134,4 +135,28 @@ test("a numeric comparison accepts either numeric type", () => {
 	// A cast decides the type, and a cast to a non numeric type is refused.
 	assert.equal(validateNumericComparisonInput("{{name|float}}", variables), "");
 	assert.match(validateNumericComparisonInput("{{counter|color}}", variables), /needs a number/);
+});
+
+test("verification agrees with the inspector about numeric comparisons", () => {
+	// The inspector and the export verification validate conditions through
+	// different entry points. When only one of them was taught that a
+	// comparison takes either numeric type, a script looked fine while being
+	// edited and then failed on export.
+	const variables = [{ name: "n-convert.value", type: "integer", readOnly: true }] as const;
+	const condition = (operator: string, extra: Record<string, string> = {}) => ({
+		conditions: [{ id: "condition-1", left: "{{n-convert.value}}", operator, right: "0", ...extra }],
+	});
+
+	for (const operator of [">", ">=", "<", "<="]) {
+		assert.deepEqual(validateConditionVariableInputs(condition(operator), variables), []);
+	}
+	assert.deepEqual(validateConditionVariableInputs(condition("is_between", { rightEnd: "10" }), variables), []);
+
+	// A value that is not numeric at all is still reported.
+	const wrong = validateConditionVariableInputs(
+		{ conditions: [{ id: "condition-1", left: "{{name}}", operator: ">", right: "0" }] },
+		[{ name: "name", type: "string" }],
+	);
+	assert.equal(wrong.length, 1);
+	assert.match(wrong[0] ?? "", /needs an integer or a float/);
 });
