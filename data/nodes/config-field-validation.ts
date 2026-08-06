@@ -199,9 +199,14 @@ export function validateVariableReferences(value: string, variables: readonly Va
 	}
 
 	for (const match of matches) {
-		const reference = match[1]?.trim() ?? "";
+		// The cast target is not part of the name. Looking a reference up with
+		// its suffix still attached reports every cast as an unknown variable.
+		const { reference, target } = splitCast(match[1]?.trim() ?? "");
 		if (!reference) {
 			return "Variable reference cannot be empty.";
+		}
+		if (target !== null && !(variableTypes as readonly string[]).includes(target)) {
+			return `Unknown cast target "${target}". Use one of ${variableTypes.join(", ")}.`;
 		}
 		if (getVariableReferenceStatus(reference, variables) === "invalid") {
 			return `Variable "${reference}" is not available here.`;

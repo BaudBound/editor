@@ -3,7 +3,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { splitCast, validateVariableReferenceTypes } from "../data/nodes/config-field-validation.ts";
+import {
+	splitCast,
+	validateVariableInput,
+	validateVariableReferenceTypes,
+} from "../data/nodes/config-field-validation.ts";
 import { variableTypes } from "../data/project/variables.ts";
 import { castSimulatedValue, validateSimulatedValue } from "../utils/value-cast.ts";
 
@@ -89,4 +93,22 @@ test("a cast satisfies a field of the cast target type", () => {
 	assert.notEqual(validateVariableReferenceTypes("{{item|list}}", variables, "string"), "");
 	// An unknown target is rejected.
 	assert.notEqual(validateVariableReferenceTypes("{{item|int}}", variables, "string"), "");
+});
+
+test("a cast target is not treated as part of the variable name", () => {
+	// The availability check runs before the type check, so if it looks the
+	// reference up with the cast suffix still attached it reports every cast as
+	// an unknown variable and the type check never runs.
+	const variables = [{ name: "n-convert.value", type: "integer", readOnly: true }] as const;
+
+	assert.equal(validateVariableInput("{{n-convert.value|string}}", variables, "any"), "");
+	assert.equal(validateVariableInput("before {{n-convert.value|string}} after", variables, "any"), "");
+
+	// The reference, not the whole expression, is named when it is missing.
+	const missing = validateVariableInput("{{absent|string}}", variables, "any");
+	assert.match(missing, /"absent"/);
+	assert.doesNotMatch(missing, /\|string/);
+
+	// An unknown target is still reported as such.
+	assert.match(validateVariableInput("{{n-convert.value|nonsense}}", variables, "any"), /Unknown cast target/);
 });
