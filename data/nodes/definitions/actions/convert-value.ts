@@ -1,5 +1,6 @@
 import { ArrowRightLeft } from "lucide-react";
-import type { JsonValue, RuntimeDataType } from "@/lib/types";
+import type { VariableType } from "@/data/project/variables";
+import type { JsonValue } from "@/lib/types";
 import { defineNode, withFailureErrorOutput } from "../../node-definition";
 import type { SelectOption } from "../options";
 import { requiredConfig } from "../validators";
@@ -7,15 +8,19 @@ import { requiredConfig } from "../validators";
 const maximumSafeInteger = Number.MAX_SAFE_INTEGER;
 
 export const valueConversionOptions: SelectOption[] = [
-	{ label: "Text", value: "text" },
-	{ label: "Number", value: "number" },
+	{ label: "String", value: "string" },
 	{ label: "Integer", value: "integer" },
+	{ label: "Float", value: "float" },
 	{ label: "Boolean", value: "boolean" },
-	{ label: "List", value: "list" },
 	{ label: "Object", value: "object" },
+	{ label: "List", value: "list" },
+	{ label: "Color", value: "color" },
+	{ label: "Keyboard Key", value: "keyboard_key" },
+	{ label: "Datetime", value: "datetime" },
+	{ label: "Duration", value: "duration" },
 ];
 
-type ValueConversionTarget = "text" | "number" | "integer" | "boolean" | "list" | "object";
+type ValueConversionTarget = VariableType;
 
 export const convertValueNode = defineNode({
 	actionType: "action.value.convert",
@@ -31,8 +36,9 @@ export const convertValueNode = defineNode({
 		},
 		{ key: "targetType", label: "Convert to", type: "select", options: valueConversionOptions },
 	],
-	defaultConfig: () => ({ value: "", targetType: "text" }),
-	description: "Convert a value to text, a number, an integer, a boolean, a list, or an object.",
+	defaultConfig: () => ({ value: "", targetType: "string" }),
+	description:
+		"Convert a value to a string, an integer, a float, a boolean, an object, a list, a color, a keyboard key, a datetime, or a duration.",
 	fallible: true,
 	group: "actions",
 	icon: ArrowRightLeft,
@@ -45,7 +51,7 @@ export const convertValueNode = defineNode({
 		withFailureErrorOutput([
 			{
 				name: "value",
-				type: runtimeOutputType(normalizeTargetType(config.targetType)),
+				type: normalizeTargetType(config.targetType),
 				description: `Value converted to ${formatTargetType(normalizeTargetType(config.targetType))}.`,
 			},
 			{
@@ -105,14 +111,14 @@ export function convertValue(
 	input: JsonValue,
 	targetType: ValueConversionTarget,
 ): { ok: true; value: JsonValue } | { error: string; ok: false } {
-	if (targetType === "text") {
+	if (targetType === "string") {
 		return {
 			ok: true,
 			value: typeof input === "string" ? input : JSON.stringify(input),
 		};
 	}
 
-	if (targetType === "number" || targetType === "integer") {
+	if (targetType === "float" || targetType === "integer") {
 		if (typeof input !== "number" && typeof input !== "string") {
 			return conversionError(input, targetType);
 		}
@@ -158,13 +164,9 @@ const decimalNumberPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 
 function normalizeTargetType(value: JsonValue | undefined): ValueConversionTarget {
 	const target = String(value ?? "");
-	return valueConversionOptions.some((option) => option.value === target) ? (target as ValueConversionTarget) : "text";
-}
-
-function runtimeOutputType(target: ValueConversionTarget): RuntimeDataType {
-	if (target === "text") return "string";
-	if (target === "number") return "float";
-	return target;
+	return valueConversionOptions.some((option) => option.value === target)
+		? (target as ValueConversionTarget)
+		: "string";
 }
 
 function formatTargetType(target: ValueConversionTarget) {

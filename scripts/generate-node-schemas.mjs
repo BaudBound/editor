@@ -947,9 +947,19 @@ function createOptionValueMap() {
 		ts.ScriptTarget.Latest,
 		true,
 	);
+	// convert-value.ts is the one node definition that declares its own select
+	// options locally instead of adding them to options.ts. Leaving it out of
+	// this list silently produced an unconstrained `{ type: "string" }` schema
+	// for targetType instead of the enum its options actually define.
+	const convertValueSource = ts.createSourceFile(
+		"convert-value.ts",
+		readFileSync(join(appRoot, "data", "nodes", "definitions", "actions", "convert-value.ts"), "utf8"),
+		ts.ScriptTarget.Latest,
+		true,
+	);
 	const values = new Map();
 
-	for (const sourceFile of [variablesSource, serialSource, optionsSource]) {
+	for (const sourceFile of [variablesSource, serialSource, optionsSource, convertValueSource]) {
 		for (const statement of sourceFile.statements) {
 			if (!ts.isVariableStatement(statement)) {
 				continue;
