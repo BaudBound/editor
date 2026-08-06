@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { variableTypes } from "../data/project/variables.ts";
+import { validateSimulatedValue } from "../utils/simulation.ts";
 
 const appRoot = fileURLToPath(new URL("..", import.meta.url));
 const vocabularyPath = join(appRoot, "contracts", "type-vocabulary.json");
@@ -29,5 +30,22 @@ test("deleted type names are gone", () => {
 		"duration_ms",
 	]) {
 		assert.ok(!(variableTypes as readonly string[]).includes(deleted), `${deleted} must be removed`);
+	}
+});
+
+test("simulator agrees with the shared type fixtures", () => {
+	const conformancePath = join(appRoot, "contracts", "type-conformance.json");
+	const conformance = JSON.parse(readFileSync(conformancePath, "utf8")) as {
+		cases: { reason: string; type: string; valid: boolean; value: unknown }[];
+		version: number;
+	};
+	assert.equal(conformance.version, 1);
+
+	for (const testCase of conformance.cases) {
+		assert.equal(
+			validateSimulatedValue(testCase.value, testCase.type) === null,
+			testCase.valid,
+			`${JSON.stringify(testCase.value)} as ${testCase.type}: ${testCase.reason}`,
+		);
 	}
 });

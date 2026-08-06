@@ -105,8 +105,11 @@ function tokenizeExpression(expression: string): TokenizeResult {
 
 class CalculationParser {
 	private index = 0;
+	private readonly tokens: Token[];
 
-	constructor(private readonly tokens: Token[]) {}
+	constructor(tokens: Token[]) {
+		this.tokens = tokens;
+	}
 
 	isComplete() {
 		return this.index >= this.tokens.length;

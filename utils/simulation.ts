@@ -4,6 +4,7 @@ import { isConditionRow, isSwitchCaseRow } from "@/data/nodes/definitions/rows";
 import type { NodeSimulationApi } from "@/data/nodes/node-definition";
 import { numericContractApplies, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
 import { fallibleActionTypes, getNodeDefinition } from "@/data/nodes/registry";
+import { validateWindowsHotkey } from "@/data/nodes/windows-key-contract";
 import { createSimulationBuiltInVariableValues } from "@/data/project/built-in-variables";
 import { createSimulationScriptSettingValues } from "@/data/project/script-settings";
 import type {
@@ -37,6 +38,51 @@ export type {
 const MAX_SIMULATION_MESSAGE_LENGTH = 4000;
 const MAX_VARIABLE_SNAPSHOT_ENTRIES = 600;
 const MAX_VARIABLE_SNAPSHOT_STRING_LENGTH = 4000;
+const MAX_SAFE_TYPE_INTEGER = 9007199254740991;
+
+/**
+ * Reports why a value fails its type, or null when it satisfies it.
+ *
+ * Mirrors validate_value in the runner. The two are asserted against the same
+ * conformance fixtures, because a lenient simulator would let authors ship
+ * scripts that pass simulation and stop in production.
+ */
+export function validateSimulatedValue(value: unknown, type: string): string | null {
+	if (value === null || value === undefined) return `expected ${type}, found no value`;
+
+	switch (type) {
+		case "string":
+			return typeof value === "string" ? null : `expected string`;
+		case "boolean":
+			return typeof value === "boolean" ? null : `expected boolean`;
+		case "list":
+			return Array.isArray(value) ? null : `expected list`;
+		case "object":
+			return typeof value === "object" && !Array.isArray(value) ? null : `expected object`;
+		case "integer":
+			return typeof value === "number" && Number.isInteger(value) && Math.abs(value) <= MAX_SAFE_TYPE_INTEGER
+				? null
+				: `expected integer`;
+		case "float":
+			return typeof value === "number" && Number.isFinite(value) && !Number.isInteger(value) ? null : `expected float`;
+		case "color":
+			return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? null : `expected color in #RRGGBB format`;
+		case "keyboard_key":
+			return typeof value === "string" && !validateWindowsHotkey(value) ? null : `expected keyboard key`;
+		case "datetime":
+			return isTagged(value, "datetime", ["type", "value"]) ? null : `expected datetime`;
+		case "duration":
+			return isTagged(value, "duration", ["type", "unit", "value"]) ? null : `expected duration`;
+		default:
+			return `unknown type ${type}`;
+	}
+}
+
+function isTagged(value: unknown, tag: string, fields: string[]) {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+	const record = value as Record<string, unknown>;
+	return record.type === tag && fields.every((field) => field in record);
+}
 
 /**
  * Raised when a simulated request is rejected before it leaves the browser.
@@ -45,12 +91,12 @@ const MAX_VARIABLE_SNAPSHOT_STRING_LENGTH = 4000;
  * distinguishable from a transport failure.
  */
 class SimulationHttpClientError extends Error {
-	constructor(
-		message: string,
-		readonly code: string,
-	) {
+	readonly code: string;
+
+	constructor(message: string, code: string) {
 		super(message);
 		this.name = "SimulationHttpClientError";
+		this.code = code;
 	}
 }
 
