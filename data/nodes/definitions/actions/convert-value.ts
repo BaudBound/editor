@@ -1,11 +1,10 @@
 import { ArrowRightLeft } from "lucide-react";
 import type { VariableType } from "@/data/project/variables";
 import type { JsonValue } from "@/lib/types";
+import { castSimulatedValue } from "@/utils/simulation";
 import { defineNode, withFailureErrorOutput } from "../../node-definition";
 import type { SelectOption } from "../options";
 import { requiredConfig } from "../validators";
-
-const maximumSafeInteger = Number.MAX_SAFE_INTEGER;
 
 export const valueConversionOptions: SelectOption[] = [
 	{ label: "String", value: "string" },
@@ -111,56 +110,13 @@ export function convertValue(
 	input: JsonValue,
 	targetType: ValueConversionTarget,
 ): { ok: true; value: JsonValue } | { error: string; ok: false } {
-	if (targetType === "string") {
-		return {
-			ok: true,
-			value: typeof input === "string" ? input : JSON.stringify(input),
-		};
-	}
-
-	if (targetType === "float" || targetType === "integer") {
-		if (typeof input !== "number" && typeof input !== "string") {
-			return conversionError(input, targetType);
-		}
-		const normalized = typeof input === "string" ? input.trim() : "";
-		const value =
-			typeof input === "number" ? input : decimalNumberPattern.test(normalized) ? Number(normalized) : Number.NaN;
-		if (!Number.isFinite(value) || (typeof input === "string" && input.trim() === "")) {
-			return { error: `Cannot convert the value to ${targetType}. Expected a finite numeric value.`, ok: false };
-		}
-		if (targetType === "integer" && (!Number.isInteger(value) || Math.abs(value) > maximumSafeInteger)) {
-			return {
-				error: `Cannot convert the value to integer. Expected a whole number between -${maximumSafeInteger} and ${maximumSafeInteger}.`,
-				ok: false,
-			};
-		}
-		return { ok: true, value };
-	}
-
-	if (targetType === "boolean") {
-		if (typeof input === "boolean") {
-			return { ok: true, value: input };
-		}
-		if (typeof input === "string") {
-			const normalized = input.trim().toLowerCase();
-			if (normalized === "true" || normalized === "false") {
-				return { ok: true, value: normalized === "true" };
-			}
-		}
-		return { error: "Cannot convert the value to boolean. Expected true or false.", ok: false };
-	}
-
-	const parsed = typeof input === "string" ? parseJson(input) : input;
-	if (targetType === "list" && Array.isArray(parsed)) {
-		return { ok: true, value: parsed };
-	}
-	if (targetType === "object" && isObject(parsed)) {
-		return { ok: true, value: parsed };
-	}
-	return conversionError(input, targetType);
+	// Delegates to the simulator's conversion, which is asserted against the
+	// same shared fixture as the runner. Keeping a second implementation here
+	// meant the node silently refused the four types it had never been taught,
+	// while the runner converted them.
+	const outcome = castSimulatedValue(input, targetType);
+	return outcome.ok ? { ok: true, value: outcome.value as JsonValue } : { error: outcome.error, ok: false };
 }
-
-const decimalNumberPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 
 function normalizeTargetType(value: JsonValue | undefined): ValueConversionTarget {
 	const target = String(value ?? "");
@@ -177,23 +133,4 @@ function valueType(value: JsonValue) {
 	if (value === null) return "null";
 	if (Array.isArray(value)) return "list";
 	return typeof value;
-}
-
-function parseJson(value: string): JsonValue | undefined {
-	try {
-		return JSON.parse(value) as JsonValue;
-	} catch {
-		return undefined;
-	}
-}
-
-function isObject(value: JsonValue | undefined): value is Record<string, JsonValue> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function conversionError(input: JsonValue, targetType: ValueConversionTarget) {
-	return {
-		error: `Cannot convert ${valueType(input)} to ${targetType}.`,
-		ok: false as const,
-	};
 }
