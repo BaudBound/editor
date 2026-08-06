@@ -15,9 +15,14 @@ import {
 	filterCompatibleVariables,
 	formatVariableInputContract,
 	isVariableTypeCompatible,
+	splitCast,
 } from "@/data/nodes/config-field-validation";
 import type { VariableInputContract } from "@/data/nodes/node-definition";
-import { getVariableReferenceStatus, type VariableReferenceCandidate } from "@/data/project/variables";
+import {
+	variableTypes as allVariableTypes,
+	getVariableReferenceStatus,
+	type VariableReferenceCandidate,
+} from "@/data/project/variables";
 import type { JsonValue } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -392,21 +397,28 @@ function renderHighlightedValue(value: string, variables: VariableCompletion[], 
 		}
 
 		const name = token.slice(2, -2);
-		const normalizedName = name.trim();
-		const hasSpacing = name !== normalizedName;
-		const status = getVariableReferenceStatus(normalizedName, variables);
+		const trimmedName = name.trim();
+		const hasSpacing = name !== trimmedName;
+		// A cast target is not part of the name, and after a cast the field
+		// contract applies to the target rather than to the variable's own
+		// type. Highlighting the whole expression as one name marked every
+		// cast red as an unknown variable.
+		const { reference: normalizedName, target } = splitCast(trimmedName);
+		const knownTarget = target !== null && (allVariableTypes as readonly string[]).includes(target);
+		const status = target !== null && !knownTarget ? "invalid" : getVariableReferenceStatus(normalizedName, variables);
 		const variable = variables.find((candidate) => candidate.name === normalizedName);
+		const effectiveType = knownTarget ? (target as VariableCompletion["type"]) : variable?.type;
 		const displayStatus =
 			status === "known" && hasSpacing
 				? "possible"
-				: status === "known" && variable && !isVariableTypeCompatible(variable.type, variableTypes)
+				: status === "known" && effectiveType && !isVariableTypeCompatible(effectiveType, variableTypes)
 					? "type-mismatch"
 					: status;
 
 		elements.push(
 			<span
 				key={`variable-${start}`}
-				title={getVariableReferenceTitle(displayStatus, hasSpacing, variable?.type, variableTypes)}
+				title={getVariableReferenceTitle(displayStatus, hasSpacing, effectiveType, variableTypes)}
 				data-variable-token={normalizedName}
 				data-variable-status={displayStatus}
 				className={cn(

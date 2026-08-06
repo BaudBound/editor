@@ -1600,6 +1600,19 @@ test("numeric fields autocomplete number variables and suspend literal stepping"
 		),
 	).toBeVisible();
 
+	// The cast the message suggests resolves the mismatch: the same field and
+	// the same variable, now accepted, with the target read as the target
+	// rather than as part of the name.
+	await amountField.fill("{{system_date|float}}");
+	await expect(page.locator('[data-variable-token="system_date"][data-variable-status="known"]')).toBeVisible();
+	await expect(page.locator('[data-variable-token="system_date|float"]')).toHaveCount(0);
+
+	// An unknown target is still marked invalid.
+	await amountField.fill("{{system_date|nonsense}}");
+	await expect(page.locator('[data-variable-token="system_date"][data-variable-status="invalid"]')).toBeVisible();
+
+	await amountField.fill("{{system_date}}");
+
 	await page.getByRole("button", { name: "Verify script" }).click();
 	await expect(page.getByRole("heading", { name: "Verification" })).toBeVisible();
 	await expect(
