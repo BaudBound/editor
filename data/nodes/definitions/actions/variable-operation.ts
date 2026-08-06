@@ -363,7 +363,10 @@ function getVariableOperationConfigKeys(operation: ReturnType<typeof normalizeVa
 		set_object_field: ["fieldPath", "fieldValueType", "fieldItemType", "value"],
 		remove_object_field: ["fieldPath"],
 		merge_object: ["value"],
-		clear: [],
+		// Clear keeps valueType so the runner can tell a color or a keyboard key
+		// from a plain string. All three are strings once stored, and each has a
+		// different empty value, or none at all.
+		clear: ["valueType"],
 		delete: [],
 	};
 	return new Set([...base, ...operationKeys[operation]]);

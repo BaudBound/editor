@@ -20,8 +20,20 @@ const conditionRowsRef = `${programSchemaUrl}#/$defs/conditionRows`;
 const jsonValueRef = `${programSchemaUrl}#/$defs/jsonValue`;
 const runtimeOutputRef = `${programSchemaUrl}#/$defs/runtimeOutput`;
 const checkMode = process.argv.includes("--check");
-const userValueTypes = ["string", "number", "boolean", "object", "list", "datetime", "duration", "file_path"];
+// Read from the editor's own list rather than repeating it. A copy here went
+// stale during the type rework and made the generated node schema reject every
+// value type the editor could actually produce.
+const userValueTypes = readVariableTypes();
 const listItemTypes = userValueTypes.filter((type) => type !== "list");
+
+function readVariableTypes() {
+	const source = readFileSync(join(appRoot, "data", "project", "variables.ts"), "utf8");
+	const match = source.match(/export const variableTypes = \[([\s\S]*?)\] as const;/);
+	assert.ok(match, "variableTypes must be exported as a const string array");
+	const types = [...match[1].matchAll(/"([^"]+)"/g)].map((entry) => entry[1]);
+	assert.ok(types.length > 0, "variableTypes must not be empty");
+	return types;
+}
 
 assert.ok(
 	existsSync(join(contractsRoot, "contract.json")),
