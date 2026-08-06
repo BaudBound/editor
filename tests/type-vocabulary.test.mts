@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { splitCast, validateVariableReferenceTypes } from "../data/nodes/config-field-validation.ts";
 import { variableTypes } from "../data/project/variables.ts";
 import { validateSimulatedValue } from "../utils/simulation.ts";
 
@@ -48,4 +49,24 @@ test("simulator agrees with the shared type fixtures", () => {
 			`${JSON.stringify(testCase.value)} as ${testCase.type}: ${testCase.reason}`,
 		);
 	}
+});
+
+test("cast suffix splits outside quotes", () => {
+	assert.deepEqual(splitCast("item"), { reference: "item", target: null });
+	assert.deepEqual(splitCast("item|string"), { reference: "item", target: "string" });
+	assert.deepEqual(splitCast(" item | string "), { reference: "item", target: "string" });
+	assert.deepEqual(splitCast('node["a|b"]'), { reference: 'node["a|b"]', target: null });
+});
+
+test("a cast satisfies a field of the cast target type", () => {
+	const variables = [{ name: "item", type: "integer" as const }];
+
+	// Uncast, an integer does not satisfy a string field.
+	assert.notEqual(validateVariableReferenceTypes("{{item}}", variables, "string"), "");
+	// Cast, it does.
+	assert.equal(validateVariableReferenceTypes("{{item|string}}", variables, "string"), "");
+	// A cast to the wrong type is still rejected.
+	assert.notEqual(validateVariableReferenceTypes("{{item|list}}", variables, "string"), "");
+	// An unknown target is rejected.
+	assert.notEqual(validateVariableReferenceTypes("{{item|int}}", variables, "string"), "");
 });

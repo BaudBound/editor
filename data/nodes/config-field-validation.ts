@@ -1,6 +1,6 @@
 import { validateUserIdentifier } from "@/data/project/user-identifier";
-import type { VariableReferenceCandidate } from "@/data/project/variables";
-import { getVariableReferenceStatus } from "@/data/project/variables";
+import type { VariableReferenceCandidate, VariableType } from "@/data/project/variables";
+import { getVariableReferenceStatus, variableTypes } from "@/data/project/variables";
 import type { JsonValue } from "@/lib/types";
 import { validateStaticColor } from "./color-match";
 import { getFormDialogFields } from "./form-dialog-fields";
@@ -116,16 +116,64 @@ export function isVariableTypeCompatible(type: VariableReferenceCandidate["type"
 	return contract === "any" || type === contract;
 }
 
+/**
+ * Splits a template expression into its reference and optional cast target.
+ *
+ * The split happens outside quote context so a pipe inside a quoted accessor,
+ * as in node["a|b"], stays part of the key. Mirrors split_cast in the runner.
+ */
+export function splitCast(expression: string): { reference: string; target: string | null } {
+	let quote: string | null = null;
+	let escaped = false;
+	let separator = -1;
+
+	for (let index = 0; index < expression.length; index += 1) {
+		const character = expression[index];
+		if (escaped) {
+			escaped = false;
+			continue;
+		}
+		if (character === "\\" && quote) {
+			escaped = true;
+			continue;
+		}
+		if (quote) {
+			if (character === quote) quote = null;
+			continue;
+		}
+		if (character === '"' || character === "'") quote = character;
+		else if (character === "|") separator = index;
+	}
+
+	if (separator < 0) return { reference: expression.trim(), target: null };
+	return {
+		reference: expression.slice(0, separator).trim(),
+		target: expression.slice(separator + 1).trim(),
+	};
+}
+
 export function validateVariableReferenceTypes(
 	value: string,
 	variables: readonly VariableReferenceCandidate[],
 	contract: VariableInputContract,
 ) {
 	for (const match of value.matchAll(TEMPLATE_PATTERN)) {
-		const reference = match[1]?.trim() ?? "";
+		const { reference, target } = splitCast(match[1]?.trim() ?? "");
+
+		if (target !== null) {
+			if (!(variableTypes as readonly string[]).includes(target)) {
+				return `Unknown cast target "${target}". Use one of ${variableTypes.join(", ")}.`;
+			}
+			if (!isVariableTypeCompatible(target as VariableType, contract)) {
+				return `This field accepts ${formatVariableInputContract(contract)} variables, but the cast produces ${target}.`;
+			}
+			// The cast decides the type, so the variable's own type is not checked.
+			continue;
+		}
+
 		const variable = variables.find((candidate) => candidate.name === reference);
 		if (variable && !isVariableTypeCompatible(variable.type, contract)) {
-			return `Variable "${reference}" has type ${variable.type}; this field accepts ${formatVariableInputContract(contract)} variables.`;
+			return `Variable "${reference}" has type ${variable.type}; this field accepts ${formatVariableInputContract(contract)} variables. Add a cast such as {{${reference}|${contract}}} to convert it.`;
 		}
 		if (!variable && contract !== "any" && getVariableReferenceStatus(reference, variables) === "possible") {
 			return `Variable "${reference}" has an unknown type; this field accepts ${formatVariableInputContract(contract)} variables. Use a declared typed variable or output.`;
