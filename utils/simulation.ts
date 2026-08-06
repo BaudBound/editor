@@ -86,6 +86,10 @@ function isTagged(value: unknown, tag: string, fields: string[]) {
 	return record.type === tag && fields.every((field) => field in record);
 }
 
+// Mirrors what Rust's f64 parser accepts, so the simulator and the runner
+// agree on which strings are numbers.
+const decimalNumberPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
 type CastOutcome = { ok: true; value: unknown } | { ok: false; error: string };
 
 /**
@@ -104,8 +108,18 @@ export function castSimulatedValue(value: unknown, target: string): CastOutcome 
 			return { ok: true, value: typeof value === "string" ? value : JSON.stringify(value) };
 		case "integer":
 		case "float": {
-			const parsed = typeof value === "number" ? value : Number(String(value).trim());
-			if (!Number.isFinite(parsed) || String(value).trim() === "") {
+			// Only a number or a decimal string, matching the runner. Number()
+			// also reads hex, binary and octal spellings and turns a one item
+			// list into its element, none of which the runner accepts, so
+			// using it directly would let the simulator succeed where a real
+			// run stops.
+			const parsed =
+				typeof value === "number"
+					? value
+					: typeof value === "string" && decimalNumberPattern.test(value.trim())
+						? Number(value.trim())
+						: Number.NaN;
+			if (!Number.isFinite(parsed)) {
 				return { ok: false, error: `cannot cast to ${target} because the value is not a finite number` };
 			}
 			if (target === "float") return { ok: true, value: parsed };
