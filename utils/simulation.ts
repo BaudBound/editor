@@ -1,11 +1,13 @@
 import type { Edge, Node } from "@xyflow/react";
 import { conditionValuesEqual, evaluateConditionValues } from "@/data/nodes/condition-comparison";
+import { splitCast } from "@/data/nodes/config-field-validation";
 import { isConditionRow, isSwitchCaseRow } from "@/data/nodes/definitions/rows";
 import type { NodeSimulationApi } from "@/data/nodes/node-definition";
 import { numericContractApplies, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
 import { fallibleActionTypes, getNodeDefinition } from "@/data/nodes/registry";
 import { validateWindowsHotkey } from "@/data/nodes/windows-key-contract";
 import { createSimulationBuiltInVariableValues } from "@/data/project/built-in-variables";
+import { typedDatetimeIso } from "@/data/project/datetime";
 import { createSimulationScriptSettingValues } from "@/data/project/script-settings";
 import type {
 	JsonValue,
@@ -84,6 +86,86 @@ function isTagged(value: unknown, tag: string, fields: string[]) {
 	return record.type === tag && fields.every((field) => field in record);
 }
 
+type CastOutcome = { ok: true; value: unknown } | { ok: false; error: string };
+
+/**
+ * Converts a value to a target type, mirroring cast_value in the runner.
+ *
+ * Asserted against the same conformance fixtures, because a lenient simulator
+ * would let authors ship scripts that pass simulation and stop in production.
+ */
+export function castSimulatedValue(value: unknown, target: string): CastOutcome {
+	if (value === null || value === undefined) {
+		return { ok: false, error: `cannot cast to ${target} because the value is not set` };
+	}
+
+	switch (target) {
+		case "string":
+			return { ok: true, value: typeof value === "string" ? value : JSON.stringify(value) };
+		case "integer":
+		case "float": {
+			const parsed = typeof value === "number" ? value : Number(String(value).trim());
+			if (!Number.isFinite(parsed) || String(value).trim() === "") {
+				return { ok: false, error: `cannot cast to ${target} because the value is not a finite number` };
+			}
+			if (target === "float") return { ok: true, value: parsed };
+			if (!Number.isInteger(parsed)) {
+				return { ok: false, error: "cannot cast to integer because the value is fractional" };
+			}
+			if (Math.abs(parsed) > MAX_SAFE_TYPE_INTEGER) {
+				return { ok: false, error: "cannot cast to integer because the value is outside the safe range" };
+			}
+			return { ok: true, value: parsed };
+		}
+		case "boolean": {
+			if (typeof value === "boolean") return { ok: true, value };
+			const text = String(value).trim().toLowerCase();
+			if (text === "true") return { ok: true, value: true };
+			if (text === "false") return { ok: true, value: false };
+			return { ok: false, error: "cannot cast to boolean because the value is not true or false" };
+		}
+		case "list":
+		case "object": {
+			let parsed: unknown = value;
+			if (typeof value === "string") {
+				try {
+					parsed = JSON.parse(value);
+				} catch {
+					parsed = value;
+				}
+			}
+			const matches =
+				target === "list"
+					? Array.isArray(parsed)
+					: typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+			return matches
+				? { ok: true, value: parsed }
+				: { ok: false, error: `cannot cast to ${target} because the value is not one` };
+		}
+		case "color":
+		case "keyboard_key":
+			return validateSimulatedValue(value, target) === null
+				? { ok: true, value }
+				: { ok: false, error: `cannot cast to ${target}` };
+		case "datetime": {
+			if (validateSimulatedValue(value, "datetime") === null) return { ok: true, value };
+			// typedDatetimeIso is the same RFC 3339-style check the rest of the
+			// editor uses to decide whether a datetime string is genuine, so a
+			// string such as "not a date" is rejected instead of accepted as-is.
+			if (typeof value !== "string" || typedDatetimeIso({ type: "datetime", value }) === null) {
+				return { ok: false, error: "cannot cast to datetime because the value is not a date" };
+			}
+			return { ok: true, value: { type: "datetime", value } };
+		}
+		case "duration":
+			return validateSimulatedValue(value, "duration") === null
+				? { ok: true, value }
+				: { ok: false, error: "cannot cast to duration because the value has no unit" };
+		default:
+			return { ok: false, error: `unknown cast target ${target}` };
+	}
+}
+
 /**
  * Raised when a simulated request is rejected before it leaves the browser.
  *
@@ -97,6 +179,22 @@ class SimulationHttpClientError extends Error {
 		super(message);
 		this.name = "SimulationHttpClientError";
 		this.code = code;
+	}
+}
+
+/**
+ * Raised when a `{{reference|target}}` cast fails while resolving a template.
+ *
+ * Caught once, centrally, in processSimulationFrames, so it aborts the whole
+ * simulated run instead of resolving to a node's failed output — matching the
+ * runner, where the same cast failure is a fatal RuntimeError rather than a
+ * structured action failure. Call sites that catch errors generically must
+ * re-throw this one instead of swallowing it into an ordinary node failure.
+ */
+class SimulationCastError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "SimulationCastError";
 	}
 }
 
@@ -279,7 +377,23 @@ async function processSimulationFrames(context: SimulationContext, initialFrames
 			continue;
 		}
 
-		await processSimulationFrame(context, frame, frames);
+		try {
+			await processSimulationFrame(context, frame, frames);
+		} catch (error) {
+			if (!(error instanceof SimulationCastError)) {
+				throw error;
+			}
+			// A failed cast stops the whole run, matching the runner: there the
+			// same failure is a fatal RuntimeError rather than a structured
+			// action failure, so it is never routed to a node's failed output.
+			context.failed = true;
+			context.halted = true;
+			await pushStep(context, {
+				level: "error",
+				message: `[Simulation] ${error.message}`,
+			});
+			return;
+		}
 	}
 }
 
@@ -458,6 +572,9 @@ async function executeResolvedNodeFrame(
 	try {
 		handle = await determineOutputHandle(node, context, outcome);
 	} catch (error) {
+		if (error instanceof SimulationCastError) {
+			throw error;
+		}
 		context.failed = true;
 		await pushStep(context, {
 			level: "error",
@@ -570,6 +687,9 @@ async function processWhileFrame(
 	try {
 		conditionPassed = await evaluateIfNode(node, context);
 	} catch (error) {
+		if (error instanceof SimulationCastError) {
+			throw error;
+		}
 		context.failed = true;
 		await pushStep(context, {
 			level: "error",
@@ -1014,6 +1134,9 @@ async function executeHttpRequestNode(
 			);
 		}
 	} catch (error) {
+		if (error instanceof SimulationCastError) {
+			throw error;
+		}
 		return {
 			failed: true,
 			outputData: {
@@ -1063,6 +1186,9 @@ async function executeHttpRequestNode(
 
 		return { failed: false, outputData };
 	} catch (error) {
+		if (error instanceof SimulationCastError) {
+			throw error;
+		}
 		if (context.signal?.aborted) {
 			return { failed: false, outputData: {} };
 		}
@@ -1294,11 +1420,35 @@ function normalizeIterationCount(value: JsonValue) {
 	throw new TypeError("Validated loop count did not resolve to an integer");
 }
 
-function getReferenceValue(reference: string, context: SimulationContext): JsonValue {
-	return tryGetReferenceValue(reference, context) ?? `{{${reference}}}`;
+function getReferenceValue(expression: string, context: SimulationContext): JsonValue {
+	return tryGetReferenceValue(expression, context) ?? `{{${expression}}}`;
 }
 
-function tryGetReferenceValue(reference: string, context: SimulationContext): JsonValue | undefined {
+/**
+ * Resolves a `{{reference}}` or `{{reference|target}}` expression, splitting
+ * and casting exactly as resolve_variable_expression does in the runner.
+ *
+ * A cast failure throws SimulationCastError instead of returning undefined,
+ * so the caller cannot mistake it for an unresolved reference and fall back
+ * to leaving the template text in place. `null` fails every target: it is
+ * what an unset variable or a missing key both resolve to, and castSimulatedValue
+ * already rejects it for every target, so no separate check is needed here.
+ */
+function tryGetReferenceValue(expression: string, context: SimulationContext): JsonValue | undefined {
+	const { reference, target } = splitCast(expression);
+	const resolved = resolveReferencePath(reference, context);
+	if (target === null) {
+		return resolved;
+	}
+
+	const outcome = castSimulatedValue(resolved ?? null, target);
+	if (!outcome.ok) {
+		throw new SimulationCastError(`variable "${reference}" ${outcome.error}`);
+	}
+	return outcome.value as JsonValue;
+}
+
+function resolveReferencePath(reference: string, context: SimulationContext): JsonValue | undefined {
 	if (reference in context.runtimeVariables) {
 		return context.runtimeVariables[reference];
 	}

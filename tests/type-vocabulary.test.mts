@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { splitCast, validateVariableReferenceTypes } from "../data/nodes/config-field-validation.ts";
 import { variableTypes } from "../data/project/variables.ts";
-import { validateSimulatedValue } from "../utils/simulation.ts";
+import { castSimulatedValue, validateSimulatedValue } from "../utils/simulation.ts";
 
 const appRoot = fileURLToPath(new URL("..", import.meta.url));
 const vocabularyPath = join(appRoot, "contracts", "type-vocabulary.json");
@@ -56,6 +56,26 @@ test("cast suffix splits outside quotes", () => {
 	assert.deepEqual(splitCast("item|string"), { reference: "item", target: "string" });
 	assert.deepEqual(splitCast(" item | string "), { reference: "item", target: "string" });
 	assert.deepEqual(splitCast('node["a|b"]'), { reference: 'node["a|b"]', target: null });
+});
+
+test("simulator agrees with the shared cast fixtures", () => {
+	const conformance = JSON.parse(readFileSync(join(appRoot, "contracts", "cast-conformance.json"), "utf8")) as {
+		cases: { error?: boolean; reason: string; result?: unknown; target: string; value: unknown }[];
+		version: number;
+	};
+	assert.equal(conformance.version, 1);
+
+	for (const testCase of conformance.cases) {
+		const outcome = castSimulatedValue(testCase.value, testCase.target);
+		if (testCase.error) {
+			assert.equal(outcome.ok, false, `${JSON.stringify(testCase.value)} to ${testCase.target}: ${testCase.reason}`);
+		} else {
+			assert.equal(outcome.ok, true, `${JSON.stringify(testCase.value)} to ${testCase.target}: ${testCase.reason}`);
+			if (outcome.ok) {
+				assert.deepEqual(outcome.value, testCase.result, testCase.reason);
+			}
+		}
+	}
 });
 
 test("a cast satisfies a field of the cast target type", () => {
