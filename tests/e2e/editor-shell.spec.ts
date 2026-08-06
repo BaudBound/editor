@@ -1604,7 +1604,7 @@ test("numeric fields autocomplete number variables and suspend literal stepping"
 	await expect(page.getByRole("heading", { name: "Verification" })).toBeVisible();
 	await expect(
 		page.locator("[data-verification-result] li").filter({
-			hasText: /Delay.*Variable "system_date" has type string; this field accepts numeric variables/i,
+			hasText: /Delay.*Variable "system_date" has type string; this field accepts float variables/i,
 		}),
 	).toBeVisible();
 });

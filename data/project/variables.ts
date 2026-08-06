@@ -251,10 +251,12 @@ export function validateVariableOperationValue(
 }
 
 export function validateVariableOperationType(operation: VariableOperation, type: VariableType) {
-	if (operation === "increment" && type !== "integer" && type !== "float") {
-		return "Increment can only be used with integer or float variables.";
-	}
-
+	// Increment is deliberately excluded. It does not declare a type of its
+	// own, because it applies to whichever numeric type the variable already
+	// has and preserves it, so the node's valueType is left at its default and
+	// says nothing about the target. Checking it here rejected every increment
+	// node. Whether the variable is numeric is settled by its own declaration
+	// and by the runner when the value is read.
 	if ((operation === "append_list" || operation === "remove_list_items") && type !== "list") {
 		return `${variableOperationDefinitions[operation].label} can only be used with list variables.`;
 	}
