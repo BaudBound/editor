@@ -18,6 +18,7 @@ import { inspectorTabs } from "@/data/editor/inspector-tabs";
 import {
 	getEffectiveVariableContract,
 	validateConfigField,
+	validateNumericComparisonInput,
 	validateVariableReferences,
 	validateVariableReferenceTypes,
 } from "@/data/nodes/config-field-validation";
@@ -820,9 +821,8 @@ function ConditionValueInput({
 		);
 	}
 
-	const numericVariableError =
-		validateVariableReferences(value, variableCompletions) ||
-		validateVariableReferenceTypes(value, variableCompletions, "float");
+	// A comparison reads both sides as numbers, so either numeric type works.
+	const numericVariableError = validateNumericComparisonInput(value, variableCompletions);
 	return (
 		<div>
 			<span className="mb-1 block font-mono text-sm text-baud-muted">{label}</span>

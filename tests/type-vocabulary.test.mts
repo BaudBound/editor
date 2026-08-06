@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
 	splitCast,
+	validateNumericComparisonInput,
 	validateVariableInput,
 	validateVariableReferenceTypes,
 } from "../data/nodes/config-field-validation.ts";
@@ -111,4 +112,26 @@ test("a cast target is not treated as part of the variable name", () => {
 
 	// An unknown target is still reported as such.
 	assert.match(validateVariableInput("{{n-convert.value|nonsense}}", variables, "any"), /Unknown cast target/);
+});
+
+test("a numeric comparison accepts either numeric type", () => {
+	// The operators read both sides as numbers, so requiring one of the two
+	// would reject comparing a counter against a threshold.
+	const variables = [
+		{ name: "counter", type: "integer", readOnly: false },
+		{ name: "ratio", type: "float", readOnly: false },
+		{ name: "name", type: "string", readOnly: false },
+	] as const;
+
+	assert.equal(validateNumericComparisonInput("{{counter}}", variables), "");
+	assert.equal(validateNumericComparisonInput("{{ratio}}", variables), "");
+	assert.equal(validateNumericComparisonInput("5", variables), "");
+
+	// Something that is not a number at all is still reported here rather than
+	// only once the script runs.
+	assert.match(validateNumericComparisonInput("{{name}}", variables), /needs an integer or a float/);
+
+	// A cast decides the type, and a cast to a non numeric type is refused.
+	assert.equal(validateNumericComparisonInput("{{name|float}}", variables), "");
+	assert.match(validateNumericComparisonInput("{{counter|color}}", variables), /needs a number/);
 });

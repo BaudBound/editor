@@ -263,3 +263,42 @@ export function formatVariableInputContract(contract: VariableInputContract) {
 function sentence(value: string) {
 	return /[.!?]$/.test(value) ? value : `${value}.`;
 }
+
+/**
+ * Validates a value used as an operand of a numeric comparison.
+ *
+ * A comparison is not a typed slot. The operators read both sides as numbers,
+ * so either numeric type satisfies them, and requiring one of the two would
+ * reject the ordinary case of comparing a counter against a threshold. The
+ * check still rejects a value that is not numeric at all, which the runner
+ * would otherwise only report once the script runs.
+ */
+export function validateNumericComparisonInput(value: string, variables: readonly VariableReferenceCandidate[]) {
+	const referenceError = validateVariableReferences(value, variables);
+	if (referenceError) {
+		return referenceError;
+	}
+
+	for (const match of value.matchAll(TEMPLATE_PATTERN)) {
+		const { reference, target } = splitCast(match[1]?.trim() ?? "");
+
+		if (target !== null) {
+			// The unknown-target case is already reported by the reference check.
+			if (isNumericVariableType(target) || !(variableTypes as readonly string[]).includes(target)) {
+				continue;
+			}
+			return `A comparison needs a number, but the cast produces ${target}.`;
+		}
+
+		const variable = variables.find((candidate) => candidate.name === reference);
+		if (variable && !isNumericVariableType(variable.type)) {
+			return `Variable "${reference}" has type ${variable.type}; a comparison needs an integer or a float. Add a cast such as {{${reference}|float}} to convert it.`;
+		}
+	}
+
+	return "";
+}
+
+function isNumericVariableType(type: string) {
+	return type === "integer" || type === "float";
+}
