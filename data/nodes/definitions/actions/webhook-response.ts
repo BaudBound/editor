@@ -15,7 +15,7 @@ export const webhookResponseNode = defineNode({
 			label: "Status code",
 			type: "number",
 			usesVariables: true,
-			variableTypes: "numeric",
+			variableTypes: "integer",
 			numeric: {
 				kind: "integer",
 				signed: false,
@@ -33,7 +33,7 @@ export const webhookResponseNode = defineNode({
 			variableTypes: "string",
 			nonEmpty: true,
 		},
-		{ key: "body", label: "Body", type: "textarea", usesVariables: true, variableTypes: "text" },
+		{ key: "body", label: "Body", type: "textarea", usesVariables: true, variableTypes: "string" },
 	],
 	defaultConfig: () => ({
 		statusCode: "200",
@@ -58,7 +58,7 @@ export const webhookResponseNode = defineNode({
 		},
 		{
 			name: "status_code",
-			type: "http_status_code",
+			type: "integer",
 			description: "HTTP response status code sent to the webhook caller.",
 			example: "n-mr3zyt6f-22.status_code",
 		},
@@ -70,7 +70,7 @@ export const webhookResponseNode = defineNode({
 		},
 		{
 			name: "headers",
-			type: "http_headers",
+			type: "object",
 			description: "HTTP response headers sent to the webhook caller.",
 			example: 'n-mr3zyt6f-22.headers["cache-control"]',
 		},

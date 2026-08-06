@@ -8,20 +8,6 @@ import { configVisibilityConditionMatches, type NodeConfigField, type VariableIn
 import { numericContractApplies, validateNumericConfigValue } from "./numeric-validation";
 
 const TEMPLATE_PATTERN = /\{\{([^{}]*)}}/g;
-const compatibleTypes: Record<VariableInputContract, ReadonlySet<string> | undefined> = {
-	any: undefined,
-	boolean: new Set(["boolean"]),
-	color: new Set(["color"]),
-	datetime: new Set(["datetime"]),
-	duration: new Set(["duration"]),
-	"file-path": new Set(["file_path"]),
-	"keyboard-key": new Set(["keyboard_key"]),
-	list: new Set(["list"]),
-	numeric: new Set(["number", "http_status_code", "duration_ms", "process_id", "exit_code"]),
-	object: new Set(["object", "http_headers"]),
-	string: new Set(["string"]),
-	text: new Set(["string", "file_content"]),
-};
 
 export function validateConfigField(
 	field: NodeConfigField,
@@ -109,7 +95,7 @@ export function getEffectiveVariableContract(field: NodeConfigField, config: Rec
 		return "any";
 	}
 	if (numericContractApplies(field, config)) {
-		return "numeric";
+		return field.numeric?.kind === "integer" ? "integer" : "float";
 	}
 	if (field.colorPicker) {
 		return "color";
@@ -124,8 +110,10 @@ export function filterCompatibleVariables<TVariable extends VariableReferenceCan
 	return variables.filter((variable) => isVariableTypeCompatible(variable.type, contract));
 }
 
+// Matching is exact. There is no subtyping, so a color is not usable where a
+// string is required. Moving between types is done with an explicit cast.
 export function isVariableTypeCompatible(type: VariableReferenceCandidate["type"], contract: VariableInputContract) {
-	return compatibleTypes[contract]?.has(type) ?? true;
+	return contract === "any" || type === contract;
 }
 
 export function validateVariableReferenceTypes(

@@ -1,24 +1,29 @@
-import { runtimeNumberContract, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
+import {
+	runtimeIntegerContract,
+	runtimeNumberContract,
+	validateNumericConfigValue,
+} from "@/data/nodes/numeric-validation";
 import { type VariableType, validateVariableName, validateVariableValue } from "@/data/project/variables";
 import type { DefaultVariable, JsonValue, SecretDeclaration } from "@/lib/types";
 
 export function formatDefaultValue(type: VariableType, value: JsonValue) {
-	if (type === "string" || type === "file_path") {
+	if (type === "string" || type === "color" || type === "keyboard_key") {
 		return typeof value === "string" ? value : "";
 	}
-	if (type === "number" || type === "boolean") {
+	if (type === "integer" || type === "float" || type === "boolean") {
 		return String(value);
 	}
 	return JSON.stringify(value, null, 2);
 }
 
 export function parseDefaultValue(type: VariableType, rawValue: string): JsonValue | undefined {
-	if (type === "string" || type === "file_path") {
+	if (type === "string" || type === "color" || type === "keyboard_key") {
 		return rawValue;
 	}
-	if (type === "number") {
+	if (type === "integer" || type === "float") {
 		const trimmed = rawValue.trim();
-		return trimmed && !validateNumericConfigValue(trimmed, runtimeNumberContract) ? Number(trimmed) : undefined;
+		const contract = type === "integer" ? runtimeIntegerContract : runtimeNumberContract;
+		return trimmed && !validateNumericConfigValue(trimmed, contract) ? Number(trimmed) : undefined;
 	}
 	if (type === "boolean") {
 		return rawValue === "true" ? true : rawValue === "false" ? false : undefined;
@@ -36,7 +41,7 @@ export function defaultValueError(type: VariableType, rawValue: string) {
 	}
 	const parsed = parseDefaultValue(type, rawValue);
 	if (parsed === undefined) {
-		return type === "number" ? "Enter a finite number." : "Enter valid JSON.";
+		return type === "integer" || type === "float" ? "Enter a finite number." : "Enter valid JSON.";
 	}
 	const validation = validateVariableValue(type, formatDefaultValue(type, parsed));
 	return validation || null;

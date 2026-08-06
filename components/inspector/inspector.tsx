@@ -822,7 +822,7 @@ function ConditionValueInput({
 
 	const numericVariableError =
 		validateVariableReferences(value, variableCompletions) ||
-		validateVariableReferenceTypes(value, variableCompletions, "numeric");
+		validateVariableReferenceTypes(value, variableCompletions, "float");
 	return (
 		<div>
 			<span className="mb-1 block font-mono text-sm text-baud-muted">{label}</span>
@@ -1131,7 +1131,7 @@ function TextTransformRowInput({
 	rows: TextTransformOperationRow[];
 	variableCompletions: VariableCompletion[];
 }) {
-	const variableTypes = field === "start" || field === "length" || field === "targetLength" ? "numeric" : "text";
+	const variableTypes = field === "start" || field === "length" || field === "targetLength" ? "integer" : "string";
 	const error =
 		validateTextTransformField(row, field) ||
 		validateVariableReferences(row[field], variableCompletions) ||
@@ -1225,9 +1225,7 @@ function VariableOperationConfigPanel({
 		fieldValueType,
 		fieldItemType,
 	);
-	const inputVariableTypes = variableTypeToInputContract(
-		getVariableOperationInputType(operation, selectedType, fieldValueType),
-	);
+	const inputVariableTypes = getVariableOperationInputType(operation, selectedType, fieldValueType);
 	const variableReferenceMessage =
 		validateVariableReferences(draftValue, variableCompletions) ||
 		validateVariableReferenceTypes(draftValue, variableCompletions, inputVariableTypes);
@@ -1461,7 +1459,7 @@ function VariableOperationValueInput({
 	const fullTemplate = isFullTemplateReference(value);
 	const [source, setSource] = useState<"literal" | "raw">(fullTemplate ? "raw" : "literal");
 
-	if (type === "string" || type === "number" || type === "object" || type === "file_path") {
+	if (type === "string" || type === "integer" || type === "float" || type === "object") {
 		return (
 			<div>
 				<span className="mb-1 block font-mono text-sm text-baud-muted">{ariaLabel}</span>
@@ -1544,19 +1542,11 @@ function getVariableOperationInputType(
 		return "object";
 	}
 	if (operation === "increment") {
-		return "number";
+		// Increment accepts either an integer or a float amount; float is the
+		// permissive choice since it does not reject a fractional amount.
+		return "float";
 	}
 	return targetType;
-}
-
-function variableTypeToInputContract(type: VariableType): VariableInputContract {
-	if (type === "file_path") {
-		return "file-path";
-	}
-	if (type === "number") {
-		return "numeric";
-	}
-	return type;
 }
 
 function variableOperationNeedsValue(operation: ReturnType<typeof normalizeVariableOperation>) {
@@ -1564,10 +1554,10 @@ function variableOperationNeedsValue(operation: ReturnType<typeof normalizeVaria
 }
 
 function parseTypedConfigValue(value: string, type: VariableType, itemType?: ListItemType): JsonValue {
-	if (type === "string" || type === "file_path") {
+	if (type === "string" || type === "color" || type === "keyboard_key") {
 		return value;
 	}
-	if (type === "number") {
+	if (type === "integer" || type === "float") {
 		if (!value.trim()) {
 			return "";
 		}
@@ -1586,11 +1576,11 @@ function parseTypedConfigValue(value: string, type: VariableType, itemType?: Lis
 }
 
 function serializeTypedConfigValue(value: JsonValue, type: VariableType) {
-	return type === "string" || type === "file_path" ? String(value) : JSON.stringify(value);
+	return type === "string" || type === "color" || type === "keyboard_key" ? String(value) : JSON.stringify(value);
 }
 
 function createEmptyVariableOperationInput(type: VariableType, itemType?: ListItemType) {
-	if (type === "string" || type === "file_path" || type === "number") {
+	if (type === "string" || type === "color" || type === "keyboard_key" || type === "integer" || type === "float") {
 		return "";
 	}
 	return serializeTypedConfigValue(createEmptyTypedValue(type, itemType), type);
@@ -1712,13 +1702,13 @@ function PlaySoundConfigPanel({
 					error={
 						(!valueToInputString(config.filePath).trim() ? "File path is required." : "") ||
 						validateVariableReferences(valueToInputString(config.filePath), variableCompletions) ||
-						validateVariableReferenceTypes(valueToInputString(config.filePath), variableCompletions, "file-path")
+						validateVariableReferenceTypes(valueToInputString(config.filePath), variableCompletions, "string")
 					}
 					label="File path"
 					value={valueToInputString(config.filePath)}
 					usesVariables
 					variableCompletions={variableCompletions}
-					variableTypes="file-path"
+					variableTypes="string"
 					onChange={(value) => onChange("filePath", value)}
 				/>
 			)}
@@ -1768,13 +1758,13 @@ function SerialWriteConfigPanel({
 				error={
 					(!valueToInputString(config.data).trim() ? "Data is required." : "") ||
 					validateVariableReferences(valueToInputString(config.data), variableCompletions) ||
-					validateVariableReferenceTypes(valueToInputString(config.data), variableCompletions, "text")
+					validateVariableReferenceTypes(valueToInputString(config.data), variableCompletions, "string")
 				}
 				label="Data"
 				value={valueToInputString(config.data)}
 				usesVariables
 				variableCompletions={variableCompletions}
-				variableTypes="text"
+				variableTypes="string"
 				onChange={(value) => onChange("data", value)}
 			/>
 		</div>

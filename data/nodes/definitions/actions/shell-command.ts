@@ -13,7 +13,7 @@ export const shellCommandNode = defineNode({
 			label: "Command",
 			type: "textarea",
 			usesVariables: true,
-			variableTypes: "text",
+			variableTypes: "string",
 			nonEmpty: true,
 		},
 		{
@@ -21,7 +21,7 @@ export const shellCommandNode = defineNode({
 			label: "Timeout seconds",
 			type: "number",
 			usesVariables: true,
-			variableTypes: "numeric",
+			variableTypes: "float",
 			required: false,
 			numeric: {
 				kind: "float",
@@ -45,13 +45,13 @@ export const shellCommandNode = defineNode({
 	runtimeOutputs: fallible([
 		{
 			name: "process_id",
-			type: "process_id",
+			type: "integer",
 			description: "Started shell process identifier.",
 			example: "n-mr3zyt6f-20.process_id",
 		},
 		{
 			name: "exit_code",
-			type: "exit_code",
+			type: "integer",
 			description: "Shell process exit code.",
 			example: "n-mr3zyt6f-20.exit_code",
 		},

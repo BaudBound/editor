@@ -74,7 +74,7 @@ export const httpRequestNode = defineNode({
 	runtimeOutputs: fallible([
 		{
 			name: "status_code",
-			type: "http_status_code",
+			type: "integer",
 			description: "HTTP response status code.",
 			example: "n-mr3zyt6f-12.status_code",
 		},
@@ -86,7 +86,7 @@ export const httpRequestNode = defineNode({
 		},
 		{
 			name: "headers",
-			type: "http_headers",
+			type: "object",
 			description: "HTTP response headers.",
 			example: 'n-mr3zyt6f-12.headers["content-type"]',
 		},
@@ -99,7 +99,7 @@ export const httpRequestNode = defineNode({
 		},
 		{
 			name: "duration_ms",
-			type: "duration_ms",
+			type: "integer",
 			description: "Request duration in milliseconds.",
 			example: "n-mr3zyt6f-12.duration_ms",
 		},

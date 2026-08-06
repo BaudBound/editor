@@ -22,7 +22,7 @@ import type {
 	SimulationSideEffect,
 	SimulationSideEffectResult,
 } from "@/utils/simulation-types";
-import type { VariableReferenceCandidate } from "../project/variables";
+import type { VariableReferenceCandidate, VariableType } from "../project/variables";
 import type { SelectOption } from "./definitions/options";
 
 export type NumericConfigContract = {
@@ -57,19 +57,7 @@ type NodeConfigFieldBase = {
 	visibleWhen?: ConfigVisibilityCondition;
 };
 
-export type VariableInputContract =
-	| "any"
-	| "boolean"
-	| "color"
-	| "datetime"
-	| "duration"
-	| "file-path"
-	| "keyboard-key"
-	| "list"
-	| "numeric"
-	| "object"
-	| "string"
-	| "text";
+export type VariableInputContract = VariableType | "any";
 
 type NodeConfigVariableSupport =
 	| { usesVariables: true; variableTypes: VariableInputContract }

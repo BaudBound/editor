@@ -40,7 +40,7 @@ export const killProcessNode = defineNode({
 	runtimeOutputs: fallible([
 		{
 			name: "process_id",
-			type: "process_id",
+			type: "integer",
 			description: "Terminated process identifier.",
 			example: "n-mr3zyt6f-17.process_id",
 		},

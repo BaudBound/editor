@@ -12,7 +12,7 @@ export const scheduleTriggerNode = defineNode({
 			label: "Every",
 			type: "number",
 			usesVariables: true,
-			variableTypes: "numeric",
+			variableTypes: "float",
 			numeric: {
 				kind: "float",
 				signed: false,
@@ -35,13 +35,13 @@ export const scheduleTriggerNode = defineNode({
 	runtimeOutputs: [
 		{
 			name: "interval_seconds",
-			type: "number",
+			type: "integer",
 			description: "Configured schedule interval in seconds.",
 			example: "n-mr3zyt6f-1.interval_seconds",
 		},
 		{
 			name: "missed_intervals",
-			type: "number",
+			type: "integer",
 			description: "Number of schedule intervals skipped before this event.",
 			example: "n-mr3zyt6f-1.missed_intervals",
 		},
@@ -53,7 +53,7 @@ export const scheduleTriggerNode = defineNode({
 		},
 		{
 			name: "scheduled_at_unix",
-			type: "number",
+			type: "integer",
 			description: "Unix timestamp in seconds when the schedule event was created.",
 			example: "n-mr3zyt6f-1.scheduled_at_unix",
 		},

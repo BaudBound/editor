@@ -34,10 +34,10 @@ export function KeyCaptureInput({
 	const errorId = `${inputId}-error`;
 	const initialSource = isFullVariableReference(value) ? "variable" : "literal";
 	const [source, setSource] = useState<"literal" | "variable">(initialSource);
-	const compatibleVariables = filterCompatibleVariables(variables, "keyboard-key");
+	const compatibleVariables = filterCompatibleVariables(variables, "keyboard_key");
 	const selectedVariableName = variableNameFromToken(value);
 	const selectedVariable = compatibleVariables.find((variable) => variable.name === selectedVariableName);
-	const selectedVariableTypeError = validateVariableReferenceTypes(value, variables, "keyboard-key");
+	const selectedVariableTypeError = validateVariableReferenceTypes(value, variables, "keyboard_key");
 	const error =
 		allowVariables && source === "variable"
 			? selectedVariableTypeError

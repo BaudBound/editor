@@ -140,7 +140,7 @@ export function validateConditionVariableInputs(
 	if (!Array.isArray(config.conditions)) return [];
 	return config.conditions.flatMap((value, index) => {
 		if (!isConditionRow(value)) return [];
-		const contract = isNumericConditionOperator(value.operator) ? "numeric" : "any";
+		const contract = isNumericConditionOperator(value.operator) ? "float" : "any";
 		const inputs: Array<[string, string]> = [["value", value.left]];
 		if (!isUnaryConditionOperator(value.operator)) {
 			inputs.push([isBetweenConditionOperator(value.operator) ? "start value" : "target", value.right]);

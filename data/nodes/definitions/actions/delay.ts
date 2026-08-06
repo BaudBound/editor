@@ -13,7 +13,7 @@ export const delayNode = defineNode({
 			label: "Amount",
 			type: "number",
 			usesVariables: true,
-			variableTypes: "numeric",
+			variableTypes: "float",
 			numeric: {
 				kind: "float",
 				signed: false,

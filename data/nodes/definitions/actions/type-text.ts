@@ -12,7 +12,7 @@ export const typeTextNode = defineNode({
 			label: "Text",
 			type: "textarea",
 			usesVariables: true,
-			variableTypes: "text",
+			variableTypes: "string",
 			nonEmpty: true,
 		},
 	],

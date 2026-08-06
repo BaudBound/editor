@@ -13,7 +13,7 @@ export const logNode = defineNode({
 			label: "Message",
 			type: "textarea",
 			usesVariables: true,
-			variableTypes: "text",
+			variableTypes: "string",
 			nonEmpty: true,
 		},
 	],

@@ -12,7 +12,7 @@ import {
 	usesPlaceholder,
 	validateFormDialogFields,
 } from "@/data/nodes/form-dialog-fields";
-import { runtimeNumberContract } from "@/data/nodes/numeric-validation";
+import { runtimeIntegerContract, runtimeNumberContract } from "@/data/nodes/numeric-validation";
 import type { EditorAsset } from "@/lib/types";
 
 export type FormDialogIssue = {
@@ -72,7 +72,7 @@ export function getFormDialogIssues(
 			if (!asset) issues.push({ fieldId: field.id, message: "Image asset: select an image asset from this project." });
 			else if (asset.size > FORM_DIALOG_MAX_IMAGE_BYTES)
 				issues.push({ fieldId: field.id, message: "Image asset must be 8 MiB or smaller." });
-			const error = validateFormDialogNumericValue(field.imageHeight, variables);
+			const error = validateFormDialogNumericValue(field.imageHeight, variables, "integer");
 			if (error) issues.push({ fieldId: field.id, message: `Image height: ${lowercaseFirst(error)}` });
 		}
 		if (usesChoices(field.type)) {
@@ -91,14 +91,19 @@ export function getFormDialogFieldIssues(issues: FormDialogIssue[], fieldId: str
 }
 
 export function validateFormDialogTextVariables(value: string, variables: readonly VariableCompletion[]) {
-	return validateVariableReferences(value, variables) || validateVariableReferenceTypes(value, variables, "text");
+	return validateVariableReferences(value, variables) || validateVariableReferenceTypes(value, variables, "string");
 }
 
-export function validateFormDialogNumericValue(value: string, variables: readonly VariableCompletion[]) {
+export function validateFormDialogNumericValue(
+	value: string,
+	variables: readonly VariableCompletion[],
+	kind: "float" | "integer" = "float",
+) {
+	const contract = kind === "integer" ? runtimeIntegerContract : runtimeNumberContract;
 	return (
 		validateVariableReferences(value, variables) ||
-		validateVariableReferenceTypes(value, variables, "numeric") ||
-		getNumericDraftError(value, runtimeNumberContract, true, false)
+		validateVariableReferenceTypes(value, variables, kind) ||
+		getNumericDraftError(value, contract, true, false)
 	);
 }
 

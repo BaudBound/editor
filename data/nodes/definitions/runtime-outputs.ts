@@ -5,13 +5,13 @@ export function fileTransferRuntimeOutputs(verb: string): RuntimeDataOutput[] {
 	return [
 		{
 			name: "source_path",
-			type: "file_path",
+			type: "string",
 			description: `Source file path ${verb} by the runner.`,
 			example: "n-mr3zyt6f-21.source_path",
 		},
 		{
 			name: "destination_path",
-			type: "file_path",
+			type: "string",
 			description: `Destination file path ${verb === "moved" ? "after the move" : "created by the runner"}.`,
 			example: "n-mr3zyt6f-21.destination_path",
 		},
@@ -29,7 +29,7 @@ export function processStatusRuntimeOutputs(): RuntimeDataOutput[] {
 		{ name: "state", type: "string", description: "Runner-specific process state.", example: "n-mr3zyt6f-16.state" },
 		{
 			name: "process_id",
-			type: "process_id",
+			type: "integer",
 			description: "Matching process identifier when found.",
 			example: "n-mr3zyt6f-16.process_id",
 		},

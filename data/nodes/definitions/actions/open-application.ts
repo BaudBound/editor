@@ -20,7 +20,7 @@ export const openApplicationNode = defineNode({
 			variableTypes: "string",
 			help: "Use an app name, app id, bundle id, shortcut path, or desktop entry supported by the target runner.",
 		},
-		{ key: "arguments", label: "Arguments", type: "string-list", usesVariables: true, variableTypes: "text" },
+		{ key: "arguments", label: "Arguments", type: "string-list", usesVariables: true, variableTypes: "string" },
 	],
 	defaultConfig: () => ({ application: "", arguments: [] }),
 	description: "Launch an installed desktop application without waiting for it or capturing its output.",
@@ -41,7 +41,7 @@ export const openApplicationNode = defineNode({
 		},
 		{
 			name: "process_id",
-			type: "process_id",
+			type: "integer",
 			description: "Started process identifier when the platform exposes one.",
 			example: "n-mr3zyt6f-16.process_id",
 		},

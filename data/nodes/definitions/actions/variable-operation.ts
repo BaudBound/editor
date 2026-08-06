@@ -166,9 +166,12 @@ function validateVariableOperationVariables(
 ) {
 	const operation = normalizeVariableOperation(configString(config.operation));
 	if (["clear", "delete", "toggle_boolean", "remove_object_field"].includes(operation)) return [];
+	// Increment applies to either an integer or a float variable. There is no
+	// wildcard for "either numeric type" in the exact-match contract, so this
+	// follows the same default other generic numeric inputs use.
 	const targetType =
 		operation === "increment"
-			? "number"
+			? "float"
 			: operation === "merge_object"
 				? "object"
 				: operation === "set_object_field"
@@ -176,15 +179,8 @@ function validateVariableOperationVariables(
 					: operation === "append_list" || operation === "remove_list_items"
 						? "string"
 						: normalizeVariableType(configString(config.valueType));
-	const contract = variableTypeToContract(targetType);
-	const error = validateVariableInput(configString(config.value), variables, contract);
+	const error = validateVariableInput(configString(config.value), variables, targetType);
 	return error ? [`value: ${error}`] : [];
-}
-
-function variableTypeToContract(type: VariableType) {
-	if (type === "file_path") return "file-path" as const;
-	if (type === "number") return "numeric" as const;
-	return type;
 }
 
 type VariableOperationSimulationApi = {
@@ -407,8 +403,9 @@ function validateSimulationValue(
 		throw new Error(`${label} type is required.`);
 	}
 	const valid = (() => {
-		if (type === "string" || type === "file_path") return typeof value === "string";
-		if (type === "number") return typeof value === "number" && Number.isFinite(value);
+		if (type === "string" || type === "color" || type === "keyboard_key") return typeof value === "string";
+		if (type === "integer") return typeof value === "number" && Number.isInteger(value);
+		if (type === "float") return typeof value === "number" && Number.isFinite(value);
 		if (type === "boolean") return typeof value === "boolean";
 		if (type === "object") return !!value && typeof value === "object" && !Array.isArray(value);
 		if (type === "list") {
@@ -503,7 +500,7 @@ function resolveVariableInput(
 		return resolved;
 	}
 
-	if (type === "number") {
+	if (type === "integer" || type === "float") {
 		return parseFiniteNumber(resolved, "Variable value");
 	}
 

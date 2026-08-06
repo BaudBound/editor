@@ -14,7 +14,7 @@ export const copyFileNode = defineNode({
 			label: "Source path",
 			type: "text",
 			usesVariables: true,
-			variableTypes: "file-path",
+			variableTypes: "string",
 			nonEmpty: true,
 		},
 		{
@@ -22,7 +22,7 @@ export const copyFileNode = defineNode({
 			label: "Destination path",
 			type: "text",
 			usesVariables: true,
-			variableTypes: "file-path",
+			variableTypes: "string",
 			nonEmpty: true,
 		},
 		{ key: "overwrite", label: "Overwrite", type: "select", options: fileOverwriteOptions },

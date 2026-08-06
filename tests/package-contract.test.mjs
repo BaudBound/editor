@@ -472,7 +472,7 @@ test("custom numeric fields preserve precision, support variables, and replace n
 
 	const numericFieldSource = read(join(appRoot, "components", "common", "numeric-field.tsx"));
 	assert.match(numericFieldSource, /VariableCodeInput/);
-	assert.match(numericFieldSource, /variableTypes="numeric"/);
+	assert.match(numericFieldSource, /variableTypes=\{contract\.kind === "integer" \? "integer" : "float"\}/);
 	assert.match(numericFieldSource, /variables=\{variables\}/);
 	assert.match(numericFieldSource, /Minus/);
 	assert.match(numericFieldSource, /Plus/);
@@ -872,7 +872,7 @@ test("file watch supports pre-trigger variables and explicit recursive configura
 	assert.match(fileWatchSource, /requiredConfig\(config, "path", "file watch path"\)/);
 	const pathField = extractConfigField(fileWatchSource, "path");
 	assert.match(pathField, /usesVariables:\s*true/);
-	assert.match(pathField, /variableTypes:\s*"file-path"/);
+	assert.match(pathField, /variableTypes:\s*"string"/);
 });
 
 test("variable-capable trigger and keyboard fields are explicit while listener identity fields stay literal", () => {
@@ -884,10 +884,10 @@ test("variable-capable trigger and keyboard fields are explicit while listener i
 	const webhook = read(join(appRoot, "data", "nodes", "definitions", "triggers", "webhook.ts"));
 	const websocket = read(join(appRoot, "data", "nodes", "definitions", "triggers", "websocket.ts"));
 
-	assert.match(extractConfigField(fileWatch, "path"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"file-path"/);
+	assert.match(extractConfigField(fileWatch, "path"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"string"/);
 	assert.match(extractConfigField(processStarted, "target"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"string"/);
-	assert.match(extractConfigField(hotkey, "key"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"keyboard-key"/);
-	assert.match(extractConfigField(keyboard, "key"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"keyboard-key"/);
+	assert.match(extractConfigField(hotkey, "key"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"keyboard_key"/);
+	assert.match(extractConfigField(keyboard, "key"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"keyboard_key"/);
 	assert.doesNotMatch(extractConfigField(serial, "deviceId"), /usesVariables/);
 	assert.doesNotMatch(extractConfigField(webhook, "hookName"), /usesVariables/);
 	assert.doesNotMatch(extractConfigField(websocket, "path"), /usesVariables/);
@@ -903,7 +903,7 @@ test("variable-capable editor inputs declare and enforce type contracts", () => 
 	for (const declaration of definitions.matchAll(/usesVariables:\s*true/g)) {
 		assert.match(
 			definitions.slice(declaration.index, declaration.index + 160),
-			/variableTypes:\s*"[a-z-]+"/,
+			/variableTypes:\s*"[a-z_]+"/,
 			"every variable-capable node field must declare its accepted variable contract",
 		);
 	}
@@ -911,12 +911,10 @@ test("variable-capable editor inputs declare and enforce type contracts", () => 
 	assert.match(variableInputSource, /filterCompatibleVariables\(variables, variableTypes\)/);
 	assert.match(variableInputSource, /data-variable-status=\{displayStatus\}/);
 	assert.match(variableInputSource, /displayStatus === "type-mismatch" && "bg-cyan-400\/20 text-cyan-300"/);
-	assert.match(validationSource, /datetime:\s*new Set\(\["datetime"\]\)/);
-	assert.match(validationSource, /string:\s*new Set\(\["string"\]\)/);
-	assert.match(
-		validationSource,
-		/numeric:\s*new Set\(\["number", "http_status_code", "duration_ms", "process_id", "exit_code"\]\)/,
-	);
+	// Matching is exact now that every deleted type has been folded into the
+	// shape it always was. There is no longer a compatibleTypes lookup table.
+	assert.doesNotMatch(validationSource, /compatibleTypes/);
+	assert.match(validationSource, /contract === "any" \|\| type === contract/);
 	assert.match(
 		validationSource,
 		/contract !== "any" && getVariableReferenceStatus\(reference, variables\) === "possible"/,

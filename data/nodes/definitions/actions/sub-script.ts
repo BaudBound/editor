@@ -12,7 +12,7 @@ export const subScriptNode = defineNode({
 			label: "Script",
 			type: "text",
 			usesVariables: true,
-			variableTypes: "file-path",
+			variableTypes: "string",
 			nonEmpty: true,
 		},
 	],
@@ -29,7 +29,7 @@ export const subScriptNode = defineNode({
 		{ name: "status", type: "string", description: "Sub-script run status.", example: "n-mr3zyt6f-18.status" },
 		{
 			name: "exit_code",
-			type: "exit_code",
+			type: "integer",
 			description: "Sub-script exit code when available.",
 			example: "n-mr3zyt6f-18.exit_code",
 		},

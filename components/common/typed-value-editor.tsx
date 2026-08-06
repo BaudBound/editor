@@ -9,7 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { NumericConfigContract } from "@/data/nodes/node-definition";
-import { runtimeNumberContract, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
+import {
+	runtimeIntegerContract,
+	runtimeNumberContract,
+	validateNumericConfigValue,
+} from "@/data/nodes/numeric-validation";
 import {
 	createTimeZoneOptions,
 	datetimeInTimeZoneToIso,
@@ -71,15 +75,16 @@ export function TypedValueEditor({
 		);
 	}
 
-	if (type === "number") {
+	if (type === "integer" || type === "float") {
+		const contract = type === "integer" ? runtimeIntegerContract : runtimeNumberContract;
 		return (
 			<NumericField
 				id={id}
 				ariaLabel={ariaLabel}
-				contract={runtimeNumberContract}
+				contract={contract}
 				value={typeof value === "number" && Number.isFinite(value) ? value : ""}
 				onChange={(nextDraft) => {
-					if (!validateNumericConfigValue(nextDraft, runtimeNumberContract)) {
+					if (!validateNumericConfigValue(nextDraft, contract)) {
 						onChange(Number(nextDraft));
 					}
 				}}
@@ -113,7 +118,7 @@ export function TypedValueEditor({
 		return <DurationValueEditor id={id} ariaLabel={ariaLabel} value={value} onChange={onChange} />;
 	}
 
-	if (type === "hotkey") {
+	if (type === "keyboard_key") {
 		return (
 			<KeyCaptureInput
 				id={id}
@@ -131,17 +136,6 @@ export function TypedValueEditor({
 				value={typeof value === "string" ? value : ""}
 				variables={[]}
 				onChange={onChange}
-			/>
-		);
-	}
-
-	if (type === "file_path") {
-		return (
-			<Input
-				id={id}
-				aria-label={ariaLabel}
-				value={typeof value === "string" ? value : ""}
-				onChange={(event) => onChange(event.target.value)}
 			/>
 		);
 	}

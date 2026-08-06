@@ -1,5 +1,9 @@
 import type { Node } from "@xyflow/react";
-import { runtimeNumberContract, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
+import {
+	runtimeIntegerContract,
+	runtimeNumberContract,
+	validateNumericConfigValue,
+} from "@/data/nodes/numeric-validation";
 import { typedDatetimeIso } from "@/data/project/datetime";
 import { userIdentifierPattern } from "@/data/project/user-identifier";
 import type { JsonValue, RuntimeDataType, ScriptNodeData } from "@/lib/types";
@@ -74,9 +78,13 @@ export const variableTypeDefinitions: Record<VariableType, { description: string
 		description: "Plain text. Variables are allowed inside the text.",
 		example: "server ok",
 	},
-	number: {
-		description: "A finite numeric value.",
+	integer: {
+		description: "A whole number without a fractional part.",
 		example: "42",
+	},
+	float: {
+		description: "A number that can include a fractional part.",
+		example: "3.14",
 	},
 	boolean: {
 		description: "A true or false value.",
@@ -90,6 +98,14 @@ export const variableTypeDefinitions: Record<VariableType, { description: string
 		description: "A JSON array.",
 		example: formatJson(["api", "db", "cache"]),
 	},
+	color: {
+		description: "A color value in #RRGGBB format.",
+		example: "#3366ff",
+	},
+	keyboard_key: {
+		description: "A Windows key combination.",
+		example: "Ctrl+Shift+F5",
+	},
 	datetime: {
 		description: "A JSON datetime object with an ISO-8601 value.",
 		example: formatJson({ type: "datetime", value: "2026-07-02T12:00:00Z" }),
@@ -97,10 +113,6 @@ export const variableTypeDefinitions: Record<VariableType, { description: string
 	duration: {
 		description: "A JSON duration object with a unit and numeric value.",
 		example: formatJson({ type: "duration", unit: "seconds", value: 10 }),
-	},
-	file_path: {
-		description: "A file path string. Relative paths are resolved by the runner.",
-		example: "./logs/output.txt",
 	},
 };
 
@@ -167,10 +179,8 @@ export const variableOperationDefinitions: Record<
 };
 
 export function getVariableOperationFixedType(operation: VariableOperation): VariableType | null {
-	if (operation === "increment") {
-		return "number";
-	}
-
+	// Increment applies to either an integer or a float variable and preserves
+	// whichever it already is, so there is no single fixed type to report here.
 	if (operation === "toggle_boolean") {
 		return "boolean";
 	}
@@ -205,7 +215,13 @@ export function validateVariableOperationValue(
 	}
 
 	if (operation === "increment") {
-		return validateVariableValue("number", value).replace("Number variables", "Increment amount");
+		const trimmed = value.trim();
+		if (isTemplateReference(trimmed)) {
+			return "";
+		}
+		return validateNumericConfigValue(trimmed, runtimeNumberContract)
+			? "Increment amount must be a finite decimal number within the supported runtime range, for example 42."
+			: "";
 	}
 
 	if (operation === "append_list" || operation === "remove_list_items") {
@@ -235,8 +251,8 @@ export function validateVariableOperationValue(
 }
 
 export function validateVariableOperationType(operation: VariableOperation, type: VariableType) {
-	if (operation === "increment" && type !== "number") {
-		return "Increment can only be used with number variables.";
+	if (operation === "increment" && type !== "integer" && type !== "float") {
+		return "Increment can only be used with integer or float variables.";
 	}
 
 	if ((operation === "append_list" || operation === "remove_list_items") && type !== "list") {
@@ -278,9 +294,15 @@ export function validateVariableValue(type: VariableType, value: string, itemTyp
 		return "";
 	}
 
-	if (type === "number") {
+	if (type === "integer") {
+		return validateNumericConfigValue(trimmed, runtimeIntegerContract)
+			? "Integer variables must be a whole number within the supported runtime range, for example 42."
+			: "";
+	}
+
+	if (type === "float") {
 		return validateNumericConfigValue(trimmed, runtimeNumberContract)
-			? "Number variables must be a finite decimal number within the supported runtime range, for example 42."
+			? "Float variables must be a finite decimal number within the supported runtime range, for example 3.14."
 			: "";
 	}
 
@@ -288,8 +310,12 @@ export function validateVariableValue(type: VariableType, value: string, itemTyp
 		return trimmed === "true" || trimmed === "false" ? "" : "Boolean variables must be true or false.";
 	}
 
-	if (type === "file_path") {
-		return trimmed.length > 0 ? "" : "File path variables must not be empty.";
+	if (type === "color") {
+		return /^#[0-9a-f]{6}$/i.test(trimmed) ? "" : "Color variables must use #RRGGBB format.";
+	}
+
+	if (type === "keyboard_key") {
+		return trimmed.length > 0 ? "" : "Keyboard key variables must not be empty.";
 	}
 
 	const parsed = parseJson(trimmed);
@@ -345,10 +371,20 @@ function validateListItemValue(type: ListItemType, value: JsonValue): string {
 	if (type === "string") {
 		return typeof value === "string" ? "" : "Enter a text value.";
 	}
-	if (type === "file_path") {
-		return typeof value === "string" && value.trim() ? "" : "Enter a file path.";
+	if (type === "color") {
+		return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? "" : "Enter a color in #RRGGBB format.";
 	}
-	if (type === "number") {
+	if (type === "keyboard_key") {
+		return typeof value === "string" && value.trim() ? "" : "Enter a keyboard key.";
+	}
+	if (type === "integer") {
+		return typeof value === "number" &&
+			Number.isFinite(value) &&
+			!validateNumericConfigValue(String(value), runtimeIntegerContract)
+			? ""
+			: "Enter a whole number within the supported runtime range.";
+	}
+	if (type === "float") {
 		return typeof value === "number" &&
 			Number.isFinite(value) &&
 			!validateNumericConfigValue(String(value), runtimeNumberContract)
@@ -531,6 +567,11 @@ export function createConfiguredVariableDefinitions(nodes: Node<ScriptNodeData>[
 		}
 
 		const fixedType = getVariableOperationFixedType(operation);
+		// A fresh counter created purely by increment starts as an integer,
+		// matching the runner: an absent variable counts as integer zero.
+		const declaredType =
+			fixedType ??
+			(operation === "increment" ? "integer" : normalizeVariableType(configString(node.data.config.valueType)));
 		variables.set(name, {
 			description: `Written by Variable Operation node ${node.id} using ${variableOperationDefinitions[operation].label}.`,
 			name,
@@ -538,7 +579,7 @@ export function createConfiguredVariableDefinitions(nodes: Node<ScriptNodeData>[
 			scope: normalizeVariableScope(configString(node.data.config.scope)),
 			source: "user",
 			token: `{{${name}}}`,
-			type: fixedType ?? normalizeVariableType(configString(node.data.config.valueType)),
+			type: declaredType,
 			value: undefined,
 		});
 	}
@@ -571,12 +612,12 @@ export function createDerivedVariableMetadataDefinitions(variables: EditorVariab
 const derivedVariableMetadataFields = [
 	{
 		name: "$length",
-		type: "number",
+		type: "integer",
 		description: "Length for strings, item count for lists, key count for objects.",
 	},
 	{
 		name: "$count",
-		type: "number",
+		type: "integer",
 		description: "Alias for $length.",
 	},
 	{
@@ -687,7 +728,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function canContainNestedValues(type: EditorVariable["type"], value: JsonValue | undefined) {
-	return type === "list" || type === "object" || type === "http_headers" || Array.isArray(value) || isRecord(value);
+	return type === "list" || type === "object" || Array.isArray(value) || isRecord(value);
 }
 
 function parseVariableReferencePath(path: string): Array<number | string> | null {

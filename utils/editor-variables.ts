@@ -101,7 +101,7 @@ export function createEditorVariableRegistry(
 			scope: "setting",
 			source: "setting",
 			token: `{{${name}}}`,
-			type: setting.type === "hotkey" ? "keyboard_key" : setting.type === "color" ? "color" : setting.type,
+			type: setting.type,
 			value: structuredClone(setting.simulationValue ?? setting.defaultValue ?? null),
 		});
 	}
@@ -158,7 +158,7 @@ function getVariableSourceOrder(variable: EditorVariable) {
 
 function inferVariableType(value: SimulationVariableSnapshot["value"]): EditorVariable["type"] {
 	if (typeof value === "number") {
-		return "number";
+		return Number.isInteger(value) ? "integer" : "float";
 	}
 
 	if (typeof value === "boolean") {

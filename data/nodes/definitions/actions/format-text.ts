@@ -227,7 +227,7 @@ function validateTextTransformVariableInputs(
 		textTransformValidatedFields.flatMap((field) => {
 			const value = row[field];
 			if (!value) return [];
-			const contract = field === "start" || field === "length" || field === "targetLength" ? "numeric" : "text";
+			const contract = field === "start" || field === "length" || field === "targetLength" ? "integer" : "string";
 			const error = validateVariableInput(value, variables, contract);
 			return error ? [`operation ${index + 1} ${field}: ${error}`] : [];
 		}),

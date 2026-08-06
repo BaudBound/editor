@@ -163,7 +163,7 @@ function normalizeTargetType(value: JsonValue | undefined): ValueConversionTarge
 
 function runtimeOutputType(target: ValueConversionTarget): RuntimeDataType {
 	if (target === "text") return "string";
-	if (target === "number" || target === "integer") return "number";
+	if (target === "number") return "float";
 	return target;
 }
 

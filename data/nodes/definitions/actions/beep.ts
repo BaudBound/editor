@@ -13,7 +13,7 @@ export const beepNode = defineNode({
 			label: "Frequency Hz",
 			type: "number",
 			usesVariables: true,
-			variableTypes: "numeric",
+			variableTypes: "float",
 			numeric: {
 				kind: "float",
 				signed: false,
@@ -28,7 +28,7 @@ export const beepNode = defineNode({
 			label: "Duration ms",
 			type: "number",
 			usesVariables: true,
-			variableTypes: "numeric",
+			variableTypes: "float",
 			numeric: {
 				kind: "float",
 				signed: false,

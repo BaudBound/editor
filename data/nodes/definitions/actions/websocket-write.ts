@@ -23,7 +23,7 @@ export const websocketWriteNode = defineNode({
 			label: "Message",
 			type: "textarea",
 			usesVariables: true,
-			variableTypes: "text",
+			variableTypes: "string",
 			nonEmpty: true,
 		},
 	],
@@ -54,7 +54,7 @@ export const websocketWriteNode = defineNode({
 		},
 		{
 			name: "bytes",
-			type: "number",
+			type: "integer",
 			description: "UTF-8 byte length of the sent message.",
 			example: "n-mr3zyt6f-24.bytes",
 		},

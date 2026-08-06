@@ -16,23 +16,23 @@ export const runProcessNode = defineNode({
 			label: "Executable",
 			type: "text",
 			usesVariables: true,
-			variableTypes: "file-path",
+			variableTypes: "string",
 			nonEmpty: true,
 		},
-		{ key: "arguments", label: "Arguments", type: "string-list", usesVariables: true, variableTypes: "text" },
+		{ key: "arguments", label: "Arguments", type: "string-list", usesVariables: true, variableTypes: "string" },
 		{
 			key: "workingDirectory",
 			label: "Working directory",
 			type: "text",
 			usesVariables: true,
-			variableTypes: "file-path",
+			variableTypes: "string",
 		},
 		{
 			key: "timeoutSeconds",
 			label: "Timeout seconds",
 			type: "number",
 			usesVariables: true,
-			variableTypes: "numeric",
+			variableTypes: "float",
 			required: false,
 			numeric: {
 				kind: "float",
@@ -57,13 +57,13 @@ export const runProcessNode = defineNode({
 	runtimeOutputs: fallible([
 		{
 			name: "process_id",
-			type: "process_id",
+			type: "integer",
 			description: "Started process identifier.",
 			example: "n-mr3zyt6f-15.process_id",
 		},
 		{
 			name: "exit_code",
-			type: "exit_code",
+			type: "integer",
 			description: "Process exit code, or null when the operating system did not provide one.",
 			example: "n-mr3zyt6f-15.exit_code",
 		},

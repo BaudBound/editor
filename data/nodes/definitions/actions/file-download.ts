@@ -23,7 +23,7 @@ export const downloadFileNode = defineNode({
 			label: "Destination path",
 			type: "text",
 			usesVariables: true,
-			variableTypes: "file-path",
+			variableTypes: "string",
 			nonEmpty: true,
 		},
 		{ key: "overwrite", label: "Overwrite", type: "select", options: fileOverwriteOptions },
@@ -45,7 +45,7 @@ export const downloadFileNode = defineNode({
 	runtimeOutputs: fallible([
 		{
 			name: "path",
-			type: "file_path",
+			type: "string",
 			description: "Destination file path written by the runner.",
 			example: "n-mr3zyt6f-19.path",
 		},

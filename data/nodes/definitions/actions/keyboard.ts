@@ -25,7 +25,7 @@ export const keyboardNode = defineNode({
 			nonEmpty: true,
 			type: "text",
 			usesVariables: true,
-			variableTypes: "keyboard-key",
+			variableTypes: "keyboard_key",
 			validate: (config) => {
 				const key = configString(config, "key").trim();
 				return key ? validateWindowsKeyTemplate(key) : "";

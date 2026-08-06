@@ -61,7 +61,7 @@ export const webhookTriggerNode = defineNode({
 			label: "Response body",
 			type: "textarea",
 			usesVariables: true,
-			variableTypes: "text",
+			variableTypes: "string",
 			required: false,
 			help: "Sent immediately unless waiting is enabled, in which case this is the timeout fallback body.",
 		},
@@ -97,7 +97,7 @@ export const webhookTriggerNode = defineNode({
 		},
 		{
 			name: "headers",
-			type: "http_headers",
+			type: "object",
 			description: "Webhook request headers.",
 			example: 'n-mr3zyt6f-3.headers["content-type"]',
 		},
