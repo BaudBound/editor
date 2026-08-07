@@ -90,11 +90,9 @@ export function KeyCaptureInput({
 
 	return (
 		<div>
-			{label && (
-				<label htmlFor={inputId} className="mb-1 block font-mono text-sm text-baud-muted">
-					{label}
-				</label>
-			)}
+			{/* The source selector comes first so that each label sits directly
+			    above the control it names. With the field label on top the two
+			    labels stacked, and neither was next to its own input. */}
 			{allowVariables && (
 				<div className="mb-2">
 					<span className="mb-1 block font-mono text-sm text-baud-muted">Key source</span>
@@ -111,6 +109,11 @@ export function KeyCaptureInput({
 						}}
 					/>
 				</div>
+			)}
+			{label && (
+				<label htmlFor={inputId} className="mb-1 block font-mono text-sm text-baud-muted">
+					{label}
+				</label>
 			)}
 			{source === "variable" && allowVariables ? (
 				<OptionCombobox

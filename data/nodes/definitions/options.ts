@@ -77,6 +77,8 @@ export const ifElseAdditionalConditionOperatorOptions: SelectOption[] = [
 	{ label: "has key", value: "has_key" },
 	{ label: "contains item", value: "contains_item" },
 	{ label: "Is numeric", value: "is_numeric" },
+	{ label: "Is integer", value: "is_integer" },
+	{ label: "Is float", value: "is_float" },
 	{ label: "Is string", value: "is_string" },
 	{ label: "Is boolean", value: "is_boolean" },
 	{ label: "Is list", value: "is_list" },
@@ -94,7 +96,7 @@ export function isUnaryConditionOperator(operator: string) {
 		operator === "is_empty" ||
 		operator === "is_null_or_missing" ||
 		booleanConditionOperatorOptions.some((option) => option.value === operator) ||
-		["is_numeric", "is_string", "is_boolean", "is_list", "is_object"].includes(operator)
+		["is_numeric", "is_integer", "is_float", "is_string", "is_boolean", "is_list", "is_object"].includes(operator)
 	);
 }
 

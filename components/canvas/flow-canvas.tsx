@@ -234,6 +234,16 @@ function FlowCanvasContent({
 	const isValidConnection = useCallback((connection: Connection | Edge) => !isSelfConnection(connection), []);
 
 	const closeContextMenu = useCallback(() => setContextMenu(null), []);
+	// Shared by clicking and by starting a drag, so the inspector follows the
+	// node however the selection was made.
+	const selectClickedNode = useCallback(
+		(node: EditorFlowNode) => {
+			setContextMenu(null);
+			onSelectEdge(null);
+			onSelectNode(isCommentFlowNode(node) ? null : node.id);
+		},
+		[onSelectEdge, onSelectNode],
+	);
 
 	const getViewportCenterPosition = useCallback(() => {
 		const viewport = viewportRef.current;
@@ -496,11 +506,14 @@ function FlowCanvasContent({
 					isValidConnection={isValidConnection}
 					onDragOver={handleDragOver}
 					onDrop={handleDrop}
-					onNodeClick={(_, node) => {
-						closeContextMenu();
-						onSelectEdge(null);
-						onSelectNode(isCommentFlowNode(node) ? null : node.id);
-					}}
+					onNodeClick={(_, node) => selectClickedNode(node)}
+					// A node drag never raises a click, so without this the panel keeps
+					// showing whatever was selected before the drag started.
+					onNodeDragStart={(_, node) => selectClickedNode(node)}
+					// The default threshold is a single pixel, so the smallest movement
+					// while pressing turned a click into a drag and the selection was
+					// never reported.
+					nodeDragThreshold={4}
 					onNodeContextMenu={(event, node) => {
 						openContextMenu(event, { type: "node", id: node.id });
 						onSelectEdge(null);

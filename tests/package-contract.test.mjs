@@ -123,8 +123,18 @@ test("editor supports the complete If / Else condition operator set", async () =
 	const cases = [
 		["BaudBound", "equals_ignore_case", "baudbound", true],
 		["BaudBound", "contains_ignore_case", "BOUN", true],
-		["42.5", "is_numeric", null, true],
+		// These test the type. Text that reads as a number is still text, so
+		// is_numeric is exactly is_integer or is_float.
+		[42, "is_numeric", null, true],
+		[42.5, "is_numeric", null, true],
+		["42.5", "is_numeric", null, false],
 		["42px", "is_numeric", null, false],
+		[42, "is_integer", null, true],
+		[42.5, "is_integer", null, false],
+		["42", "is_integer", null, false],
+		[42.5, "is_float", null, true],
+		[42, "is_float", null, false],
+		["42.5", "is_float", null, false],
 		["text", "is_string", null, true],
 		[true, "is_boolean", null, true],
 		[[1, 2], "is_list", null, true],
@@ -149,6 +159,8 @@ test("editor supports the complete If / Else condition operator set", async () =
 		"has_key",
 		"contains_item",
 		"is_numeric",
+		"is_integer",
+		"is_float",
 		"is_string",
 		"is_boolean",
 		"is_list",
