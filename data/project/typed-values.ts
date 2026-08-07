@@ -19,7 +19,7 @@ export type TypedValueType = VariableType;
 export function createEmptyTypedValue(type: TypedValueType, itemType?: ListItemType): JsonValue {
 	switch (type) {
 		case "string":
-		case "keyboard_key":
+		case "hotkey":
 		case "color":
 			return "";
 		case "integer":
@@ -44,7 +44,7 @@ export function validateTypedValue(type: TypedValueType, value: JsonValue, itemT
 	switch (type) {
 		case "string":
 			return typeof value === "string" ? null : "Enter a text value.";
-		case "keyboard_key":
+		case "hotkey":
 			return typeof value === "string" && !validateWindowsHotkey(value)
 				? null
 				: "Press a valid Windows key combination.";
@@ -124,7 +124,7 @@ export function formatTypedValueForDisplay(
 
 	switch (type) {
 		case "string":
-		case "keyboard_key":
+		case "hotkey":
 		case "color":
 			return typeof value === "string" ? value : "Invalid value";
 		case "integer":

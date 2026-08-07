@@ -7,7 +7,7 @@ import { type VariableType, validateVariableName, validateVariableValue } from "
 import type { DefaultVariable, JsonValue, SecretDeclaration } from "@/lib/types";
 
 export function formatDefaultValue(type: VariableType, value: JsonValue) {
-	if (type === "string" || type === "color" || type === "keyboard_key") {
+	if (type === "string" || type === "color" || type === "hotkey") {
 		return typeof value === "string" ? value : "";
 	}
 	if (type === "integer" || type === "float" || type === "boolean") {
@@ -17,7 +17,7 @@ export function formatDefaultValue(type: VariableType, value: JsonValue) {
 }
 
 export function parseDefaultValue(type: VariableType, rawValue: string): JsonValue | undefined {
-	if (type === "string" || type === "color" || type === "keyboard_key") {
+	if (type === "string" || type === "color" || type === "hotkey") {
 		return rawValue;
 	}
 	if (type === "integer" || type === "float") {

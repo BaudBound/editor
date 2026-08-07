@@ -37,7 +37,7 @@ export function validateSimulatedValue(value: unknown, type: string): string | n
 			return typeof value === "number" && Number.isFinite(value) && !Number.isInteger(value) ? null : `expected float`;
 		case "color":
 			return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? null : `expected color in #RRGGBB format`;
-		case "keyboard_key":
+		case "hotkey":
 			return typeof value === "string" && !validateWindowsHotkey(value) ? null : `expected keyboard key`;
 		case "datetime":
 			return isTagged(value, "datetime", ["type", "value"]) ? null : `expected datetime`;
@@ -125,7 +125,7 @@ export function castSimulatedValue(value: unknown, target: string): CastOutcome 
 				: { ok: false, error: `cannot cast to ${target} because the value is not one` };
 		}
 		case "color":
-		case "keyboard_key":
+		case "hotkey":
 			return validateSimulatedValue(value, target) === null
 				? { ok: true, value }
 				: { ok: false, error: `cannot cast to ${target}` };

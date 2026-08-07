@@ -118,7 +118,7 @@ export function TypedValueEditor({
 		return <DurationValueEditor id={id} ariaLabel={ariaLabel} value={value} onChange={onChange} />;
 	}
 
-	if (type === "keyboard_key") {
+	if (type === "hotkey") {
 		return (
 			<KeyCaptureInput
 				id={id}

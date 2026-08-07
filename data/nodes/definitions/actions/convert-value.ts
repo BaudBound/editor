@@ -14,7 +14,7 @@ export const valueConversionOptions: SelectOption[] = [
 	{ label: "Object", value: "object" },
 	{ label: "List", value: "list" },
 	{ label: "Color", value: "color" },
-	{ label: "Keyboard Key", value: "keyboard_key" },
+	{ label: "Keyboard Key", value: "hotkey" },
 	{ label: "Datetime", value: "datetime" },
 	{ label: "Duration", value: "duration" },
 ];

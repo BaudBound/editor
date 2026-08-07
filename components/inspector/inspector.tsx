@@ -1554,7 +1554,7 @@ function variableOperationNeedsValue(operation: ReturnType<typeof normalizeVaria
 }
 
 function parseTypedConfigValue(value: string, type: VariableType, itemType?: ListItemType): JsonValue {
-	if (type === "string" || type === "color" || type === "keyboard_key") {
+	if (type === "string" || type === "color" || type === "hotkey") {
 		return value;
 	}
 	if (type === "integer" || type === "float") {
@@ -1576,11 +1576,11 @@ function parseTypedConfigValue(value: string, type: VariableType, itemType?: Lis
 }
 
 function serializeTypedConfigValue(value: JsonValue, type: VariableType) {
-	return type === "string" || type === "color" || type === "keyboard_key" ? String(value) : JSON.stringify(value);
+	return type === "string" || type === "color" || type === "hotkey" ? String(value) : JSON.stringify(value);
 }
 
 function createEmptyVariableOperationInput(type: VariableType, itemType?: ListItemType) {
-	if (type === "string" || type === "color" || type === "keyboard_key" || type === "integer" || type === "float") {
+	if (type === "string" || type === "color" || type === "hotkey" || type === "integer" || type === "float") {
 		return "";
 	}
 	return serializeTypedConfigValue(createEmptyTypedValue(type, itemType), type);

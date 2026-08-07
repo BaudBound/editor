@@ -1281,7 +1281,7 @@ test("hotkey and color Script Settings use dedicated controls and color variable
 	settingDialog = page.getByRole("dialog");
 	await settingDialog.getByRole("textbox", { name: "Name" }).fill("Shortcut");
 	await settingDialog.locator('[data-slot="select-trigger"]').first().click();
-	await page.getByRole("option", { name: "keyboard_key", exact: true }).click();
+	await page.getByRole("option", { name: "hotkey", exact: true }).click();
 	await settingDialog.getByRole("switch", { name: "Use Package default" }).click();
 	const hotkeyDefault = settingDialog.getByRole("textbox", { name: "Package default" });
 	await hotkeyDefault.press("Control+Shift+F8");
@@ -1324,7 +1324,7 @@ test("hotkey and color Script Settings use dedicated controls and color variable
 			description: "",
 			name: "Shortcut",
 			required: false,
-			type: "keyboard_key",
+			type: "hotkey",
 		},
 	]);
 	await page.reload({ waitUntil: "commit" });
@@ -1334,7 +1334,7 @@ test("hotkey and color Script Settings use dedicated controls and color variable
 	const shortcutSetting = page.locator("article").filter({ hasText: "Shortcut" });
 	await expect(accentSetting).toContainText("color");
 	await expect(accentSetting).toContainText("#123456");
-	await expect(shortcutSetting).toContainText("keyboard_key");
+	await expect(shortcutSetting).toContainText("hotkey");
 	await expect(shortcutSetting).toContainText("Ctrl+Shift+F8");
 	await page.getByRole("button", { name: "Save Settings" }).click();
 

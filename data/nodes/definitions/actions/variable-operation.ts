@@ -406,7 +406,7 @@ function validateSimulationValue(
 		throw new Error(`${label} type is required.`);
 	}
 	const valid = (() => {
-		if (type === "string" || type === "color" || type === "keyboard_key") return typeof value === "string";
+		if (type === "string" || type === "color" || type === "hotkey") return typeof value === "string";
 		if (type === "integer") return typeof value === "number" && Number.isInteger(value);
 		if (type === "float") return typeof value === "number" && Number.isFinite(value);
 		if (type === "boolean") return typeof value === "boolean";

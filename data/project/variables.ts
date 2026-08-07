@@ -16,7 +16,7 @@ export const variableTypes = [
 	"object",
 	"list",
 	"color",
-	"keyboard_key",
+	"hotkey",
 	"datetime",
 	"duration",
 ] as const;
@@ -102,7 +102,7 @@ export const variableTypeDefinitions: Record<VariableType, { description: string
 		description: "A color value in #RRGGBB format.",
 		example: "#3366ff",
 	},
-	keyboard_key: {
+	hotkey: {
 		description: "A Windows key combination.",
 		example: "Ctrl+Shift+F5",
 	},
@@ -316,7 +316,7 @@ export function validateVariableValue(type: VariableType, value: string, itemTyp
 		return /^#[0-9a-f]{6}$/i.test(trimmed) ? "" : "Color variables must use #RRGGBB format.";
 	}
 
-	if (type === "keyboard_key") {
+	if (type === "hotkey") {
 		return trimmed.length > 0 ? "" : "Keyboard key variables must not be empty.";
 	}
 
@@ -376,7 +376,7 @@ function validateListItemValue(type: ListItemType, value: JsonValue): string {
 	if (type === "color") {
 		return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? "" : "Enter a color in #RRGGBB format.";
 	}
-	if (type === "keyboard_key") {
+	if (type === "hotkey") {
 		return typeof value === "string" && value.trim() ? "" : "Enter a keyboard key.";
 	}
 	if (type === "integer") {

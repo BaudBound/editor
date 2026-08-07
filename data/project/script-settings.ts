@@ -16,7 +16,7 @@ export function formatScriptSettingValue(type: ScriptSettingType, value: JsonVal
 }
 
 export function parseScriptSettingValue(type: ScriptSettingType, rawValue: string): JsonValue | undefined {
-	if (type === "string" || type === "keyboard_key" || type === "color") {
+	if (type === "string" || type === "hotkey" || type === "color") {
 		return rawValue;
 	}
 	if (type === "integer" || type === "float") {
@@ -55,7 +55,7 @@ export function scriptSettingValueError(type: ScriptSettingType, rawValue: strin
 	if (type === "boolean") {
 		return "Select true or false.";
 	}
-	if (type === "keyboard_key") {
+	if (type === "hotkey") {
 		return "Press a valid Windows key combination.";
 	}
 	if (type === "color") {

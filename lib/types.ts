@@ -94,7 +94,7 @@ export type RuntimeDataType =
 	| "object"
 	| "list"
 	| "color"
-	| "keyboard_key"
+	| "hotkey"
 	| "datetime"
 	| "duration";
 
@@ -184,8 +184,7 @@ export type SecretDeclaration = {
 };
 
 // Script Settings are declared with the same ten types as variables and node
-// outputs. The list previously spelled a keyboard key "hotkey" and carried
-// "number" and "file_path", which no longer exist.
+// outputs.
 export const scriptSettingTypes = [
 	"string",
 	"integer",
@@ -194,7 +193,7 @@ export const scriptSettingTypes = [
 	"object",
 	"list",
 	"color",
-	"keyboard_key",
+	"hotkey",
 	"datetime",
 	"duration",
 ] as const;

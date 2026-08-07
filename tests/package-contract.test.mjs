@@ -793,7 +793,7 @@ test("shared manifest schema strictly validates custom variable and setting valu
 			{ name: "output", scope: "runtime", type: "string", value: "./output.txt" },
 		],
 		settings: [
-			{ name: "Shortcut", type: "keyboard_key", required: false, default_value: "Ctrl+Shift+F8" },
+			{ name: "Shortcut", type: "hotkey", required: false, default_value: "Ctrl+Shift+F8" },
 			{ name: "Accent", type: "color", required: false, default_value: "#123ABC" },
 		],
 	};
@@ -898,8 +898,8 @@ test("variable-capable trigger and keyboard fields are explicit while listener i
 
 	assert.match(extractConfigField(fileWatch, "path"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"string"/);
 	assert.match(extractConfigField(processStarted, "target"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"string"/);
-	assert.match(extractConfigField(hotkey, "key"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"keyboard_key"/);
-	assert.match(extractConfigField(keyboard, "key"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"keyboard_key"/);
+	assert.match(extractConfigField(hotkey, "key"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"hotkey"/);
+	assert.match(extractConfigField(keyboard, "key"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"hotkey"/);
 	assert.doesNotMatch(extractConfigField(serial, "deviceId"), /usesVariables/);
 	assert.doesNotMatch(extractConfigField(webhook, "hookName"), /usesVariables/);
 	assert.doesNotMatch(extractConfigField(websocket, "path"), /usesVariables/);
@@ -1732,7 +1732,7 @@ test("Script Settings are typed package metadata and read only simulation values
 		"object",
 		"list",
 		"color",
-		"keyboard_key",
+		"hotkey",
 		"datetime",
 		"duration",
 	]);
@@ -1743,18 +1743,20 @@ test("Script Settings are typed package metadata and read only simulation values
 		"boolean",
 		"object",
 		"color",
-		"keyboard_key",
+		"hotkey",
 		"datetime",
 		"duration",
 	]);
 	assert.equal(settingsSchema.items.allOf.length, 10);
-	// Settings and variables now share one vocabulary. "hotkey" was a third
-	// spelling of a keyboard key and no longer exists anywhere.
+	// Settings, variables and node outputs all declare the same vocabulary.
 	assert.deepEqual(
 		settingsSchema.items.properties.type.enum,
 		manifestSchema.properties.variables.items.properties.type.enum,
 	);
-	assert.doesNotMatch(JSON.stringify(manifestSchema), /hotkey/);
+	// Every type name is a single word, with no separator in any of them.
+	for (const type of settingsSchema.items.properties.type.enum) {
+		assert.doesNotMatch(type, /[\s_-]/, type);
+	}
 	assert.match(settingSource, /createSimulationScriptSettingValues/);
 	assert.match(packageSource, /settings:\s*params\.scriptSettings\.map/);
 	assert.match(simulationSource, /createSimulationScriptSettingValues/);
