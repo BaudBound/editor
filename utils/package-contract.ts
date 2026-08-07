@@ -529,6 +529,15 @@ function defaultValueMatchesType(type: string, value: unknown, itemType?: unknow
 	if (type === "datetime") {
 		return typedDatetimeIso(value as JsonValue) !== null;
 	}
+	if (type === "float") {
+		// A declared value is read by the type declared beside it, so `300`
+		// under `"type": "float"` is three hundred as a float. JavaScript has
+		// one number type and writes 300.0 as `300`, so requiring a decimal
+		// part here would make a whole float impossible to write at all. This
+		// is only about declared values; a value flowing through a run still
+		// has one exact type, and an integer there is not a float.
+		return typeof value === "number" && Number.isFinite(value);
+	}
 	if (variableTypes.includes(type as (typeof variableTypes)[number])) {
 		return validateSimulatedValue(value, type) === null;
 	}

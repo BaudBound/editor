@@ -807,7 +807,7 @@ test("Schedule triggers can start and stop their simulator timer", async ({ page
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("interval");
 	await variableDialog.getByRole("combobox", { name: "Type" }).click();
-	await page.getByRole("option", { name: "float" }).click();
+	await page.getByRole("option", { name: "integer" }).click();
 	await variableDialog.getByRole("spinbutton", { name: "Default value" }).fill("25");
 	await variableDialog.getByRole("button", { name: "Save" }).click();
 	await page.getByRole("button", { name: "Save Settings" }).click();
@@ -1595,7 +1595,7 @@ test("numeric fields autocomplete number variables and suspend literal stepping"
 	await expect(page.locator('[data-variable-token="system_date"][data-variable-status="type-mismatch"]')).toBeVisible();
 	await expect(
 		page.getByText(
-			'Variable "system_date" has type string; this field accepts float variables. Add a cast such as {{system_date|float}} to convert it.',
+			'Variable "system_date" has type string; this field accepts integer variables. Add a cast such as {{system_date|integer}} to convert it.',
 			{ exact: true },
 		),
 	).toBeVisible();
@@ -1603,9 +1603,9 @@ test("numeric fields autocomplete number variables and suspend literal stepping"
 	// The cast the message suggests resolves the mismatch: the same field and
 	// the same variable, now accepted, with the target read as the target
 	// rather than as part of the name.
-	await amountField.fill("{{system_date|float}}");
+	await amountField.fill("{{system_date|integer}}");
 	await expect(page.locator('[data-variable-token="system_date"][data-variable-status="known"]')).toBeVisible();
-	await expect(page.locator('[data-variable-token="system_date|float"]')).toHaveCount(0);
+	await expect(page.locator('[data-variable-token="system_date|integer"]')).toHaveCount(0);
 
 	// An unknown target is still marked invalid.
 	await amountField.fill("{{system_date|nonsense}}");
@@ -1617,7 +1617,7 @@ test("numeric fields autocomplete number variables and suspend literal stepping"
 	await expect(page.getByRole("heading", { name: "Verification" })).toBeVisible();
 	await expect(
 		page.locator("[data-verification-result] li").filter({
-			hasText: /Delay.*Variable "system_date" has type string; this field accepts float variables/i,
+			hasText: /Delay.*Variable "system_date" has type string; this field accepts integer variables/i,
 		}),
 	).toBeVisible();
 });

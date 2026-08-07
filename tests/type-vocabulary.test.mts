@@ -176,3 +176,31 @@ test("a value read out of an object is castable and says so", () => {
 	// The cast still has to produce what the field accepts.
 	assert.notEqual(validateVariableReferenceTypes("{{n-http.json.ip|integer}}", variables, "string"), "");
 });
+
+test("a whole number can be declared as a float", async () => {
+	const { validateManifestContract } = await import("../utils/package-contract.ts");
+	const { validateTypedValue } = await import("../data/project/typed-values.ts");
+
+	// JavaScript has one number type and writes 300.0 as `300`, so demanding a
+	// decimal part would make a whole float impossible to enter at all. The
+	// declaration beside the value is what settles its type.
+	assert.equal(validateTypedValue("float", 300), null);
+	assert.equal(validateTypedValue("float", 300.5), null);
+	assert.equal(validateTypedValue("float", Number.NaN), "Enter a finite number within the supported runtime range.");
+
+	// A value flowing through a run is unaffected: there, 300 is an integer.
+	const { validateSimulatedValue } = await import("../utils/value-cast.ts");
+	assert.notEqual(validateSimulatedValue(300, "float"), null);
+	assert.equal(validateSimulatedValue(300.5, "float"), null);
+
+	// The export check is the one that used to refuse this, so drive it rather
+	// than a stand-in: a float setting defaulting to 300 raises no error about
+	// its default.
+	const settingErrors = (defaultValue: unknown) =>
+		validateManifestContract({
+			settings: [{ name: "speed", type: "float", description: "", required: false, default_value: defaultValue }],
+		}).filter((error) => error.includes("speed") && error.includes("default"));
+	assert.deepEqual(settingErrors(300), []);
+	assert.deepEqual(settingErrors(300.5), []);
+	assert.notDeepEqual(settingErrors("300"), []);
+});
