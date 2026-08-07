@@ -86,6 +86,7 @@ import {
 import { type ActiveReorderDragState, useReorderController } from "@/hooks/use-reorder-controller";
 import type {
 	ActionType,
+	DefaultVariable,
 	EditorAsset,
 	InspectorTab,
 	JsonValue,
@@ -118,6 +119,7 @@ type InspectorProps = {
 	simulationStatus: SimulationRunStatus;
 	simulationTriggerInputDrafts: Record<string, SimulationTriggerInputDraft>;
 	variables: EditorVariable[];
+	declaredVariables: DefaultVariable[];
 	width: number;
 	collapsed: boolean;
 	onAddSimulationOverride: (nodeId: string) => void;
@@ -151,6 +153,7 @@ export function Inspector({
 	simulationStatus,
 	simulationTriggerInputDrafts,
 	variables,
+	declaredVariables,
 	width,
 	collapsed,
 	onAddSimulationOverride,
@@ -223,6 +226,7 @@ export function Inspector({
 					) : (
 						<PropertiesPanel
 							assets={assets}
+							declaredVariables={declaredVariables}
 							nodes={nodes}
 							selectedNode={selectedNode}
 							variables={variables}
@@ -257,6 +261,7 @@ export function Inspector({
 
 function PropertiesPanel({
 	assets,
+	declaredVariables,
 	nodes,
 	selectedNode,
 	variables,
@@ -264,6 +269,7 @@ function PropertiesPanel({
 	onDeleteNode,
 }: {
 	assets: EditorAsset[];
+	declaredVariables: DefaultVariable[];
 	nodes: Node<ScriptNodeData>[];
 	selectedNode: Node<ScriptNodeData> | null;
 	variables: EditorVariable[];
@@ -351,6 +357,7 @@ function PropertiesPanel({
 						{selectedNode.data.actionType === "runtime.set_variable" && (
 							<VariableOperationConfigPanel
 								config={selectedNode.data.config}
+								declaredVariables={declaredVariables}
 								variableCompletions={configVariableCompletions}
 								onChange={(key, value) => onUpdateNodeConfig(selectedNode.id, key, value)}
 							/>
@@ -1187,21 +1194,28 @@ function ConditionInvertCheckbox({ checked, onChange }: { checked: boolean; onCh
 
 function VariableOperationConfigPanel({
 	config,
+	declaredVariables,
 	variableCompletions,
 	onChange,
 }: {
 	config: Record<string, JsonValue>;
+	declaredVariables: DefaultVariable[];
 	variableCompletions: VariableCompletion[];
 	onChange: (key: string, value: JsonValue) => void;
 }) {
 	const operation = normalizeVariableOperation(valueToInputString(config.operation));
 	const fixedType = getVariableOperationFixedType(operation);
-	const selectedType = fixedType ?? normalizeVariableType(valueToInputString(config.valueType));
-	const itemType = normalizeListItemType(config.itemType) ?? "string";
+	const savedName = valueToInputString(config.name);
+	// A declared default variable already fixes its scope and type, and a
+	// package whose Variable Operation disagrees with the declaration is
+	// rejected. Read both from the declaration rather than asking a second
+	// time for something the project already states.
+	const declared = declaredVariables.find((variable) => variable.name === savedName);
+	const scope = declared ? declared.scope : normalizeScope(valueToInputString(config.scope));
+	const selectedType = fixedType ?? declared?.type ?? normalizeVariableType(valueToInputString(config.valueType));
+	const itemType = declared?.itemType ?? normalizeListItemType(config.itemType) ?? "string";
 	const fieldValueType = normalizeVariableType(valueToInputString(config.fieldValueType));
 	const fieldItemType = normalizeListItemType(config.fieldItemType) ?? "string";
-	const scope = normalizeScope(valueToInputString(config.scope));
-	const savedName = valueToInputString(config.name);
 	const savedValue = valueToInputString(config.value);
 	const savedFieldPath = valueToInputString(config.fieldPath);
 	const [draftName, setDraftName] = useState(savedName);
@@ -1213,6 +1227,20 @@ function VariableOperationConfigPanel({
 		setDraftValue(savedValue);
 		setDraftFieldPath(savedFieldPath);
 	}, [savedName, savedValue, savedFieldPath]);
+
+	// The stored config still carries scope and type, because the package
+	// format and the export check both read them. Write the declared values
+	// through so what is shown and what is exported cannot drift apart.
+	useEffect(() => {
+		if (!declared) return;
+		if (valueToInputString(config.scope) !== declared.scope) onChange("scope", declared.scope);
+		if (operation === "set" && valueToInputString(config.valueType) !== declared.type) {
+			onChange("valueType", declared.type);
+		}
+		if (operation === "set" && declared.itemType && valueToInputString(config.itemType) !== declared.itemType) {
+			onChange("itemType", declared.itemType);
+		}
+	}, [declared, operation, config.scope, config.valueType, config.itemType, onChange]);
 
 	const nameValidationMessage = validateWritableVariableName(draftName, builtInVariableNames);
 	const typeCompatibilityMessage = validateVariableOperationType(operation, selectedType);
@@ -1317,14 +1345,23 @@ function VariableOperationConfigPanel({
 				label="Scope"
 				value={scope}
 				options={variableScopeOptions}
+				disabled={Boolean(declared)}
 				onChange={(value) => onChange("scope", value)}
 			/>
-			<p className="text-xs leading-4 text-baud-muted">{variableScopeDefinitions[normalizeScope(scope)]}</p>
+			{declared ? (
+				<p className="text-xs leading-4 text-baud-muted">
+					Set by the default variable <span className="font-mono">{declared.name}</span>. Rename this node to write a
+					different variable.
+				</p>
+			) : (
+				<p className="text-xs leading-4 text-baud-muted">{variableScopeDefinitions[normalizeScope(scope)]}</p>
+			)}
 			{operation === "set" && (
 				<ComboboxField
 					label="Variable type"
 					value={selectedType}
 					options={variableTypeOptions}
+					disabled={Boolean(declared)}
 					onChange={handleTypeChange}
 				/>
 			)}
@@ -2009,6 +2046,7 @@ function TextInput({
 function ComboboxField({
 	ariaDescribedBy,
 	ariaLabel,
+	disabled,
 	emptyMessage,
 	error,
 	hasError,
@@ -2021,6 +2059,7 @@ function ComboboxField({
 }: {
 	ariaDescribedBy?: string;
 	ariaLabel?: string;
+	disabled?: boolean;
 	emptyMessage?: string;
 	error?: string;
 	hasError?: boolean;
@@ -2038,6 +2077,7 @@ function ComboboxField({
 			ariaDescribedBy={ariaDescribedBy ?? (error ? errorId : undefined)}
 			ariaLabel={ariaLabel ?? label}
 			className={triggerClassName ?? "w-full"}
+			disabled={disabled}
 			emptyMessage={emptyMessage}
 			hasError={hasError || !!error}
 			options={options}

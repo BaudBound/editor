@@ -1508,8 +1508,12 @@ test("persistent variable simulation carries changes into the next run", async (
 	await page.getByRole("option", { name: "Increment" }).click();
 	await page.getByRole("combobox", { name: "Variable name" }).fill("counter");
 	await page.getByRole("textbox", { name: "Amount" }).fill("1");
-	await page.getByRole("button", { name: "Scope", exact: true }).click();
-	await page.getByRole("option", { name: "persistent" }).click();
+
+	// counter is declared persistent, so the node takes the scope from that
+	// declaration instead of asking for it a second time.
+	const nodeScope = page.getByRole("button", { name: "Scope", exact: true });
+	await expect(nodeScope).toBeDisabled();
+	await expect(nodeScope).toContainText("persistent");
 
 	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
 	const variableNode = page.locator(".react-flow__node").filter({ hasText: "Variable Operation" });

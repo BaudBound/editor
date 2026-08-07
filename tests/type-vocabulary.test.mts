@@ -204,3 +204,43 @@ test("a whole number can be declared as a float", async () => {
 	assert.deepEqual(settingErrors(300.5), []);
 	assert.notDeepEqual(settingErrors("300"), []);
 });
+
+test("a declared variable settles the operation's scope and type", async () => {
+	const { validatePackageJsonContracts } = await import("../utils/package-contract.ts");
+
+	// The inspector derives scope and type from the declaration and writes them
+	// back into the config, so the combination the package check rejects can no
+	// longer be produced by editing the node. This pins the rule being relied
+	// on: a mismatch is an error, and the derived values are what satisfies it.
+	const contract = (variableScope: string, operationScope: string, operationType: string) =>
+		validatePackageJsonContracts({
+			"manifest.json": {
+				variables: [{ name: "counter", scope: variableScope, type: "integer", value: 5, description: "" }],
+			},
+			"program.json": {
+				entry: {
+					program: {
+						steps: [
+							{
+								id: "n-1",
+								action_type: "runtime.set_variable",
+								config: {
+									name: "counter",
+									operation: "set",
+									scope: operationScope,
+									valueType: operationType,
+									value: "9",
+								},
+							},
+						],
+					},
+				},
+			},
+		} as never).filter((error) => error.includes("counter"));
+
+	// What the inspector now produces for a declared persistent integer.
+	assert.deepEqual(contract("persistent", "persistent", "integer"), []);
+	// What it used to be possible to type by hand.
+	assert.notDeepEqual(contract("persistent", "runtime", "integer"), []);
+	assert.notDeepEqual(contract("persistent", "persistent", "string"), []);
+});
