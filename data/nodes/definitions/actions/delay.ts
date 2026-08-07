@@ -13,12 +13,16 @@ export const delayNode = defineNode({
 			label: "Amount",
 			type: "number",
 			usesVariables: true,
-			variableTypes: "float",
+			variableTypes: "integer",
 			numeric: {
-				kind: "float",
+				// A whole count of the chosen unit, matching the schedule
+				// trigger. Milliseconds is the smallest unit, so a shorter
+				// pause than the field can express is not one the runner
+				// could honour anyway.
+				kind: "integer",
 				signed: false,
 				minimum: "0",
-				maximum: "1.7976931348623157e308",
+				maximum: "9007199254740991",
 				minimumInclusive: false,
 				maximumInclusive: true,
 			},

@@ -131,6 +131,11 @@ export function validateDurationValue(value: JsonValue, unit: string, label: str
 	if (!Number.isFinite(numericValue) || numericValue <= 0) {
 		return `${label} must be a finite number greater than zero.`;
 	}
+	if (!Number.isInteger(numericValue)) {
+		// The runner refuses a fraction rather than rounding it, so accepting
+		// one here would pass verification and then stop the run.
+		return `${label} must be a whole number of the chosen unit. Use a smaller unit for a shorter interval.`;
+	}
 
 	const seconds = numericValue * multiplier;
 	if (!Number.isFinite(seconds) || seconds < 0.001 || seconds >= 2 ** 64) {
