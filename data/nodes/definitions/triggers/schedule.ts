@@ -48,13 +48,6 @@ export const scheduleTriggerNode = defineNode({
 			example: "n-mr3zyt6f-1.interval_seconds",
 		},
 		{
-			name: "missed_intervals",
-			type: "integer",
-			description:
-				"How many further scheduled occurrences were already due behind this event. Zero when the runner is on time; nothing is ever dropped.",
-			example: "n-mr3zyt6f-1.missed_intervals",
-		},
-		{
 			name: "schedule",
 			type: "object",
 			description: "Configured schedule amount and unit.",
@@ -78,7 +71,6 @@ export const scheduleTriggerNode = defineNode({
 					interval_seconds:
 						context.triggerPayload.interval_seconds ??
 						scheduleIntervalSeconds(Number.isFinite(every) ? every : 0, unit),
-					missed_intervals: context.triggerPayload.missed_intervals ?? 0,
 					schedule: context.triggerPayload.schedule ?? { every, unit },
 					scheduled_at_unix: context.triggerPayload.scheduled_at_unix ?? Math.floor(Date.now() / 1000),
 				},
