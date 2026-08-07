@@ -1514,6 +1514,13 @@ test("persistent variable simulation carries changes into the next run", async (
 	const nodeScope = page.getByRole("button", { name: "Scope", exact: true });
 	await expect(nodeScope).toBeDisabled();
 	await expect(nodeScope).toContainText("persistent");
+	// Disabled has to be visible, not only refused on click.
+	const lockedStyle = await nodeScope.evaluate((element) => {
+		const style = getComputedStyle(element);
+		return { cursor: style.cursor, opacity: Number(style.opacity) };
+	});
+	expect(lockedStyle.cursor).toBe("not-allowed");
+	expect(lockedStyle.opacity).toBeLessThan(1);
 
 	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
 	const variableNode = page.locator(".react-flow__node").filter({ hasText: "Variable Operation" });
