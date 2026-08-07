@@ -123,7 +123,7 @@ export function OptionCombobox({
 				}}
 				onKeyDown={handleTriggerKeyDown}
 				className={cn(
-					"flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-baud-border bg-baud-soft px-3 py-0 font-mono text-sm leading-none text-baud-text shadow-none outline-none transition-[border-color,box-shadow] hover:border-baud-line focus-visible:border-baud-red/75 focus-visible:shadow-[0_0_0_2px_rgb(230_45_62_/_0.14)]",
+					"flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-baud-border bg-baud-soft px-3 py-0 font-mono text-sm leading-none text-baud-text shadow-none outline-none transition-[border-color,box-shadow] hover:border-baud-line focus-visible:border-baud-red/75 focus-visible:shadow-[0_0_0_2px_rgb(230_45_62_/_0.14)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-baud-border",
 					hasError && "border-baud-danger shadow-[0_0_0_2px_rgb(224_92_92/0.14)]",
 					open && "border-baud-red/75",
 					className,
