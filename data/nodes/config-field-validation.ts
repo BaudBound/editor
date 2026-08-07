@@ -176,7 +176,10 @@ export function validateVariableReferenceTypes(
 			return `Variable "${reference}" has type ${variable.type}; this field accepts ${formatVariableInputContract(contract)} variables. Add a cast such as {{${reference}|${contract}}} to convert it.`;
 		}
 		if (!variable && contract !== "any" && getVariableReferenceStatus(reference, variables) === "possible") {
-			return `Variable "${reference}" has an unknown type; this field accepts ${formatVariableInputContract(contract)} variables. Use a declared typed variable or output.`;
+			// Reading into an object or a list gives a value whose type nothing
+			// can know before the script runs, so a cast is the only way to say
+			// what it holds. Name it here: this is otherwise a dead end.
+			return `Variable "${reference}" has a type that is only known when the script runs; this field accepts ${formatVariableInputContract(contract)} variables. Add a cast such as {{${reference}|${contract}}} to declare what it holds.`;
 		}
 	}
 

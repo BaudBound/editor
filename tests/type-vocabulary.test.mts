@@ -160,3 +160,19 @@ test("verification agrees with the inspector about numeric comparisons", () => {
 	assert.equal(wrong.length, 1);
 	assert.match(wrong[0] ?? "", /needs an integer or a float/);
 });
+
+test("a value read out of an object is castable and says so", () => {
+	// An HTTP response body is an object, so nothing can know the type of a
+	// field inside it until the script runs. A cast is the only way through,
+	// and the message has to name it or the author is left at a dead end.
+	const variables = [{ name: "n-http.json", type: "object" as const }];
+
+	const uncast = validateVariableReferenceTypes("{{n-http.json.ip}}", variables, "string");
+	assert.notEqual(uncast, "");
+	assert.match(uncast, /\{\{n-http\.json\.ip\|string\}\}/);
+
+	assert.equal(validateVariableReferenceTypes("{{n-http.json.ip|string}}", variables, "string"), "");
+	assert.equal(validateVariableReferenceTypes("Your ip is {{n-http.json.ip|string}}", variables, "string"), "");
+	// The cast still has to produce what the field accepts.
+	assert.notEqual(validateVariableReferenceTypes("{{n-http.json.ip|integer}}", variables, "string"), "");
+});
