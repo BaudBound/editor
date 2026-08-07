@@ -13,6 +13,7 @@ type OptionComboboxProps = {
 	ariaDescribedBy?: string;
 	ariaLabel?: string;
 	className?: string;
+	disabled?: boolean;
 	emptyMessage?: string;
 	hasError?: boolean;
 	options: ComboboxOption[];
@@ -25,6 +26,7 @@ export function OptionCombobox({
 	ariaDescribedBy,
 	ariaLabel,
 	className,
+	disabled = false,
 	emptyMessage = "No options.",
 	hasError = false,
 	options,
@@ -109,13 +111,16 @@ export function OptionCombobox({
 			<button
 				ref={triggerRef}
 				type="button"
+				disabled={disabled}
 				aria-expanded={open}
 				aria-haspopup="listbox"
 				aria-label={ariaLabel}
 				aria-describedby={ariaDescribedBy}
 				aria-invalid={hasError || undefined}
 				aria-controls={open ? listboxId : undefined}
-				onClick={() => setOpen((currentOpen) => !currentOpen)}
+				onClick={() => {
+					if (!disabled) setOpen((currentOpen) => !currentOpen);
+				}}
 				onKeyDown={handleTriggerKeyDown}
 				className={cn(
 					"flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-baud-border bg-baud-soft px-3 py-0 font-mono text-sm leading-none text-baud-text shadow-none outline-none transition-[border-color,box-shadow] hover:border-baud-line focus-visible:border-baud-red/75 focus-visible:shadow-[0_0_0_2px_rgb(230_45_62_/_0.14)]",

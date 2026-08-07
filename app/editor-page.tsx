@@ -1730,6 +1730,7 @@ export function EditorPage({
 					simulationStatus={simulationStatus}
 					simulationTriggerInputDrafts={simulationTriggerInputDrafts}
 					variables={variableEntries}
+					declaredVariables={defaultVariables}
 					width={sizes.right}
 					collapsed={collapsed.right}
 					onAddSimulationOverride={handleAddSimulationOverride}
