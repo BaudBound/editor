@@ -281,7 +281,6 @@ export type SimulationTriggerPayload = {
 	key?: string;
 	message?: string;
 	method?: string;
-	missed_intervals?: number;
 	path?: string;
 	processId?: string;
 	processName?: string;
