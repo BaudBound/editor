@@ -50,7 +50,8 @@ export const scheduleTriggerNode = defineNode({
 		{
 			name: "missed_intervals",
 			type: "integer",
-			description: "Number of schedule intervals skipped before this event.",
+			description:
+				"How many further scheduled occurrences were already due behind this event. Zero when the runner is on time; nothing is ever dropped.",
 			example: "n-mr3zyt6f-1.missed_intervals",
 		},
 		{
