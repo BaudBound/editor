@@ -41,6 +41,7 @@ assert.ok(
 );
 
 const optionValues = createOptionValueMap();
+const sharedConfigFields = createSharedConfigFieldMap();
 const sharedCapabilityValues = createSharedCapabilityValueMap();
 const definitions = readNodeDefinitions().sort((a, b) => a.actionType.localeCompare(b.actionType));
 const generatedNodeSchemas = Object.fromEntries(
@@ -808,7 +809,26 @@ function readConfigFields(initializer, actionType) {
 		throw new Error(`${actionType} configFields must be an array literal for schema generation.`);
 	}
 
-	const fields = initializer.elements.map((element) => {
+	// A trigger spreads its shared fields rather than restating them, so the
+	// option list has one definition. Resolve the spread to the object literals
+	// it stands for before reading any of them.
+	const elements = initializer.elements.flatMap((element) => {
+		if (!ts.isSpreadElement(element)) {
+			return [element];
+		}
+		if (!ts.isIdentifier(element.expression)) {
+			throw new Error(`${actionType} configFields may only spread a named shared field list.`);
+		}
+		const shared = sharedConfigFields.get(element.expression.text);
+		if (!shared) {
+			throw new Error(
+				`${actionType} configFields spreads ${element.expression.text}, which is not exported by shared-fields.ts.`,
+			);
+		}
+		return shared;
+	});
+
+	const fields = elements.map((element) => {
 		if (!ts.isObjectLiteralExpression(element)) {
 			throw new Error(`${actionType} configFields entries must be object literals.`);
 		}
@@ -928,6 +948,40 @@ function readDefaultConfigKeys(initializer) {
 		.filter(Boolean);
 }
 
+/**
+ * Collects the shared config field lists a trigger may spread.
+ *
+ * Returns the object literal nodes themselves, so a spread field is read by
+ * exactly the same code that reads a field written in place.
+ */
+function createSharedConfigFieldMap() {
+	const source = ts.createSourceFile(
+		"shared-fields.ts",
+		readFileSync(join(appRoot, "data", "nodes", "definitions", "shared-fields.ts"), "utf8"),
+		ts.ScriptTarget.Latest,
+		true,
+	);
+	const fields = new Map();
+
+	for (const statement of source.statements) {
+		if (!ts.isVariableStatement(statement)) {
+			continue;
+		}
+
+		for (const declaration of statement.declarationList.declarations) {
+			if (!ts.isIdentifier(declaration.name) || !declaration.initializer) {
+				continue;
+			}
+
+			const initializer = unwrapAsConst(declaration.initializer);
+			if (ts.isArrayLiteralExpression(initializer)) {
+				fields.set(declaration.name.text, [...initializer.elements]);
+			}
+		}
+	}
+
+	return fields;
+}
 function createOptionValueMap() {
 	const optionsSource = ts.createSourceFile(
 		"options.ts",

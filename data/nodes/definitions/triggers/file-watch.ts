@@ -1,11 +1,13 @@
 import { FileText } from "lucide-react";
 import { defineNode } from "../../node-definition";
+import { triggerOverlapFields } from "../shared-fields";
 import { requiredConfig } from "../validators";
 
 export const fileWatchTriggerNode = defineNode({
 	actionType: "trigger.file_watch",
 	capabilities: ["trigger.file_watch"],
 	configFields: [
+		...triggerOverlapFields,
 		{
 			key: "path",
 			label: "Path",
@@ -22,7 +24,7 @@ export const fileWatchTriggerNode = defineNode({
 			help: "Applies when Path is a directory.",
 		},
 	],
-	defaultConfig: () => ({ path: "", recursive: false }),
+	defaultConfig: () => ({ overlap: "queue", path: "", recursive: false }),
 	description: "Start when a file changes.",
 	group: "triggers",
 	icon: FileText,

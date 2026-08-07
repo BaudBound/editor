@@ -1,12 +1,14 @@
 import { Keyboard } from "lucide-react";
 import { defineNode } from "../../node-definition";
 import { validateWindowsKeyTemplate } from "../../windows-key-contract";
+import { triggerOverlapFields } from "../shared-fields";
 import { configString, requiredConfig } from "../validators";
 
 export const hotkeyTriggerNode = defineNode({
 	actionType: "trigger.hotkey",
 	capabilities: ["trigger.hotkey"],
 	configFields: [
+		...triggerOverlapFields,
 		{
 			key: "key",
 			label: "Key",
@@ -20,7 +22,7 @@ export const hotkeyTriggerNode = defineNode({
 			},
 		},
 	],
-	defaultConfig: () => ({ key: "" }),
+	defaultConfig: () => ({ overlap: "queue", key: "" }),
 	description: "Start from a desktop hotkey.",
 	desktopOnly: true,
 	group: "triggers",

@@ -825,7 +825,7 @@ test("serial input stores only logical device ids in script packages", () => {
 	const serialSchema = JSON.parse(read(join(schemasRoot, "nodes", "trigger-serial-input.schema.json")));
 	const configKeys = new Set(Object.keys(serialSchema.$defs.config.properties));
 
-	assert.deepEqual([...configKeys].sort(), ["customName", "deviceId"].sort());
+	assert.deepEqual([...configKeys].sort(), ["customName", "deviceId", "overlap"].sort());
 	assert.match(serialInputSource, /key:\s*"deviceId"/);
 	assert.doesNotMatch(serialInputSource, /key:\s*"port"/);
 	assert.doesNotMatch(serialInputSource, /validateUsbIdentity/);
