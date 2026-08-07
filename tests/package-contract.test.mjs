@@ -123,8 +123,18 @@ test("editor supports the complete If / Else condition operator set", async () =
 	const cases = [
 		["BaudBound", "equals_ignore_case", "baudbound", true],
 		["BaudBound", "contains_ignore_case", "BOUN", true],
-		["42.5", "is_numeric", null, true],
+		// These test the type. Text that reads as a number is still text, so
+		// is_numeric is exactly is_integer or is_float.
+		[42, "is_numeric", null, true],
+		[42.5, "is_numeric", null, true],
+		["42.5", "is_numeric", null, false],
 		["42px", "is_numeric", null, false],
+		[42, "is_integer", null, true],
+		[42.5, "is_integer", null, false],
+		["42", "is_integer", null, false],
+		[42.5, "is_float", null, true],
+		[42, "is_float", null, false],
+		["42.5", "is_float", null, false],
 		["text", "is_string", null, true],
 		[true, "is_boolean", null, true],
 		[[1, 2], "is_list", null, true],
@@ -149,6 +159,8 @@ test("editor supports the complete If / Else condition operator set", async () =
 		"has_key",
 		"contains_item",
 		"is_numeric",
+		"is_integer",
+		"is_float",
 		"is_string",
 		"is_boolean",
 		"is_list",
@@ -472,7 +484,7 @@ test("custom numeric fields preserve precision, support variables, and replace n
 
 	const numericFieldSource = read(join(appRoot, "components", "common", "numeric-field.tsx"));
 	assert.match(numericFieldSource, /VariableCodeInput/);
-	assert.match(numericFieldSource, /variableTypes="numeric"/);
+	assert.match(numericFieldSource, /variableTypes=\{contract\.kind === "integer" \? "integer" : "float"\}/);
 	assert.match(numericFieldSource, /variables=\{variables\}/);
 	assert.match(numericFieldSource, /Minus/);
 	assert.match(numericFieldSource, /Plus/);
@@ -729,7 +741,9 @@ test("shared schemas exactly match every editor variable, setting, list-item, an
 	const runtimeDataTypeBlock = typesSource.match(/export type RuntimeDataType =([\s\S]*?);/)?.[1] ?? "";
 	const runtimeDataTypes = [...runtimeDataTypeBlock.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
 	const editorVariableTypes = extractConstStringArray(variablesSource, "variableTypes");
-	const editorListItemTypes = extractConstStringArray(variablesSource, "listItemTypes");
+	// listItemTypes is derived from variableTypes rather than written out, so
+	// the two lists cannot drift. A list element may be any type except a list.
+	const editorListItemTypes = editorVariableTypes.filter((type) => type !== "list");
 	const editorSettingTypes = extractConstStringArray(typesSource, "scriptSettingTypes");
 	const programSchema = JSON.parse(read(join(schemasRoot, "program.schema.json")));
 	const manifestSchema = JSON.parse(read(join(schemasRoot, "manifest.schema.json")));
@@ -776,7 +790,7 @@ test("shared manifest schema strictly validates custom variable and setting valu
 				type: "duration",
 				value: { type: "duration", unit: "seconds", value: 3 },
 			},
-			{ name: "output", scope: "runtime", type: "file_path", value: "./output.txt" },
+			{ name: "output", scope: "runtime", type: "string", value: "./output.txt" },
 		],
 		settings: [
 			{ name: "Shortcut", type: "hotkey", required: false, default_value: "Ctrl+Shift+F8" },
@@ -870,7 +884,7 @@ test("file watch supports pre-trigger variables and explicit recursive configura
 	assert.match(fileWatchSource, /requiredConfig\(config, "path", "file watch path"\)/);
 	const pathField = extractConfigField(fileWatchSource, "path");
 	assert.match(pathField, /usesVariables:\s*true/);
-	assert.match(pathField, /variableTypes:\s*"file-path"/);
+	assert.match(pathField, /variableTypes:\s*"string"/);
 });
 
 test("variable-capable trigger and keyboard fields are explicit while listener identity fields stay literal", () => {
@@ -882,10 +896,10 @@ test("variable-capable trigger and keyboard fields are explicit while listener i
 	const webhook = read(join(appRoot, "data", "nodes", "definitions", "triggers", "webhook.ts"));
 	const websocket = read(join(appRoot, "data", "nodes", "definitions", "triggers", "websocket.ts"));
 
-	assert.match(extractConfigField(fileWatch, "path"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"file-path"/);
+	assert.match(extractConfigField(fileWatch, "path"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"string"/);
 	assert.match(extractConfigField(processStarted, "target"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"string"/);
-	assert.match(extractConfigField(hotkey, "key"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"keyboard-key"/);
-	assert.match(extractConfigField(keyboard, "key"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"keyboard-key"/);
+	assert.match(extractConfigField(hotkey, "key"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"hotkey"/);
+	assert.match(extractConfigField(keyboard, "key"), /usesVariables:\s*true[\s\S]*variableTypes:\s*"hotkey"/);
 	assert.doesNotMatch(extractConfigField(serial, "deviceId"), /usesVariables/);
 	assert.doesNotMatch(extractConfigField(webhook, "hookName"), /usesVariables/);
 	assert.doesNotMatch(extractConfigField(websocket, "path"), /usesVariables/);
@@ -901,7 +915,7 @@ test("variable-capable editor inputs declare and enforce type contracts", () => 
 	for (const declaration of definitions.matchAll(/usesVariables:\s*true/g)) {
 		assert.match(
 			definitions.slice(declaration.index, declaration.index + 160),
-			/variableTypes:\s*"[a-z-]+"/,
+			/variableTypes:\s*"[a-z_]+"/,
 			"every variable-capable node field must declare its accepted variable contract",
 		);
 	}
@@ -909,12 +923,10 @@ test("variable-capable editor inputs declare and enforce type contracts", () => 
 	assert.match(variableInputSource, /filterCompatibleVariables\(variables, variableTypes\)/);
 	assert.match(variableInputSource, /data-variable-status=\{displayStatus\}/);
 	assert.match(variableInputSource, /displayStatus === "type-mismatch" && "bg-cyan-400\/20 text-cyan-300"/);
-	assert.match(validationSource, /datetime:\s*new Set\(\["datetime"\]\)/);
-	assert.match(validationSource, /string:\s*new Set\(\["string"\]\)/);
-	assert.match(
-		validationSource,
-		/numeric:\s*new Set\(\["number", "http_status_code", "duration_ms", "process_id", "exit_code"\]\)/,
-	);
+	// Matching is exact now that every deleted type has been folded into the
+	// shape it always was. There is no longer a compatibleTypes lookup table.
+	assert.doesNotMatch(validationSource, /compatibleTypes/);
+	assert.match(validationSource, /contract === "any" \|\| type === contract/);
 	assert.match(
 		validationSource,
 		/contract !== "any" && getVariableReferenceStatus\(reference, variables\) === "possible"/,
@@ -1714,27 +1726,37 @@ test("Script Settings are typed package metadata and read only simulation values
 	assert.equal(settingsSchema.maxItems, 256);
 	assert.deepEqual(settingsSchema.items.properties.type.enum, [
 		"string",
-		"number",
+		"integer",
+		"float",
 		"boolean",
 		"object",
 		"list",
+		"color",
+		"hotkey",
 		"datetime",
 		"duration",
-		"file_path",
-		"hotkey",
-		"color",
 	]);
 	assert.deepEqual(settingsSchema.items.properties.item_type.enum, [
 		"string",
-		"number",
+		"integer",
+		"float",
 		"boolean",
 		"object",
+		"color",
+		"hotkey",
 		"datetime",
 		"duration",
-		"file_path",
 	]);
 	assert.equal(settingsSchema.items.allOf.length, 10);
-	assert.doesNotMatch(JSON.stringify(manifestSchema.properties.variables.items.properties.type.enum), /hotkey|color/);
+	// Settings, variables and node outputs all declare the same vocabulary.
+	assert.deepEqual(
+		settingsSchema.items.properties.type.enum,
+		manifestSchema.properties.variables.items.properties.type.enum,
+	);
+	// Every type name is a single word, with no separator in any of them.
+	for (const type of settingsSchema.items.properties.type.enum) {
+		assert.doesNotMatch(type, /[\s_-]/, type);
+	}
 	assert.match(settingSource, /createSimulationScriptSettingValues/);
 	assert.match(packageSource, /settings:\s*params\.scriptSettings\.map/);
 	assert.match(simulationSource, /createSimulationScriptSettingValues/);

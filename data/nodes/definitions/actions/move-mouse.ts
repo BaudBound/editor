@@ -11,7 +11,7 @@ export const moveMouseNode = defineNode({
 			label: "X",
 			type: "number",
 			usesVariables: true,
-			variableTypes: "numeric",
+			variableTypes: "integer",
 			numeric: {
 				kind: "integer",
 				signed: true,
@@ -26,7 +26,7 @@ export const moveMouseNode = defineNode({
 			label: "Y",
 			type: "number",
 			usesVariables: true,
-			variableTypes: "numeric",
+			variableTypes: "integer",
 			numeric: {
 				kind: "integer",
 				signed: true,

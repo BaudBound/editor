@@ -11,7 +11,7 @@ export const notificationNode = defineNode({
 			label: "Title",
 			type: "text",
 			usesVariables: true,
-			variableTypes: "text",
+			variableTypes: "string",
 			nonEmpty: true,
 		},
 		{
@@ -19,7 +19,7 @@ export const notificationNode = defineNode({
 			label: "Message",
 			type: "textarea",
 			usesVariables: true,
-			variableTypes: "text",
+			variableTypes: "string",
 			nonEmpty: true,
 		},
 	],

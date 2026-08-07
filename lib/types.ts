@@ -88,19 +88,15 @@ export type NodePort = {
 
 export type RuntimeDataType =
 	| "string"
-	| "number"
+	| "integer"
+	| "float"
 	| "boolean"
 	| "object"
 	| "list"
-	| "file_content"
-	| "file_path"
-	| "http_headers"
-	| "http_status_code"
-	| "duration_ms"
-	| "process_id"
-	| "exit_code"
-	| "keyboard_key"
-	| "color";
+	| "color"
+	| "hotkey"
+	| "datetime"
+	| "duration";
 
 export type RuntimeDataOutput = {
 	name: string;
@@ -187,17 +183,19 @@ export type SecretDeclaration = {
 	type: "string";
 };
 
+// Script Settings are declared with the same ten types as variables and node
+// outputs.
 export const scriptSettingTypes = [
 	"string",
-	"number",
+	"integer",
+	"float",
 	"boolean",
 	"object",
 	"list",
+	"color",
+	"hotkey",
 	"datetime",
 	"duration",
-	"file_path",
-	"hotkey",
-	"color",
 ] as const;
 
 export type ScriptSettingType = (typeof scriptSettingTypes)[number];

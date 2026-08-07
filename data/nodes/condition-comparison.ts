@@ -89,8 +89,15 @@ export async function evaluateConditionValues(
 			return conditionResult(left === true);
 		case "is_false":
 			return conditionResult(left === false);
+		// These test the type, like the checks beside them. Text that reads as
+		// a number is still text, so is_numeric is exactly is_integer or
+		// is_float and never overlaps is_string.
 		case "is_numeric":
-			return conditionResult(conditionNumber(left) !== undefined);
+			return conditionResult(typeof left === "number" && Number.isFinite(left));
+		case "is_integer":
+			return conditionResult(typeof left === "number" && Number.isInteger(left));
+		case "is_float":
+			return conditionResult(typeof left === "number" && Number.isFinite(left) && !Number.isInteger(left));
 		case "is_string":
 			return conditionResult(typeof left === "string");
 		case "is_boolean":

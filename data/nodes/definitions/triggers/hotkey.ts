@@ -13,7 +13,7 @@ export const hotkeyTriggerNode = defineNode({
 			nonEmpty: true,
 			type: "text",
 			usesVariables: true,
-			variableTypes: "keyboard-key",
+			variableTypes: "hotkey",
 			validate: (config) => {
 				const key = configString(config, "key").trim();
 				return key ? validateWindowsKeyTemplate(key) : "";
@@ -31,7 +31,7 @@ export const hotkeyTriggerNode = defineNode({
 	runtimeOutputs: [
 		{
 			name: "key",
-			type: "keyboard_key",
+			type: "hotkey",
 			description: "Captured hotkey expression.",
 			example: "n-mr3zyt6f-4.key",
 		},

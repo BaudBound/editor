@@ -35,7 +35,7 @@ export const playSoundNode = defineNode({
 	},
 	validateVariables: (config, variables) => {
 		if (configString(config, "source") !== "file_path") return [];
-		const error = validateVariableInput(configString(config, "filePath"), variables, "file-path");
+		const error = validateVariableInput(configString(config, "filePath"), variables, "string");
 		return error ? [`audio file path: ${error}`] : [];
 	},
 	validateGraph: ({ context, node }) => {

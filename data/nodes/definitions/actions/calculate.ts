@@ -13,7 +13,7 @@ export const calculateNode = defineNode({
 			label: "Expression",
 			type: "textarea",
 			usesVariables: true,
-			variableTypes: "numeric",
+			variableTypes: "float",
 			validate: (config) =>
 				validateCalculationExpression(typeof config.expression === "string" ? config.expression : ""),
 		},
@@ -30,7 +30,7 @@ export const calculateNode = defineNode({
 	runtimeOutputs: fallible([
 		{
 			name: "result",
-			type: "number",
+			type: "float",
 			description: "Numeric result of the evaluated expression.",
 			example: "n-mr3zyt6f-18.result",
 		},

@@ -11,7 +11,7 @@ export const fileWatchTriggerNode = defineNode({
 			label: "Path",
 			type: "text",
 			usesVariables: true,
-			variableTypes: "file-path",
+			variableTypes: "string",
 			nonEmpty: true,
 		},
 		{
@@ -34,7 +34,7 @@ export const fileWatchTriggerNode = defineNode({
 	runtimeOutputs: [
 		{
 			name: "path",
-			type: "file_path",
+			type: "string",
 			description: "Changed file path.",
 			example: "n-mr3zyt6f-2.path",
 		},
@@ -46,7 +46,7 @@ export const fileWatchTriggerNode = defineNode({
 		},
 		{
 			name: "watched_path",
-			type: "file_path",
+			type: "string",
 			description: "Configured file or directory path watched by the runner.",
 			example: "n-mr3zyt6f-2.watched_path",
 		},

@@ -22,7 +22,7 @@ export const serialWriteNode = defineNode({
 			Boolean,
 		),
 	validateVariables: (config, variables) => {
-		const error = validateVariableInput(configString(config, "data"), variables, "text");
+		const error = validateVariableInput(configString(config, "data"), variables, "string");
 		return error ? [`serial write data: ${error}`] : [];
 	},
 	validateGraph: ({ context, node }) => {

@@ -38,7 +38,7 @@ export const colorMatchNode = defineNode({
 			label: "Tolerance (%)",
 			type: "number",
 			usesVariables: true,
-			variableTypes: "numeric",
+			variableTypes: "float",
 			numeric: {
 				kind: "float",
 				signed: false,
@@ -73,25 +73,25 @@ export const colorMatchNode = defineNode({
 		},
 		{
 			name: "difference_percent",
-			type: "number",
+			type: "float",
 			description: "The normalized difference used by the selected comparison mode.",
 			example: "n-mr3zyt6f-20.difference_percent",
 		},
 		{
 			name: "red_difference",
-			type: "number",
+			type: "integer",
 			description: "Absolute red channel difference from 0 through 255.",
 			example: "n-mr3zyt6f-20.red_difference",
 		},
 		{
 			name: "green_difference",
-			type: "number",
+			type: "integer",
 			description: "Absolute green channel difference from 0 through 255.",
 			example: "n-mr3zyt6f-20.green_difference",
 		},
 		{
 			name: "blue_difference",
-			type: "number",
+			type: "integer",
 			description: "Absolute blue channel difference from 0 through 255.",
 			example: "n-mr3zyt6f-20.blue_difference",
 		},

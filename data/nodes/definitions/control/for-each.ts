@@ -34,7 +34,7 @@ export const forEachNode = defineNode({
 		},
 		{
 			name: "index",
-			type: "number",
+			type: "integer",
 			description: "Zero-based index for the active iteration.",
 			example: "n-mr3zyt6f-8.index",
 		},

@@ -13,7 +13,7 @@ export const deleteFileNode = defineNode({
 			label: "Path",
 			type: "text",
 			usesVariables: true,
-			variableTypes: "file-path",
+			variableTypes: "string",
 			nonEmpty: true,
 		},
 	],
@@ -28,7 +28,7 @@ export const deleteFileNode = defineNode({
 	permissionPathRules: [{ access: "delete", configKey: "path" }],
 	risk: "dangerous",
 	runtimeOutputs: fallible([
-		{ name: "path", type: "file_path", description: "Deleted file path.", example: "n-mr3zyt6f-20.path" },
+		{ name: "path", type: "string", description: "Deleted file path.", example: "n-mr3zyt6f-20.path" },
 	]),
 	runnerType: "delete_file",
 	validateConfig: (config) => [requiredConfig(config, "path", "file path")].filter(Boolean),

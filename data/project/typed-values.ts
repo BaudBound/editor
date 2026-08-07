@@ -1,4 +1,8 @@
-import { runtimeNumberContract, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
+import {
+	runtimeIntegerContract,
+	runtimeNumberContract,
+	validateNumericConfigValue,
+} from "@/data/nodes/numeric-validation";
 import { validateWindowsHotkey } from "@/data/nodes/windows-key-contract";
 import { typedDatetimeIso } from "@/data/project/datetime";
 import {
@@ -8,18 +12,18 @@ import {
 	listItemTypes,
 	type VariableType,
 } from "@/data/project/variables";
-import type { JsonValue, ScriptSettingType } from "@/lib/types";
+import type { JsonValue } from "@/lib/types";
 
-export type TypedValueType = VariableType | Extract<ScriptSettingType, "hotkey" | "color">;
+export type TypedValueType = VariableType;
 
 export function createEmptyTypedValue(type: TypedValueType, itemType?: ListItemType): JsonValue {
 	switch (type) {
 		case "string":
-		case "file_path":
 		case "hotkey":
 		case "color":
 			return "";
-		case "number":
+		case "integer":
+		case "float":
 			return 0;
 		case "boolean":
 			return false;
@@ -40,15 +44,19 @@ export function validateTypedValue(type: TypedValueType, value: JsonValue, itemT
 	switch (type) {
 		case "string":
 			return typeof value === "string" ? null : "Enter a text value.";
-		case "file_path":
-			return typeof value === "string" && value.trim() ? null : "Enter a file path.";
 		case "hotkey":
 			return typeof value === "string" && !validateWindowsHotkey(value)
 				? null
 				: "Press a valid Windows key combination.";
 		case "color":
 			return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? null : "Select a color in #RRGGBB format.";
-		case "number":
+		case "integer":
+			return typeof value === "number" &&
+				Number.isFinite(value) &&
+				!validateNumericConfigValue(String(value), runtimeIntegerContract)
+				? null
+				: "Enter a whole number within the supported runtime range.";
+		case "float":
 			return typeof value === "number" &&
 				Number.isFinite(value) &&
 				!validateNumericConfigValue(String(value), runtimeNumberContract)
@@ -116,11 +124,11 @@ export function formatTypedValueForDisplay(
 
 	switch (type) {
 		case "string":
-		case "file_path":
 		case "hotkey":
 		case "color":
 			return typeof value === "string" ? value : "Invalid value";
-		case "number":
+		case "integer":
+		case "float":
 		case "boolean":
 			return String(value);
 		case "datetime":
@@ -159,7 +167,7 @@ export function parseObjectValue(rawValue: string): JsonValue | undefined {
 
 export function inferTypedValueType(value: JsonValue): ListItemType | undefined {
 	if (typeof value === "string") return "string";
-	if (typeof value === "number" && Number.isFinite(value)) return "number";
+	if (typeof value === "number" && Number.isFinite(value)) return Number.isInteger(value) ? "integer" : "float";
 	if (typeof value === "boolean") return "boolean";
 	if (!isRecord(value)) return undefined;
 	if (value.type === "datetime" && typeof value.value === "string") return "datetime";

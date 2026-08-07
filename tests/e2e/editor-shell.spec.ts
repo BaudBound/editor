@@ -807,7 +807,7 @@ test("Schedule triggers can start and stop their simulator timer", async ({ page
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("interval");
 	await variableDialog.getByRole("combobox", { name: "Type" }).click();
-	await page.getByRole("option", { name: "number" }).click();
+	await page.getByRole("option", { name: "integer" }).click();
 	await variableDialog.getByRole("spinbutton", { name: "Default value" }).fill("25");
 	await variableDialog.getByRole("button", { name: "Save" }).click();
 	await page.getByRole("button", { name: "Save Settings" }).click();
@@ -1464,7 +1464,7 @@ test("variable editors do not insert example values", async ({ page }) => {
 	await expect(page.getByText(/^Example:/)).toHaveCount(0);
 
 	await page.getByRole("button", { name: "Variable type" }).click();
-	await page.getByRole("option", { name: "number" }).click();
+	await page.getByRole("option", { name: "integer" }).click();
 	await expect(page.getByRole("textbox", { name: "Value" })).toHaveValue("");
 
 	await page.getByRole("button", { name: "Operation", exact: true }).click();
@@ -1480,7 +1480,7 @@ test("variable editors do not insert example values", async ({ page }) => {
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("combobox", { name: "Type" }).click();
-	await page.getByRole("option", { name: "file_path" }).click();
+	await page.getByRole("option", { name: "string" }).click();
 	await expect(variableDialog.getByRole("textbox", { name: "Default value" })).toHaveValue("");
 	await variableDialog.getByRole("button", { name: "Cancel" }).click();
 	await page.keyboard.press("Escape");
@@ -1496,7 +1496,7 @@ test("persistent variable simulation carries changes into the next run", async (
 	await variableDialog.getByRole("combobox", { name: "Scope" }).click();
 	await page.getByRole("option", { name: "persistent" }).click();
 	await variableDialog.getByRole("combobox", { name: "Type" }).click();
-	await page.getByRole("option", { name: "number" }).click();
+	await page.getByRole("option", { name: "integer" }).click();
 	await variableDialog.getByRole("spinbutton", { name: "Default value" }).fill("0");
 	await variableDialog.getByRole("button", { name: "Save" }).click();
 	await page.getByRole("button", { name: "Save Settings" }).click();
@@ -1550,7 +1550,7 @@ test("numeric fields autocomplete number variables and suspend literal stepping"
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("distance");
 	await variableDialog.getByRole("combobox", { name: "Type" }).click();
-	await page.getByRole("option", { name: "number" }).click();
+	await page.getByRole("option", { name: "integer" }).click();
 	await variableDialog.getByRole("spinbutton", { name: "Default value" }).fill("12");
 	await variableDialog.getByRole("button", { name: "Save" }).click();
 	await page.getByRole("button", { name: "Save Settings" }).click();
@@ -1594,14 +1594,30 @@ test("numeric fields autocomplete number variables and suspend literal stepping"
 	await amountField.fill("{{system_date}}");
 	await expect(page.locator('[data-variable-token="system_date"][data-variable-status="type-mismatch"]')).toBeVisible();
 	await expect(
-		page.getByText('Variable "system_date" has type string; this field accepts numeric variables.', { exact: true }),
+		page.getByText(
+			'Variable "system_date" has type string; this field accepts integer variables. Add a cast such as {{system_date|integer}} to convert it.',
+			{ exact: true },
+		),
 	).toBeVisible();
+
+	// The cast the message suggests resolves the mismatch: the same field and
+	// the same variable, now accepted, with the target read as the target
+	// rather than as part of the name.
+	await amountField.fill("{{system_date|integer}}");
+	await expect(page.locator('[data-variable-token="system_date"][data-variable-status="known"]')).toBeVisible();
+	await expect(page.locator('[data-variable-token="system_date|integer"]')).toHaveCount(0);
+
+	// An unknown target is still marked invalid.
+	await amountField.fill("{{system_date|nonsense}}");
+	await expect(page.locator('[data-variable-token="system_date"][data-variable-status="invalid"]')).toBeVisible();
+
+	await amountField.fill("{{system_date}}");
 
 	await page.getByRole("button", { name: "Verify script" }).click();
 	await expect(page.getByRole("heading", { name: "Verification" })).toBeVisible();
 	await expect(
 		page.locator("[data-verification-result] li").filter({
-			hasText: /Delay.*Variable "system_date" has type string; this field accepts numeric variables/i,
+			hasText: /Delay.*Variable "system_date" has type string; this field accepts integer variables/i,
 		}),
 	).toBeVisible();
 });
@@ -2455,7 +2471,7 @@ test("exported package preserves editor metadata and imports back", async ({ pag
 	await page.getByRole("combobox", { name: "Scope" }).click();
 	await page.getByRole("option", { name: "persistent" }).click();
 	await page.getByRole("combobox", { name: "Type" }).click();
-	await page.getByRole("option", { name: "number" }).click();
+	await page.getByRole("option", { name: "integer" }).click();
 	await page.getByRole("spinbutton", { name: "Default value" }).fill("10");
 	await page.getByRole("button", { name: "Save", exact: true }).click();
 	await page.getByRole("button", { name: "Save Settings" }).click();
@@ -2494,7 +2510,7 @@ test("exported package preserves editor metadata and imports back", async ({ pag
 			description: "",
 			name: "counter",
 			scope: "persistent",
-			type: "number",
+			type: "integer",
 			value: 10,
 		},
 	]);

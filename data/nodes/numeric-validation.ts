@@ -15,6 +15,17 @@ export const runtimeNumberContract: NumericConfigContract = {
 	maximumInclusive: true,
 };
 
+// Matches the runner's MAX_SAFE_INTEGER, the largest whole number
+// representable without loss in either language.
+export const runtimeIntegerContract: NumericConfigContract = {
+	kind: "integer",
+	signed: true,
+	minimum: "-9007199254740991",
+	maximum: "9007199254740991",
+	minimumInclusive: true,
+	maximumInclusive: true,
+};
+
 export function validateNumericConfigValue(value: JsonValue, contract: NumericConfigContract) {
 	return contract.kind === "integer" ? validateInteger(value, contract) : validateFloat(value, contract);
 }

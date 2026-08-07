@@ -158,7 +158,7 @@ export function NumericField({
 						placeholder={placeholder}
 						readOnly={readOnly}
 						value={draft}
-						variableTypes="numeric"
+						variableTypes={contract.kind === "integer" ? "integer" : "float"}
 						variables={variables}
 					/>
 				) : (

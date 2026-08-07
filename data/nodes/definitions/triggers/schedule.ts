@@ -12,12 +12,16 @@ export const scheduleTriggerNode = defineNode({
 			label: "Every",
 			type: "number",
 			usesVariables: true,
-			variableTypes: "numeric",
+			variableTypes: "integer",
 			numeric: {
-				kind: "float",
+				// A whole count of the chosen unit. Milliseconds is the
+				// smallest unit and the runner refuses anything below one of
+				// them, so every interval it will accept can be written
+				// exactly without a fraction.
+				kind: "integer",
 				signed: false,
 				minimum: "0",
-				maximum: "1.7976931348623157e308",
+				maximum: "9007199254740991",
 				minimumInclusive: false,
 				maximumInclusive: true,
 			},
@@ -35,13 +39,17 @@ export const scheduleTriggerNode = defineNode({
 	runtimeOutputs: [
 		{
 			name: "interval_seconds",
-			type: "number",
+			// A quarter second schedule is 0.25 seconds, so this is a float
+			// whatever the interval is. Making the type follow the value would
+			// leave the same output an integer on one schedule and a float on
+			// the next.
+			type: "float",
 			description: "Configured schedule interval in seconds.",
 			example: "n-mr3zyt6f-1.interval_seconds",
 		},
 		{
 			name: "missed_intervals",
-			type: "number",
+			type: "integer",
 			description: "Number of schedule intervals skipped before this event.",
 			example: "n-mr3zyt6f-1.missed_intervals",
 		},
@@ -53,7 +61,7 @@ export const scheduleTriggerNode = defineNode({
 		},
 		{
 			name: "scheduled_at_unix",
-			type: "number",
+			type: "integer",
 			description: "Unix timestamp in seconds when the schedule event was created.",
 			example: "n-mr3zyt6f-1.scheduled_at_unix",
 		},

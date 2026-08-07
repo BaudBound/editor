@@ -28,13 +28,13 @@ export const getActiveWindowNode = defineNode({
 		},
 		{
 			name: "process_id",
-			type: "process_id",
+			type: "integer",
 			description: "Owning process identifier.",
 			example: "n-mr3zyt6f-17.process_id",
 		},
 		{
 			name: "executable_path",
-			type: "file_path",
+			type: "string",
 			description: "Owning process executable path when available.",
 			example: "n-mr3zyt6f-17.executable_path",
 		},

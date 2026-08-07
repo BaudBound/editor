@@ -1,6 +1,6 @@
 import { validateUserIdentifier } from "@/data/project/user-identifier";
-import type { VariableReferenceCandidate } from "@/data/project/variables";
-import { getVariableReferenceStatus } from "@/data/project/variables";
+import type { VariableReferenceCandidate, VariableType } from "@/data/project/variables";
+import { getVariableReferenceStatus, variableTypes } from "@/data/project/variables";
 import type { JsonValue } from "@/lib/types";
 import { validateStaticColor } from "./color-match";
 import { getFormDialogFields } from "./form-dialog-fields";
@@ -8,20 +8,6 @@ import { configVisibilityConditionMatches, type NodeConfigField, type VariableIn
 import { numericContractApplies, validateNumericConfigValue } from "./numeric-validation";
 
 const TEMPLATE_PATTERN = /\{\{([^{}]*)}}/g;
-const compatibleTypes: Record<VariableInputContract, ReadonlySet<string> | undefined> = {
-	any: undefined,
-	boolean: new Set(["boolean"]),
-	color: new Set(["color"]),
-	datetime: new Set(["datetime"]),
-	duration: new Set(["duration"]),
-	"file-path": new Set(["file_path"]),
-	"keyboard-key": new Set(["keyboard_key"]),
-	list: new Set(["list"]),
-	numeric: new Set(["number", "http_status_code", "duration_ms", "process_id", "exit_code"]),
-	object: new Set(["object", "http_headers"]),
-	string: new Set(["string"]),
-	text: new Set(["string", "file_content"]),
-};
 
 export function validateConfigField(
 	field: NodeConfigField,
@@ -109,7 +95,7 @@ export function getEffectiveVariableContract(field: NodeConfigField, config: Rec
 		return "any";
 	}
 	if (numericContractApplies(field, config)) {
-		return "numeric";
+		return field.numeric?.kind === "integer" ? "integer" : "float";
 	}
 	if (field.colorPicker) {
 		return "color";
@@ -124,8 +110,46 @@ export function filterCompatibleVariables<TVariable extends VariableReferenceCan
 	return variables.filter((variable) => isVariableTypeCompatible(variable.type, contract));
 }
 
+// Matching is exact. There is no subtyping, so a color is not usable where a
+// string is required. Moving between types is done with an explicit cast.
 export function isVariableTypeCompatible(type: VariableReferenceCandidate["type"], contract: VariableInputContract) {
-	return compatibleTypes[contract]?.has(type) ?? true;
+	return contract === "any" || type === contract;
+}
+
+/**
+ * Splits a template expression into its reference and optional cast target.
+ *
+ * The split happens outside quote context so a pipe inside a quoted accessor,
+ * as in node["a|b"], stays part of the key. Mirrors split_cast in the runner.
+ */
+export function splitCast(expression: string): { reference: string; target: string | null } {
+	let quote: string | null = null;
+	let escaped = false;
+	let separator = -1;
+
+	for (let index = 0; index < expression.length; index += 1) {
+		const character = expression[index];
+		if (escaped) {
+			escaped = false;
+			continue;
+		}
+		if (character === "\\" && quote) {
+			escaped = true;
+			continue;
+		}
+		if (quote) {
+			if (character === quote) quote = null;
+			continue;
+		}
+		if (character === '"' || character === "'") quote = character;
+		else if (character === "|") separator = index;
+	}
+
+	if (separator < 0) return { reference: expression.trim(), target: null };
+	return {
+		reference: expression.slice(0, separator).trim(),
+		target: expression.slice(separator + 1).trim(),
+	};
 }
 
 export function validateVariableReferenceTypes(
@@ -134,13 +158,28 @@ export function validateVariableReferenceTypes(
 	contract: VariableInputContract,
 ) {
 	for (const match of value.matchAll(TEMPLATE_PATTERN)) {
-		const reference = match[1]?.trim() ?? "";
+		const { reference, target } = splitCast(match[1]?.trim() ?? "");
+
+		if (target !== null) {
+			if (!(variableTypes as readonly string[]).includes(target)) {
+				return `Unknown cast target "${target}". Use one of ${variableTypes.join(", ")}.`;
+			}
+			if (!isVariableTypeCompatible(target as VariableType, contract)) {
+				return `This field accepts ${formatVariableInputContract(contract)} variables, but the cast produces ${target}.`;
+			}
+			// The cast decides the type, so the variable's own type is not checked.
+			continue;
+		}
+
 		const variable = variables.find((candidate) => candidate.name === reference);
 		if (variable && !isVariableTypeCompatible(variable.type, contract)) {
-			return `Variable "${reference}" has type ${variable.type}; this field accepts ${formatVariableInputContract(contract)} variables.`;
+			return `Variable "${reference}" has type ${variable.type}; this field accepts ${formatVariableInputContract(contract)} variables. Add a cast such as {{${reference}|${contract}}} to convert it.`;
 		}
 		if (!variable && contract !== "any" && getVariableReferenceStatus(reference, variables) === "possible") {
-			return `Variable "${reference}" has an unknown type; this field accepts ${formatVariableInputContract(contract)} variables. Use a declared typed variable or output.`;
+			// Reading into an object or a list gives a value whose type nothing
+			// can know before the script runs, so a cast is the only way to say
+			// what it holds. Name it here: this is otherwise a dead end.
+			return `Variable "${reference}" has a type that is only known when the script runs; this field accepts ${formatVariableInputContract(contract)} variables. Add a cast such as {{${reference}|${contract}}} to declare what it holds.`;
 		}
 	}
 
@@ -163,9 +202,14 @@ export function validateVariableReferences(value: string, variables: readonly Va
 	}
 
 	for (const match of matches) {
-		const reference = match[1]?.trim() ?? "";
+		// The cast target is not part of the name. Looking a reference up with
+		// its suffix still attached reports every cast as an unknown variable.
+		const { reference, target } = splitCast(match[1]?.trim() ?? "");
 		if (!reference) {
 			return "Variable reference cannot be empty.";
+		}
+		if (target !== null && !(variableTypes as readonly string[]).includes(target)) {
+			return `Unknown cast target "${target}". Use one of ${variableTypes.join(", ")}.`;
 		}
 		if (getVariableReferenceStatus(reference, variables) === "invalid") {
 			return `Variable "${reference}" is not available here.`;
@@ -221,4 +265,43 @@ export function formatVariableInputContract(contract: VariableInputContract) {
 
 function sentence(value: string) {
 	return /[.!?]$/.test(value) ? value : `${value}.`;
+}
+
+/**
+ * Validates a value used as an operand of a numeric comparison.
+ *
+ * A comparison is not a typed slot. The operators read both sides as numbers,
+ * so either numeric type satisfies them, and requiring one of the two would
+ * reject the ordinary case of comparing a counter against a threshold. The
+ * check still rejects a value that is not numeric at all, which the runner
+ * would otherwise only report once the script runs.
+ */
+export function validateNumericComparisonInput(value: string, variables: readonly VariableReferenceCandidate[]) {
+	const referenceError = validateVariableReferences(value, variables);
+	if (referenceError) {
+		return referenceError;
+	}
+
+	for (const match of value.matchAll(TEMPLATE_PATTERN)) {
+		const { reference, target } = splitCast(match[1]?.trim() ?? "");
+
+		if (target !== null) {
+			// The unknown-target case is already reported by the reference check.
+			if (isNumericVariableType(target) || !(variableTypes as readonly string[]).includes(target)) {
+				continue;
+			}
+			return `A comparison needs a number, but the cast produces ${target}.`;
+		}
+
+		const variable = variables.find((candidate) => candidate.name === reference);
+		if (variable && !isNumericVariableType(variable.type)) {
+			return `Variable "${reference}" has type ${variable.type}; a comparison needs an integer or a float. Add a cast such as {{${reference}|float}} to convert it.`;
+		}
+	}
+
+	return "";
+}
+
+function isNumericVariableType(type: string) {
+	return type === "integer" || type === "float";
 }

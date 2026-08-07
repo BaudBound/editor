@@ -41,7 +41,7 @@ export const websocketTriggerNode = defineNode({
 		},
 		{
 			name: "headers",
-			type: "http_headers",
+			type: "object",
 			description: "WebSocket handshake headers when available.",
 			example: 'n-mr3zyt6f-6.headers["sec-websocket-protocol"]',
 		},

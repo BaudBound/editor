@@ -318,10 +318,10 @@ export function validateFormDialogChoiceDisplayValue(choices: readonly FormDialo
 }
 
 export function formDialogFieldRuntimeType(field: FormDialogFieldRow): RuntimeDataType | null {
-	if (field.type === "number" || field.type === "slider") return "number";
+	if (field.type === "number" || field.type === "slider") return "float";
 	if (field.type === "checkbox") return "boolean";
 	if (field.type === "multi_choice" || (field.type === "file" && field.multiple)) return "list";
-	if (field.type === "file" || field.type === "folder") return "file_path";
+	if (field.type === "file" || field.type === "folder") return "string";
 	if (field.type === "color") return "color";
 	if (isPresentationFieldType(field.type)) return null;
 	return "string";

@@ -537,7 +537,7 @@ function VariableTextField({
 				multiline={multiline}
 				onChange={onChange}
 				value={value}
-				variableTypes="text"
+				variableTypes="string"
 				variables={variables}
 			/>
 			<FieldError id={errorId} message={error} />

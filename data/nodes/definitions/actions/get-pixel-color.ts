@@ -11,7 +11,7 @@ export const getPixelColorNode = defineNode({
 			label: "Screen X",
 			type: "number",
 			usesVariables: true,
-			variableTypes: "numeric",
+			variableTypes: "integer",
 			numeric: {
 				kind: "integer",
 				signed: true,
@@ -26,7 +26,7 @@ export const getPixelColorNode = defineNode({
 			label: "Screen Y",
 			type: "number",
 			usesVariables: true,
-			variableTypes: "numeric",
+			variableTypes: "integer",
 			numeric: {
 				kind: "integer",
 				signed: true,
@@ -49,8 +49,8 @@ export const getPixelColorNode = defineNode({
 	risk: "medium",
 	supportedTargetRuntimes: ["Windows Desktop"],
 	runtimeOutputs: fallible([
-		{ name: "x", type: "number", description: "Signed virtual-desktop X coordinate.", example: "n-mr3zyt6f-19.x" },
-		{ name: "y", type: "number", description: "Signed virtual-desktop Y coordinate.", example: "n-mr3zyt6f-19.y" },
+		{ name: "x", type: "integer", description: "Signed virtual-desktop X coordinate.", example: "n-mr3zyt6f-19.x" },
+		{ name: "y", type: "integer", description: "Signed virtual-desktop Y coordinate.", example: "n-mr3zyt6f-19.y" },
 		{ name: "hex", type: "color", description: "Pixel color as a hex string.", example: "n-mr3zyt6f-19.hex" },
 		{
 			name: "rgb",
@@ -58,9 +58,9 @@ export const getPixelColorNode = defineNode({
 			description: "Pixel color as red, green, and blue channels.",
 			example: "n-mr3zyt6f-19.rgb.r",
 			fields: [
-				{ name: "r", type: "number", description: "Red channel, 0-255." },
-				{ name: "g", type: "number", description: "Green channel, 0-255." },
-				{ name: "b", type: "number", description: "Blue channel, 0-255." },
+				{ name: "r", type: "integer", description: "Red channel, 0-255." },
+				{ name: "g", type: "integer", description: "Green channel, 0-255." },
+				{ name: "b", type: "integer", description: "Blue channel, 0-255." },
 			],
 		},
 		{
@@ -69,17 +69,17 @@ export const getPixelColorNode = defineNode({
 			description: "Pixel color as red, green, blue, and alpha channels.",
 			example: "n-mr3zyt6f-19.rgba.a",
 			fields: [
-				{ name: "r", type: "number", description: "Red channel, 0-255." },
-				{ name: "g", type: "number", description: "Green channel, 0-255." },
-				{ name: "b", type: "number", description: "Blue channel, 0-255." },
-				{ name: "a", type: "number", description: "Alpha channel, 0-255." },
+				{ name: "r", type: "integer", description: "Red channel, 0-255." },
+				{ name: "g", type: "integer", description: "Green channel, 0-255." },
+				{ name: "b", type: "integer", description: "Blue channel, 0-255." },
+				{ name: "a", type: "integer", description: "Alpha channel, 0-255." },
 			],
 		},
-		{ name: "red", type: "number", description: "Red channel, 0-255.", example: "n-mr3zyt6f-19.red" },
-		{ name: "green", type: "number", description: "Green channel, 0-255.", example: "n-mr3zyt6f-19.green" },
-		{ name: "blue", type: "number", description: "Blue channel, 0-255.", example: "n-mr3zyt6f-19.blue" },
-		{ name: "alpha", type: "number", description: "Alpha channel, 0-255.", example: "n-mr3zyt6f-19.alpha" },
-		{ name: "integer", type: "number", description: "Packed RGB integer value.", example: "n-mr3zyt6f-19.integer" },
+		{ name: "red", type: "integer", description: "Red channel, 0-255.", example: "n-mr3zyt6f-19.red" },
+		{ name: "green", type: "integer", description: "Green channel, 0-255.", example: "n-mr3zyt6f-19.green" },
+		{ name: "blue", type: "integer", description: "Blue channel, 0-255.", example: "n-mr3zyt6f-19.blue" },
+		{ name: "alpha", type: "integer", description: "Alpha channel, 0-255.", example: "n-mr3zyt6f-19.alpha" },
+		{ name: "integer", type: "integer", description: "Packed RGB integer value.", example: "n-mr3zyt6f-19.integer" },
 	]),
 	runnerType: "get_pixel_color",
 	simulation: {

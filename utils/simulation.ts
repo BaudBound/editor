@@ -1,5 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 import { conditionValuesEqual, evaluateConditionValues } from "@/data/nodes/condition-comparison";
+import { splitCast } from "@/data/nodes/config-field-validation";
 import { isConditionRow, isSwitchCaseRow } from "@/data/nodes/definitions/rows";
 import type { NodeSimulationApi } from "@/data/nodes/node-definition";
 import { numericContractApplies, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
@@ -16,6 +17,7 @@ import type {
 } from "@/lib/types";
 import { getEdgeExecutionOrder, getEdgeExecutionOrderErrors } from "@/utils/editor-graph";
 import { createHttpActionError } from "@/utils/http-action-contract";
+import { castSimulatedValue } from "@/utils/value-cast";
 import type {
 	NodeExecutionResult,
 	SimulationContext,
@@ -45,12 +47,28 @@ const MAX_VARIABLE_SNAPSHOT_STRING_LENGTH = 4000;
  * distinguishable from a transport failure.
  */
 class SimulationHttpClientError extends Error {
-	constructor(
-		message: string,
-		readonly code: string,
-	) {
+	readonly code: string;
+
+	constructor(message: string, code: string) {
 		super(message);
 		this.name = "SimulationHttpClientError";
+		this.code = code;
+	}
+}
+
+/**
+ * Raised when a `{{reference|target}}` cast fails while resolving a template.
+ *
+ * Caught once, centrally, in processSimulationFrames, so it aborts the whole
+ * simulated run instead of resolving to a node's failed output — matching the
+ * runner, where the same cast failure is a fatal RuntimeError rather than a
+ * structured action failure. Call sites that catch errors generically must
+ * re-throw this one instead of swallowing it into an ordinary node failure.
+ */
+class SimulationCastError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "SimulationCastError";
 	}
 }
 
@@ -233,7 +251,23 @@ async function processSimulationFrames(context: SimulationContext, initialFrames
 			continue;
 		}
 
-		await processSimulationFrame(context, frame, frames);
+		try {
+			await processSimulationFrame(context, frame, frames);
+		} catch (error) {
+			if (!(error instanceof SimulationCastError)) {
+				throw error;
+			}
+			// A failed cast stops the whole run, matching the runner: there the
+			// same failure is a fatal RuntimeError rather than a structured
+			// action failure, so it is never routed to a node's failed output.
+			context.failed = true;
+			context.halted = true;
+			await pushStep(context, {
+				level: "error",
+				message: `[Simulation] ${error.message}`,
+			});
+			return;
+		}
 	}
 }
 
@@ -412,6 +446,9 @@ async function executeResolvedNodeFrame(
 	try {
 		handle = await determineOutputHandle(node, context, outcome);
 	} catch (error) {
+		if (error instanceof SimulationCastError) {
+			throw error;
+		}
 		context.failed = true;
 		await pushStep(context, {
 			level: "error",
@@ -524,6 +561,9 @@ async function processWhileFrame(
 	try {
 		conditionPassed = await evaluateIfNode(node, context);
 	} catch (error) {
+		if (error instanceof SimulationCastError) {
+			throw error;
+		}
 		context.failed = true;
 		await pushStep(context, {
 			level: "error",
@@ -968,6 +1008,9 @@ async function executeHttpRequestNode(
 			);
 		}
 	} catch (error) {
+		if (error instanceof SimulationCastError) {
+			throw error;
+		}
 		return {
 			failed: true,
 			outputData: {
@@ -1017,6 +1060,9 @@ async function executeHttpRequestNode(
 
 		return { failed: false, outputData };
 	} catch (error) {
+		if (error instanceof SimulationCastError) {
+			throw error;
+		}
 		if (context.signal?.aborted) {
 			return { failed: false, outputData: {} };
 		}
@@ -1248,11 +1294,35 @@ function normalizeIterationCount(value: JsonValue) {
 	throw new TypeError("Validated loop count did not resolve to an integer");
 }
 
-function getReferenceValue(reference: string, context: SimulationContext): JsonValue {
-	return tryGetReferenceValue(reference, context) ?? `{{${reference}}}`;
+function getReferenceValue(expression: string, context: SimulationContext): JsonValue {
+	return tryGetReferenceValue(expression, context) ?? `{{${expression}}}`;
 }
 
-function tryGetReferenceValue(reference: string, context: SimulationContext): JsonValue | undefined {
+/**
+ * Resolves a `{{reference}}` or `{{reference|target}}` expression, splitting
+ * and casting exactly as resolve_variable_expression does in the runner.
+ *
+ * A cast failure throws SimulationCastError instead of returning undefined,
+ * so the caller cannot mistake it for an unresolved reference and fall back
+ * to leaving the template text in place. `null` fails every target: it is
+ * what an unset variable or a missing key both resolve to, and castSimulatedValue
+ * already rejects it for every target, so no separate check is needed here.
+ */
+function tryGetReferenceValue(expression: string, context: SimulationContext): JsonValue | undefined {
+	const { reference, target } = splitCast(expression);
+	const resolved = resolveReferencePath(reference, context);
+	if (target === null) {
+		return resolved;
+	}
+
+	const outcome = castSimulatedValue(resolved ?? null, target);
+	if (!outcome.ok) {
+		throw new SimulationCastError(`variable "${reference}" ${outcome.error}`);
+	}
+	return outcome.value as JsonValue;
+}
+
+function resolveReferencePath(reference: string, context: SimulationContext): JsonValue | undefined {
 	if (reference in context.runtimeVariables) {
 		return context.runtimeVariables[reference];
 	}

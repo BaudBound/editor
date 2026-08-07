@@ -35,13 +35,13 @@ export const processStartedTriggerNode = defineNode({
 		},
 		{
 			name: "process_id",
-			type: "process_id",
+			type: "integer",
 			description: "Started process identifier.",
 			example: "n-mr3zyt6f-7.process_id",
 		},
 		{
 			name: "executable_path",
-			type: "file_path",
+			type: "string",
 			description: "Executable path when the runner exposes it.",
 			example: "n-mr3zyt6f-7.executable_path",
 		},

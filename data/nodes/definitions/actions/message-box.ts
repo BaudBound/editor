@@ -22,7 +22,7 @@ export const messageBoxNode = defineNode({
 			label: "Title",
 			type: "text",
 			usesVariables: true,
-			variableTypes: "text",
+			variableTypes: "string",
 			nonEmpty: true,
 		},
 		{
@@ -30,7 +30,7 @@ export const messageBoxNode = defineNode({
 			label: "Message",
 			type: "textarea",
 			usesVariables: true,
-			variableTypes: "text",
+			variableTypes: "string",
 			nonEmpty: true,
 		},
 		{
@@ -46,7 +46,7 @@ export const messageBoxNode = defineNode({
 				maximumInclusive: true,
 			},
 			usesVariables: true,
-			variableTypes: "numeric",
+			variableTypes: "float",
 			required: false,
 		},
 	],

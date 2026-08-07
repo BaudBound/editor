@@ -1,4 +1,8 @@
-import { runtimeNumberContract, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
+import {
+	runtimeIntegerContract,
+	runtimeNumberContract,
+	validateNumericConfigValue,
+} from "@/data/nodes/numeric-validation";
 import { formatTypedValueForDisplay, validateTypedValue } from "@/data/project/typed-values";
 import { type ListItemType, validateVariableName } from "@/data/project/variables";
 import type { JsonValue, ScriptSetting, ScriptSettingType } from "@/lib/types";
@@ -12,12 +16,13 @@ export function formatScriptSettingValue(type: ScriptSettingType, value: JsonVal
 }
 
 export function parseScriptSettingValue(type: ScriptSettingType, rawValue: string): JsonValue | undefined {
-	if (type === "string" || type === "file_path" || type === "hotkey" || type === "color") {
+	if (type === "string" || type === "hotkey" || type === "color") {
 		return rawValue;
 	}
-	if (type === "number") {
+	if (type === "integer" || type === "float") {
 		const trimmed = rawValue.trim();
-		return trimmed && !validateNumericConfigValue(trimmed, runtimeNumberContract) ? Number(trimmed) : undefined;
+		const contract = type === "integer" ? runtimeIntegerContract : runtimeNumberContract;
+		return trimmed && !validateNumericConfigValue(trimmed, contract) ? Number(trimmed) : undefined;
 	}
 	if (type === "boolean") {
 		return rawValue === "true" ? true : rawValue === "false" ? false : undefined;
@@ -41,7 +46,10 @@ export function scriptSettingValueError(type: ScriptSettingType, rawValue: strin
 	if (parsed !== undefined) {
 		return validateTypedValue(type, parsed, itemType) ?? scriptSettingStructureError(parsed);
 	}
-	if (type === "number") {
+	if (type === "integer") {
+		return "Enter a whole number.";
+	}
+	if (type === "float") {
 		return "Enter a finite number.";
 	}
 	if (type === "boolean") {

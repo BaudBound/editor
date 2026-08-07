@@ -10,7 +10,6 @@ import {
 	getTargetRuntimeCompatibilityErrors,
 	validateNodeConfig,
 } from "@/data/nodes/registry";
-import { validateWindowsHotkey } from "@/data/nodes/windows-key-contract";
 import { typedDatetimeIso } from "@/data/project/datetime";
 import { targetRuntimes } from "@/data/project/runtimes";
 import { userIdentifierPattern } from "@/data/project/user-identifier";
@@ -31,6 +30,7 @@ import {
 } from "@/lib/types";
 import { isSelfConnection } from "@/utils/editor-graph";
 import { getAnonymousPublicHttpsUrlError } from "@/utils/script-repository";
+import { validateSimulatedValue } from "@/utils/value-cast";
 
 export const canonicalCapabilities = [
 	"trigger.manual",
@@ -513,12 +513,11 @@ function validateDefaultVariableProgramContract(manifestValue: unknown, programV
 }
 
 function defaultValueMatchesType(type: string, value: unknown, itemType?: unknown, allowEmptyString = false): boolean {
+	// A package default is checked against the same ten rules the simulator and
+	// the runner use. This once held its own copy of the vocabulary, which went
+	// stale and made a package carrying an integer, float or keyboard key
+	// variable impossible to export.
 	if (type === "string") return typeof value === "string" && (allowEmptyString || value.trim().length > 0);
-	if (type === "file_path") return typeof value === "string" && value.trim().length > 0;
-	if (type === "hotkey") return typeof value === "string" && !validateWindowsHotkey(value);
-	if (type === "color") return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
-	if (type === "number") return typeof value === "number" && Number.isFinite(value);
-	if (type === "boolean") return typeof value === "boolean";
 	if (type === "list") {
 		return (
 			typeof itemType === "string" &&
@@ -527,11 +526,22 @@ function defaultValueMatchesType(type: string, value: unknown, itemType?: unknow
 			value.every((item) => defaultValueMatchesType(itemType, item, undefined, true))
 		);
 	}
-	if (type === "object") return isJsonObject(value);
-	const object = asRecord(value);
 	if (type === "datetime") {
 		return typedDatetimeIso(value as JsonValue) !== null;
 	}
+	if (type === "float") {
+		// A declared value is read by the type declared beside it, so `300`
+		// under `"type": "float"` is three hundred as a float. JavaScript has
+		// one number type and writes 300.0 as `300`, so requiring a decimal
+		// part here would make a whole float impossible to write at all. This
+		// is only about declared values; a value flowing through a run still
+		// has one exact type, and an integer there is not a float.
+		return typeof value === "number" && Number.isFinite(value);
+	}
+	if (variableTypes.includes(type as (typeof variableTypes)[number])) {
+		return validateSimulatedValue(value, type) === null;
+	}
+	const object = asRecord(value);
 	return (
 		object?.type === "duration" &&
 		typeof object.unit === "string" &&

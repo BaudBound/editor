@@ -2,7 +2,7 @@ import type { Edge, Node } from "@xyflow/react";
 import type { VariableReferenceCandidate } from "@/data/project/variables";
 import type { JsonValue, ScriptNodeData } from "@/lib/types";
 import { conditionNumber } from "../condition-comparison";
-import { validateVariableInput } from "../config-field-validation";
+import { validateNumericComparisonInput, validateVariableInput } from "../config-field-validation";
 import {
 	booleanConditionOperatorOptions,
 	comparisonOperatorOptions,
@@ -140,14 +140,20 @@ export function validateConditionVariableInputs(
 	if (!Array.isArray(config.conditions)) return [];
 	return config.conditions.flatMap((value, index) => {
 		if (!isConditionRow(value)) return [];
-		const contract = isNumericConditionOperator(value.operator) ? "numeric" : "any";
+		// A comparison reads both sides as numbers, so either numeric type
+		// satisfies it. This is the verification path, and it has to agree with
+		// the inspector or a script passes while being edited and then fails on
+		// export.
+		const numeric = isNumericConditionOperator(value.operator);
 		const inputs: Array<[string, string]> = [["value", value.left]];
 		if (!isUnaryConditionOperator(value.operator)) {
 			inputs.push([isBetweenConditionOperator(value.operator) ? "start value" : "target", value.right]);
 		}
 		if (isBetweenConditionOperator(value.operator)) inputs.push(["end value", value.rightEnd ?? ""]);
 		return inputs.flatMap(([label, input]) => {
-			const error = validateVariableInput(input, variables, contract);
+			const error = numeric
+				? validateNumericComparisonInput(input, variables)
+				: validateVariableInput(input, variables, "any");
 			return error ? [`condition ${index + 1} ${label}: ${error}`] : [];
 		});
 	});

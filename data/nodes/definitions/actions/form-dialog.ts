@@ -42,7 +42,7 @@ export const formDialogNode = defineNode({
 			label: "Window title",
 			type: "text",
 			usesVariables: true,
-			variableTypes: "text",
+			variableTypes: "string",
 			nonEmpty: true,
 		},
 		{
@@ -50,7 +50,7 @@ export const formDialogNode = defineNode({
 			label: "Description",
 			type: "textarea",
 			usesVariables: true,
-			variableTypes: "text",
+			variableTypes: "string",
 			required: false,
 		},
 		{
@@ -79,7 +79,7 @@ export const formDialogNode = defineNode({
 				maximumInclusive: true,
 			},
 			usesVariables: true,
-			variableTypes: "numeric",
+			variableTypes: "float",
 			required: false,
 		},
 	],
@@ -436,28 +436,28 @@ function validateFormDialogVariableInputs(
 ) {
 	return getFormDialogFields(config.fields).flatMap((field, index) => {
 		const prefix = `component ${index + 1}`;
-		const inputs: Array<[string, string, "color" | "datetime" | "numeric" | "text"]> = [
-			["label", field.label, "text"],
-			["description", field.description, "text"],
+		const inputs: Array<[string, string, "color" | "datetime" | "float" | "integer" | "string"]> = [
+			["label", field.label, "string"],
+			["description", field.description, "string"],
 		];
 		if (usesAccentColor(field.type)) inputs.push(["accent color", field.accentColor, "color"]);
-		if (usesPlaceholder(field.type)) inputs.push(["placeholder", field.placeholder, "text"]);
-		if (field.type === "image") inputs.push(["image height", field.imageHeight, "numeric"]);
+		if (usesPlaceholder(field.type)) inputs.push(["placeholder", field.placeholder, "string"]);
+		if (field.type === "image") inputs.push(["image height", field.imageHeight, "integer"]);
 		if (usesChoices(field.type)) {
 			for (const [choiceIndex, choice] of field.choices.entries()) {
-				inputs.push([`choice ${choiceIndex + 1} displayed value`, choice.displayValue, "text"]);
+				inputs.push([`choice ${choiceIndex + 1} displayed value`, choice.displayValue, "string"]);
 			}
 		}
-		if (field.type === "number") inputs.push(["default value", field.defaultValue, "numeric"]);
+		if (field.type === "number") inputs.push(["default value", field.defaultValue, "float"]);
 		else if (field.type === "color") inputs.push(["default color", field.defaultValue, "color"]);
 		else if (field.type === "date" || field.type === "time" || field.type === "datetime") {
 			inputs.push(["default value", field.defaultValue, "datetime"]);
 		} else if (field.type === "slider") {
-			inputs.push(["minimum", field.minimum, "numeric"]);
-			inputs.push(["maximum", field.maximum, "numeric"]);
-			inputs.push(["step", field.step, "numeric"]);
-			inputs.push(["default value", field.defaultValue, "numeric"]);
-		} else if (usesDefaultValue(field.type)) inputs.push(["default value", field.defaultValue, "text"]);
+			inputs.push(["minimum", field.minimum, "float"]);
+			inputs.push(["maximum", field.maximum, "float"]);
+			inputs.push(["step", field.step, "float"]);
+			inputs.push(["default value", field.defaultValue, "float"]);
+		} else if (usesDefaultValue(field.type)) inputs.push(["default value", field.defaultValue, "string"]);
 
 		return inputs.flatMap(([label, value, contract]) => {
 			const error = validateVariableInput(value, variables, contract);

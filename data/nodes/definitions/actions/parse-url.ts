@@ -11,7 +11,7 @@ export const parseUrlNode = defineNode({
 		{
 			key: "url",
 			label: "URL",
-			type: "textarea",
+			type: "text",
 			usesVariables: true,
 			variableTypes: "string",
 			validate: (config) => {

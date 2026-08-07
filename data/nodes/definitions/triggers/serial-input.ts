@@ -37,7 +37,7 @@ export const serialInputTriggerNode = defineNode({
 			description: "Serial data received from the device.",
 			example: "n-mr3zyt6f-5.data",
 		},
-		{ name: "bytes", type: "number", description: "Number of bytes received.", example: "n-mr3zyt6f-5.bytes" },
+		{ name: "bytes", type: "integer", description: "Number of bytes received.", example: "n-mr3zyt6f-5.bytes" },
 		{
 			name: "timestamp",
 			type: "string",

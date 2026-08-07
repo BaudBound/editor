@@ -34,10 +34,10 @@ export function KeyCaptureInput({
 	const errorId = `${inputId}-error`;
 	const initialSource = isFullVariableReference(value) ? "variable" : "literal";
 	const [source, setSource] = useState<"literal" | "variable">(initialSource);
-	const compatibleVariables = filterCompatibleVariables(variables, "keyboard-key");
+	const compatibleVariables = filterCompatibleVariables(variables, "hotkey");
 	const selectedVariableName = variableNameFromToken(value);
 	const selectedVariable = compatibleVariables.find((variable) => variable.name === selectedVariableName);
-	const selectedVariableTypeError = validateVariableReferenceTypes(value, variables, "keyboard-key");
+	const selectedVariableTypeError = validateVariableReferenceTypes(value, variables, "hotkey");
 	const error =
 		allowVariables && source === "variable"
 			? selectedVariableTypeError
@@ -90,11 +90,9 @@ export function KeyCaptureInput({
 
 	return (
 		<div>
-			{label && (
-				<label htmlFor={inputId} className="mb-1 block font-mono text-sm text-baud-muted">
-					{label}
-				</label>
-			)}
+			{/* The source selector comes first so that each label sits directly
+			    above the control it names. With the field label on top the two
+			    labels stacked, and neither was next to its own input. */}
 			{allowVariables && (
 				<div className="mb-2">
 					<span className="mb-1 block font-mono text-sm text-baud-muted">Key source</span>
@@ -111,6 +109,11 @@ export function KeyCaptureInput({
 						}}
 					/>
 				</div>
+			)}
+			{label && (
+				<label htmlFor={inputId} className="mb-1 block font-mono text-sm text-baud-muted">
+					{label}
+				</label>
 			)}
 			{source === "variable" && allowVariables ? (
 				<OptionCombobox
