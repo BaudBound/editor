@@ -394,3 +394,65 @@ test("the Format Text node renders a datetime from the input", async () => {
 	assert.equal(badPattern.ok, false);
 	assert.match(badPattern.error, /not a format token/);
 });
+
+test("the simulator agrees with the shared datetime format fixtures", async () => {
+	const { datetimeFormatTokenGroups, formatDatetime, validateDatetimePattern } = await import(
+		"../data/project/datetime-format.ts"
+	);
+	const conformance = JSON.parse(
+		readFileSync(join(appRoot, "contracts", "datetime-format-conformance.json"), "utf8"),
+	) as {
+		cases: { error?: boolean; pattern: string; reason: string; result?: string; value: string }[];
+		tokens: string[];
+		version: number;
+	};
+	assert.equal(conformance.version, 1);
+
+	// A token added on one side only would otherwise pass, because a case only
+	// asserts the patterns it lists.
+	const ours = datetimeFormatTokenGroups.flatMap((group) => group.tokens.map((entry) => entry.token));
+	assert.deepEqual([...conformance.tokens].sort(), [...ours].sort());
+
+	for (const testCase of conformance.cases) {
+		const value = { type: "datetime", value: testCase.value };
+		const problem = validateDatetimePattern(testCase.pattern);
+		if (testCase.error) {
+			assert.notEqual(problem, "", `${testCase.pattern} should be refused: ${testCase.reason}`);
+			continue;
+		}
+		assert.equal(problem, "", `${testCase.pattern} should be valid: ${testCase.reason}`);
+		assert.equal(formatDatetime(value, testCase.pattern), testCase.result, `${testCase.pattern}: ${testCase.reason}`);
+	}
+});
+
+test("the simulator agrees with the shared datetime part fixtures", async () => {
+	const { datetimePartFields, derivedPartValue, durationPartFields } = await import("../data/project/derived-parts.ts");
+	const conformance = JSON.parse(
+		readFileSync(join(appRoot, "contracts", "datetime-part-conformance.json"), "utf8"),
+	) as {
+		cases: { parts: Record<string, number>; reason: string; value: Record<string, unknown> }[];
+		datetime_parts: string[];
+		duration_parts: string[];
+		version: number;
+	};
+	assert.equal(conformance.version, 1);
+
+	assert.deepEqual(
+		conformance.datetime_parts,
+		datetimePartFields.map((field) => field.name),
+	);
+	assert.deepEqual(
+		conformance.duration_parts,
+		durationPartFields.map((field) => field.name),
+	);
+
+	for (const testCase of conformance.cases) {
+		for (const [part, expected] of Object.entries(testCase.parts)) {
+			assert.equal(
+				derivedPartValue(testCase.value, part),
+				expected,
+				`${part} of ${JSON.stringify(testCase.value)}: ${testCase.reason}`,
+			);
+		}
+	}
+});
