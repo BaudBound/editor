@@ -258,3 +258,27 @@ test("a trigger's overlap mode falls back to queue", async () => {
 	assert.equal(triggerOverlapMode({ data: { config: { overlap: "nonsense" } } }), "queue");
 	assert.equal(triggerOverlapMode(undefined), "queue");
 });
+
+test("every system variable the picker offers is one the runner supplies", async () => {
+	const { builtInVariableGroups } = await import("../data/project/built-in-variables.ts");
+	// Only the producing code. The file's own tests name every variable too,
+	// so reading the whole file would pass even if the producer supplied none.
+	const producerFile = readFileSync(
+		join(appRoot, "..", "baudbound", "crates", "baudbound-core", "src", "system_variables.rs"),
+		"utf8",
+	);
+	const producer = producerFile.slice(0, producerFile.indexOf("#[cfg(test)]"));
+	assert.ok(producer.length > 0, "the producer should be found");
+
+	const offered = (builtInVariableGroups.find((group) => group.id === "system")?.variables ?? []).map(
+		(variable) => variable.name,
+	);
+	assert.ok(offered.length > 0, "the system group should not be empty");
+
+	// The editor offered these long before the runner supplied any of them, so
+	// a script reading one printed the braces in production. Anything the
+	// picker lists has to exist on the other side.
+	for (const name of offered) {
+		assert.ok(producer.includes(`"${name}"`), `the runner must supply ${name}`);
+	}
+});

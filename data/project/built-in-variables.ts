@@ -19,7 +19,7 @@ export type BuiltInVariableGroup = {
 };
 
 type BuiltInVariableScope = "manifest" | "system";
-type BuiltInVariableValue = string | number;
+type BuiltInVariableValue = string | number | { type: "datetime"; value: string };
 type BuiltInVariableRuntimeEntry = BuiltInVariable &
 	EditorVariable<BuiltInVariableValue | undefined> & {
 		scope: BuiltInVariableScope;
@@ -45,8 +45,7 @@ const systemRuntimeBindings = {
 	system_user: "runner.system.user",
 	system_locale: "runner.system.locale",
 	system_timezone: "runner.system.timezone",
-	system_date: "runner.system.date",
-	system_time: "runner.system.time",
+	system_datetime: "runner.system.datetime",
 } satisfies Record<string, string>;
 
 export const builtInVariableGroups: BuiltInVariableGroup[] = [
@@ -167,20 +166,13 @@ export const builtInVariableGroups: BuiltInVariableGroup[] = [
 				runtimeBinding: systemRuntimeBindings.system_timezone,
 			},
 			{
-				name: "system_date",
-				token: "{{system_date}}",
-				type: "string",
-				description: "Current runner-local date in ISO date format.",
-				example: "2026-07-03",
-				runtimeBinding: systemRuntimeBindings.system_date,
-			},
-			{
-				name: "system_time",
-				token: "{{system_time}}",
-				type: "string",
-				description: "Current runner-local time in 24-hour format.",
-				example: "14:30:00",
-				runtimeBinding: systemRuntimeBindings.system_time,
+				name: "system_datetime",
+				token: "{{system_datetime}}",
+				type: "datetime",
+				description:
+					"Current runner date and time, carrying the runner's local offset. Read a part of it with a suffix such as .$hour, or render it with Format Text.",
+				example: "2026-07-03T14:30:00+03:00",
+				runtimeBinding: systemRuntimeBindings.system_datetime,
 			},
 		],
 	},
@@ -235,8 +227,7 @@ export function createSimulationBuiltInVariableValues(projectSettings: ProjectSe
 		system_user: "simulator",
 		system_locale: locale,
 		system_timezone: timezone,
-		system_date: formatSimulationDate(now),
-		system_time: formatSimulationTime(now),
+		system_datetime: { type: "datetime", value: toLocalIsoString(now) },
 	} satisfies Record<string, BuiltInVariableValue>;
 }
 
@@ -298,10 +289,19 @@ function getSimulationTimeZone() {
 	}
 }
 
-function formatSimulationDate(date: Date) {
-	return date.toISOString().slice(0, 10);
-}
-
-function formatSimulationTime(date: Date) {
-	return date.toTimeString().slice(0, 8);
+/**
+ * RFC 3339 carrying the local offset, matching what the runner produces.
+ *
+ * toISOString would report UTC, so an author simulating at 14:30 local time
+ * would see a different hour than a real run gives them.
+ */
+function toLocalIsoString(date: Date) {
+	const pad = (value: number, width = 2) => String(Math.abs(value)).padStart(width, "0");
+	const offsetMinutes = -date.getTimezoneOffset();
+	const sign = offsetMinutes < 0 ? "-" : "+";
+	const offset = `${sign}${pad(Math.trunc(offsetMinutes / 60))}:${pad(offsetMinutes % 60)}`;
+	return (
+		`${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+		`T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${offset}`
+	);
 }
