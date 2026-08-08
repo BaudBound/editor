@@ -244,3 +244,17 @@ test("a declared variable settles the operation's scope and type", async () => {
 	assert.notDeepEqual(contract("persistent", "runtime", "integer"), []);
 	assert.notDeepEqual(contract("persistent", "persistent", "string"), []);
 });
+
+test("a trigger's overlap mode falls back to queue", async () => {
+	const { triggerOverlapMode } = await import("../data/nodes/definitions/shared-fields.ts");
+
+	assert.equal(triggerOverlapMode({ data: { config: { overlap: "stop" } } }), "stop");
+	assert.equal(triggerOverlapMode({ data: { config: { overlap: "restart" } } }), "restart");
+	assert.equal(triggerOverlapMode({ data: { config: { overlap: "skip" } } }), "skip");
+
+	// A script written before the option existed, or carrying a value from a
+	// newer editor, keeps today's behaviour rather than being refused.
+	assert.equal(triggerOverlapMode({ data: { config: {} } }), "queue");
+	assert.equal(triggerOverlapMode({ data: { config: { overlap: "nonsense" } } }), "queue");
+	assert.equal(triggerOverlapMode(undefined), "queue");
+});

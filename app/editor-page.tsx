@@ -46,6 +46,7 @@ import { TopBar } from "@/components/shell/top-bar";
 import { Toaster } from "@/components/ui/sonner";
 import { defaultEditorEdgeStyle, type EditorEdgeStyle, toReactFlowEdgeType } from "@/data/editor/flow-canvas";
 import { createSwitchOutputPorts, getSwitchCaseRowsFromValue } from "@/data/nodes/definitions/rows";
+import { triggerOverlapMode } from "@/data/nodes/definitions/shared-fields";
 import { createDevelopmentEditorNodes, isDevelopmentGraphEnabled } from "@/data/nodes/development-graph";
 import { createNodeFromPaletteItem, getFlatPaletteItems, getRuntimeDataOutputs } from "@/data/nodes/registry";
 import { getScriptSettingSimulationProblems } from "@/data/project/script-settings";
@@ -1034,15 +1035,44 @@ export function EditorPage({
 
 	const handleTriggerSimulation = useCallback(
 		async (triggerNodeId: string, payload: SimulationTriggerPayload) => {
+			// What a trigger does when its script is already running is the
+			// trigger's own setting, so the simulator has to follow it rather
+			// than always refusing. None of the modes need two runs at once,
+			// which is the only thing the simulator genuinely cannot do.
 			if (simulationStatus === "running") {
+				const overlap = triggerOverlapMode(scriptNodes.find((node) => node.id === triggerNodeId));
+				if (overlap === "queue") {
+					appendSimulationLogs([
+						{
+							level: "warn",
+							message:
+								"[Simulation] A trigger is already running. This trigger queues, so stop the active run before firing it again.",
+						},
+					]);
+					expandPanel("bottom");
+					return;
+				}
+				if (overlap === "skip") {
+					appendSimulationLogs([{ level: "info", message: "[Simulation] Skipped: the script is already running." }]);
+					expandPanel("bottom");
+					return;
+				}
+
+				abortSimulationLifecycle("stopped by a trigger");
+				setSimulationStatus("stopped");
 				appendSimulationLogs([
 					{
-						level: "warn",
-						message: "[Simulation] A trigger is already running. Stop it before firing another trigger.",
+						level: "info",
+						message:
+							overlap === "stop"
+								? "[Simulation] Stopped the running script. No new run started."
+								: "[Simulation] Stopped the running script and started a new run.",
 					},
 				]);
 				expandPanel("bottom");
-				return;
+				if (overlap === "stop") {
+					return;
+				}
 			}
 
 			const lifecycle = await prepareVerifiedSimulationSession(triggerNodeId);
@@ -1058,7 +1088,15 @@ export function EditorPage({
 				triggerNodeId,
 			});
 		},
-		[appendSimulationLogs, expandPanel, prepareVerifiedSimulationSession, runSimulationTrigger, simulationStatus],
+		[
+			abortSimulationLifecycle,
+			appendSimulationLogs,
+			expandPanel,
+			prepareVerifiedSimulationSession,
+			runSimulationTrigger,
+			scriptNodes,
+			simulationStatus,
+		],
 	);
 
 	const handleStartScheduleSimulation = useCallback(
