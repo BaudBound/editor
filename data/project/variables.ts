@@ -5,6 +5,7 @@ import {
 	validateNumericConfigValue,
 } from "@/data/nodes/numeric-validation";
 import { typedDatetimeIso } from "@/data/project/datetime";
+import { derivedPartFieldsForType, derivedPartValue } from "@/data/project/derived-parts";
 import { userIdentifierPattern } from "@/data/project/user-identifier";
 import type { JsonValue, RuntimeDataType, ScriptNodeData } from "@/lib/types";
 
@@ -595,7 +596,9 @@ export function createDerivedVariableMetadataDefinitions(variables: EditorVariab
 			return [];
 		}
 
-		return derivedVariableMetadataFields.map((field) => {
+		// Parts are offered only where they exist, so a string does not
+		// advertise a .$hour that would never resolve.
+		return [...derivedVariableMetadataFields, ...derivedPartFieldsForType(variable.type)].map((field) => {
 			const name = `${variable.name}.${field.name}`;
 			return {
 				description: `${field.description} Derived from ${variable.name}.`,
@@ -605,7 +608,8 @@ export function createDerivedVariableMetadataDefinitions(variables: EditorVariab
 				source: variable.source,
 				token: `{{${name}}}`,
 				type: field.type,
-				value: getDerivedVariableMetadataValue(variable.value, field.name),
+				value:
+					getDerivedVariableMetadataValue(variable.value, field.name) ?? derivedPartValue(variable.value, field.name),
 			} satisfies EditorVariable;
 		});
 	});
@@ -634,10 +638,7 @@ const derivedVariableMetadataFields = [
 	},
 ] as const;
 
-function getDerivedVariableMetadataValue(
-	value: JsonValue | undefined,
-	field: (typeof derivedVariableMetadataFields)[number]["name"],
-) {
+function getDerivedVariableMetadataValue(value: JsonValue | undefined, field: string) {
 	if (value === undefined) {
 		return undefined;
 	}

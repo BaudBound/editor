@@ -6,6 +6,7 @@ import type { NodeSimulationApi } from "@/data/nodes/node-definition";
 import { numericContractApplies, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
 import { fallibleActionTypes, getNodeDefinition } from "@/data/nodes/registry";
 import { createSimulationBuiltInVariableValues } from "@/data/project/built-in-variables";
+import { derivedPartValue } from "@/data/project/derived-parts";
 import { createSimulationScriptSettingValues } from "@/data/project/script-settings";
 import type {
 	JsonValue,
@@ -1532,7 +1533,9 @@ function getDerivedValueMetadata(value: JsonValue | undefined, key: string): Jso
 		return isValueEmpty(value);
 	}
 
-	return undefined;
+	// A datetime or duration also exposes its parts. Same computation the
+	// picker uses, so what an author is offered is what a run resolves.
+	return derivedPartValue(value, key);
 }
 
 function getValueLength(value: JsonValue | undefined) {

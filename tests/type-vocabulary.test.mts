@@ -282,3 +282,47 @@ test("every system variable the picker offers is one the runner supplies", async
 		assert.ok(producer.includes(`"${name}"`), `the runner must supply ${name}`);
 	}
 });
+
+test("derived parts match what the runner computes", async () => {
+	const { derivedPartValue, datetimePartFields, durationPartFields } = await import("../data/project/derived-parts.ts");
+
+	// The same values the runner's derived_part_tests assert, so simulation
+	// and production cannot drift apart on the arithmetic.
+	const datetime = { type: "datetime", value: "2026-07-03T14:30:45+03:00" };
+	assert.equal(derivedPartValue(datetime, "$year"), 2026);
+	assert.equal(derivedPartValue(datetime, "$month"), 7);
+	assert.equal(derivedPartValue(datetime, "$day"), 3);
+	assert.equal(derivedPartValue(datetime, "$hour"), 14, "read in the offset the value carries, not UTC");
+	assert.equal(derivedPartValue(datetime, "$minute"), 30);
+	assert.equal(derivedPartValue(datetime, "$second"), 45);
+	assert.equal(derivedPartValue(datetime, "$weekday"), 5, "3 July 2026 is a Friday");
+
+	// An offset the test machine does not share, so a Date-based implementation
+	// converting to the local zone would report a different hour and fail here.
+	// The example above cannot catch that when the machine happens to be +03:00.
+	const elsewhere = { type: "datetime", value: "2026-07-03T14:30:45-05:00" };
+	assert.equal(derivedPartValue(elsewhere, "$hour"), 14);
+	assert.equal(derivedPartValue(elsewhere, "$day"), 3);
+	assert.equal(derivedPartValue(elsewhere, "$weekday"), 5);
+
+	const duration = { type: "duration", unit: "seconds", value: 90 };
+	assert.equal(derivedPartValue(duration, "$days"), 0);
+	assert.equal(derivedPartValue(duration, "$hours"), 0);
+	assert.equal(derivedPartValue(duration, "$minutes"), 1, "components, not 1.5 minutes");
+	assert.equal(derivedPartValue(duration, "$seconds"), 30);
+	assert.equal(derivedPartValue(duration, "$total_milliseconds"), 90_000);
+
+	assert.equal(derivedPartValue({ type: "duration", unit: "hours", value: 50 }, "$days"), 2);
+	assert.equal(derivedPartValue({ type: "duration", unit: "hours", value: 50 }, "$hours"), 2);
+
+	// Nothing for a value that has no parts, or a malformed one.
+	assert.equal(derivedPartValue("just text", "$hour"), undefined);
+	assert.equal(derivedPartValue({ type: "datetime", value: "not a date" }, "$hour"), undefined);
+
+	// The field lists are what the picker offers, so they must match the names
+	// the computation answers to.
+	for (const field of [...datetimePartFields, ...durationPartFields]) {
+		const source = field.name.startsWith("$total") || durationPartFields.includes(field) ? duration : datetime;
+		assert.notEqual(derivedPartValue(source, field.name), undefined, `${field.name} should compute`);
+	}
+});
