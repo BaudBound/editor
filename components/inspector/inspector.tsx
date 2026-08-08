@@ -101,6 +101,7 @@ import type {
 import { PanelCollapseButton } from "../shell/panel-collapse-button";
 import { RiskBadge } from "../shell/risk-badge";
 import { SimulatorPanel } from "../simulation/simulator-panel";
+import { DatetimeTokenPanel } from "./datetime-token-panel";
 import { EdgeOrderPanel } from "./edge-order-panel";
 import { KeyCaptureInput } from "./key-capture-input";
 import { RuntimeDataPanel } from "./runtime-data-panel";
@@ -1048,6 +1049,22 @@ function TextTransformConfigPanel({
 										rows={operations}
 										variableCompletions={variableCompletions}
 										onChange={onChange}
+									/>
+								</>
+							)}
+							{operation === "format_datetime" && (
+								<>
+									<TextTransformRowInput
+										label="Pattern"
+										field="pattern"
+										row={row}
+										rows={operations}
+										variableCompletions={variableCompletions}
+										onChange={onChange}
+									/>
+									<DatetimeTokenPanel
+										value={row.pattern}
+										onChange={(value) => updateTextTransformOperation(operations, row.id, { pattern: value }, onChange)}
 									/>
 								</>
 							)}
@@ -2227,6 +2244,10 @@ function normalizeTextTransformOperation(value: string) {
 function getTextTransformHelp(operation: string) {
 	if (operation === "template") {
 		return "Build text from normal content and {{variables}}.";
+	}
+
+	if (operation === "format_datetime") {
+		return "Render a datetime as text with a pattern such as yyyy-MM-dd HH:mm.";
 	}
 
 	if (operation === "replace") {

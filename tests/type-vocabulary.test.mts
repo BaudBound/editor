@@ -9,6 +9,7 @@ import {
 	validateVariableInput,
 	validateVariableReferenceTypes,
 } from "../data/nodes/config-field-validation.ts";
+import { createTextTransformOperationRow } from "../data/nodes/definitions/rows.ts";
 import { validateConditionVariableInputs } from "../data/nodes/definitions/shared.ts";
 import { variableTypes } from "../data/project/variables.ts";
 import { castSimulatedValue, validateSimulatedValue } from "../utils/value-cast.ts";
@@ -325,4 +326,71 @@ test("derived parts match what the runner computes", async () => {
 		const source = field.name.startsWith("$total") || durationPartFields.includes(field) ? duration : datetime;
 		assert.notEqual(derivedPartValue(source, field.name), undefined, `${field.name} should compute`);
 	}
+});
+
+test("a datetime pattern renders and is validated", async () => {
+	const { formatDatetime, validateDatetimePattern } = await import("../data/project/datetime-format.ts");
+	const value = { type: "datetime", value: "2026-07-03T14:30:45+03:00" };
+
+	assert.equal(formatDatetime(value, "yyyy-MM-dd"), "2026-07-03");
+	assert.equal(formatDatetime(value, "HH:mm"), "14:30");
+	assert.equal(formatDatetime(value, "h:mm a"), "2:30 PM");
+	assert.equal(formatDatetime(value, "EEEE d MMMM yyyy"), "Friday 3 July 2026");
+	assert.equal(formatDatetime(value, "EEE MMM d"), "Fri Jul 3");
+	assert.equal(formatDatetime(value, "yy/M/d H:m:s"), "26/7/3 14:30:45");
+
+	// Read in the offset carried, like the parts, so the machine's zone is
+	// irrelevant. A Date-based implementation would report 22 here.
+	assert.equal(formatDatetime({ type: "datetime", value: "2026-07-03T14:30:45-05:00" }, "HH"), "14");
+
+	// Literal text is quoted, and two quotes are a literal quote.
+	assert.equal(formatDatetime(value, "'on' EEEE"), "on Friday");
+	assert.equal(formatDatetime(value, "HH'h'mm"), "14h30");
+	assert.equal(formatDatetime(value, "''yyyy"), "'2026");
+
+	// Midnight and noon are where 12-hour formats usually go wrong.
+	const midnight = { type: "datetime", value: "2026-07-03T00:15:00+00:00" };
+	const noon = { type: "datetime", value: "2026-07-03T12:15:00+00:00" };
+	assert.equal(formatDatetime(midnight, "hh:mm a"), "12:15 AM");
+	assert.equal(formatDatetime(noon, "hh:mm a"), "12:15 PM");
+	assert.equal(formatDatetime(midnight, "HH"), "00");
+
+	assert.equal(formatDatetime("not a datetime", "yyyy"), undefined);
+
+	// A mistyped token is an error where it is written, not literal text in
+	// the output that nobody notices until production.
+	assert.equal(validateDatetimePattern("yyyy-MM-dd HH:mm"), "");
+	assert.match(validateDatetimePattern("YYYY"), /not a format token/);
+	assert.match(validateDatetimePattern("yyyy 'unclosed"), /closing/);
+	assert.equal(validateDatetimePattern(""), "Enter a format pattern.");
+	assert.equal(validateDatetimePattern("'YYYY' yyyy"), "", "quoting makes it text");
+});
+
+test("the Format Text node renders a datetime from the input", async () => {
+	const { executeTextTransform } = await import("../data/nodes/definitions/actions/format-text.ts");
+	const datetime = { type: "datetime", value: "2026-07-03T14:30:45+03:00" };
+	// The pipeline's own resolver: an exact reference gives the value back
+	// whole, which is how the datetime reaches the operation unflattened.
+	const resolveTemplate = (value: string) => (value === "{{system_datetime}}" ? datetime : value);
+
+	const run = (pattern: string, input = "{{system_datetime}}") =>
+		executeTextTransform({
+			config: {
+				input,
+				operations: [{ ...createTextTransformOperationRow("format_datetime"), pattern }],
+			},
+			resolveTemplate,
+		});
+
+	assert.deepEqual((await run("EEEE 'at' HH:mm")).output, { text: "Friday at 14:30", items: [] });
+
+	// The operation runs before the string guard, so a datetime is not first
+	// flattened into its JSON text.
+	const wrongType = await run("yyyy", "just text");
+	assert.equal(wrongType.ok, false);
+	assert.match(wrongType.error, /requires a datetime/);
+
+	const badPattern = await run("YYYY");
+	assert.equal(badPattern.ok, false);
+	assert.match(badPattern.error, /not a format token/);
 });
