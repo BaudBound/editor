@@ -12,6 +12,7 @@ import {
 import { createTextTransformOperationRow } from "../data/nodes/definitions/rows.ts";
 import { validateConditionVariableInputs } from "../data/nodes/definitions/shared.ts";
 import { variableTypes } from "../data/project/variables.ts";
+import type { JsonValue } from "../lib/types.ts";
 import { castSimulatedValue, validateSimulatedValue } from "../utils/value-cast.ts";
 
 const appRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -382,17 +383,25 @@ test("the Format Text node renders a datetime from the input", async () => {
 			resolveTemplate,
 		});
 
-	assert.deepEqual((await run("EEEE 'at' HH:mm")).output, { text: "Friday at 14:30", items: [] });
+	const formatted = await run("EEEE 'at' HH:mm");
+	assert.equal(formatted.ok, true);
+	if (formatted.ok) {
+		assert.deepEqual(formatted.output, { text: "Friday at 14:30", items: [] });
+	}
 
 	// The operation runs before the string guard, so a datetime is not first
 	// flattened into its JSON text.
 	const wrongType = await run("yyyy", "just text");
 	assert.equal(wrongType.ok, false);
-	assert.match(wrongType.error, /requires a datetime/);
+	if (!wrongType.ok) {
+		assert.match(wrongType.error, /requires a datetime/);
+	}
 
 	const badPattern = await run("YYYY");
 	assert.equal(badPattern.ok, false);
-	assert.match(badPattern.error, /not a format token/);
+	if (!badPattern.ok) {
+		assert.match(badPattern.error, /not a format token/);
+	}
 });
 
 test("the simulator agrees with the shared datetime format fixtures", async () => {
@@ -430,7 +439,7 @@ test("the simulator agrees with the shared datetime part fixtures", async () => 
 	const conformance = JSON.parse(
 		readFileSync(join(appRoot, "contracts", "datetime-part-conformance.json"), "utf8"),
 	) as {
-		cases: { parts: Record<string, number>; reason: string; value: Record<string, unknown> }[];
+		cases: { parts: Record<string, number>; reason: string; value: JsonValue }[];
 		datetime_parts: string[];
 		duration_parts: string[];
 		version: number;

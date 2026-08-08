@@ -1,27 +1,24 @@
 import { ChevronDown } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { CopyTextButton } from "@/components/common/copy-text-button";
 import { datetimeFormatTokenGroups } from "@/data/project/datetime-format";
 
-type DatetimeTokenPanelProps = {
-	value: string;
-	onChange: (value: string) => void;
-};
-
 /**
- * The tokens a format pattern is built from, with a button per token.
+ * The tokens a format pattern is built from, with what each one renders.
  *
- * Modelled on the key reference in the keyboard trigger: the same collapsed
- * details element, and the same append-on-click, so an author can build a
- * pattern without learning the language first.
+ * A node-level reference rather than a field-level one, so it keeps its place
+ * whichever operation row is being edited and however many of them format a
+ * datetime. It reads rather than writes for the same reason: with two format
+ * operations in one pipeline there is no row a button could append to without
+ * guessing.
  */
-export function DatetimeTokenPanel({ value, onChange }: DatetimeTokenPanelProps) {
+export function DatetimeTokenPanel() {
 	return (
-		<details className="group rounded border border-baud-border bg-baud-soft px-3 py-2 text-xs text-baud-muted">
-			<summary className="flex cursor-pointer list-none items-center justify-between gap-2 font-semibold text-baud-text">
-				Format token reference
-				<ChevronDown size={14} className="transition-transform group-open:rotate-180" />
+		<details className="group rounded border border-baud-border bg-baud-soft">
+			<summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2">
+				<span className="text-xs font-bold uppercase tracking-[0.18em] text-baud-muted">Format Tokens</span>
+				<ChevronDown size={14} className="text-baud-muted transition-transform group-open:rotate-180" />
 			</summary>
-			<div className="mt-2 space-y-2 leading-4">
+			<div className="space-y-3 border-t border-baud-border p-3 text-sm leading-5 text-baud-muted">
 				<p>
 					Letters are read as tokens and everything else is kept as written, so{" "}
 					<span className="font-mono text-baud-text">yyyy-MM-dd HH:mm</span> gives{" "}
@@ -32,30 +29,20 @@ export function DatetimeTokenPanel({ value, onChange }: DatetimeTokenPanelProps)
 					<span className="font-mono text-baud-text">HH:mm 'on' EEEE</span> gives{" "}
 					<span className="font-mono text-baud-text">14:05 on Friday</span>. Two quotes in a row write one quote.
 				</p>
-				<div className="max-h-72 space-y-3 overflow-y-auto rounded border border-baud-border bg-baud-panel p-2">
-					{datetimeFormatTokenGroups.map((group) => (
-						<div key={group.label}>
-							<div className="mb-1 font-semibold uppercase tracking-[0.12em] text-baud-muted">{group.label}</div>
-							<div className="flex flex-wrap gap-1">
-								{group.tokens.map((entry) => (
-									<Button
-										key={entry.token}
-										type="button"
-										variant="outline"
-										size="sm"
-										title={entry.description}
-										aria-label={`Add ${entry.token} to the pattern, ${entry.description}`}
-										className="h-7 rounded border-baud-border bg-baud-soft px-2 font-mono text-xs text-baud-text hover:border-baud-line hover:bg-baud-line"
-										onClick={() => onChange(`${value}${entry.token}`)}
-									>
-										{entry.token}
-										<span className="ml-1 text-baud-muted">{entry.description}</span>
-									</Button>
-								))}
+				{datetimeFormatTokenGroups.map((group) => (
+					<div key={group.label} className="border-b border-baud-border pb-2 last:border-b-0 last:pb-0">
+						<div className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-baud-muted">{group.label}</div>
+						{group.tokens.map((entry) => (
+							<div key={entry.token} className="flex items-center justify-between gap-3 py-0.5">
+								<div className="flex min-w-0 items-center gap-2">
+									<span className="font-mono text-sm text-baud-text">{entry.token}</span>
+									<CopyTextButton text={entry.token} label={`Copy ${entry.token}`} />
+								</div>
+								<span className="truncate text-sm text-baud-muted">{entry.description}</span>
 							</div>
-						</div>
-					))}
-				</div>
+						))}
+					</div>
+				))}
 			</div>
 		</details>
 	);

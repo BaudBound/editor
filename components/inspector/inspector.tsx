@@ -451,6 +451,8 @@ function PropertiesPanel({
 				)}
 			</section>
 
+			{formatsADatetime(selectedNode) && <DatetimeTokenPanel />}
+
 			<RuntimeDataPanel selectedNode={selectedNode} />
 
 			<div className="rounded border border-baud-border bg-baud-soft p-3 text-xs leading-5 text-baud-muted">
@@ -1053,20 +1055,14 @@ function TextTransformConfigPanel({
 								</>
 							)}
 							{operation === "format_datetime" && (
-								<>
-									<TextTransformRowInput
-										label="Pattern"
-										field="pattern"
-										row={row}
-										rows={operations}
-										variableCompletions={variableCompletions}
-										onChange={onChange}
-									/>
-									<DatetimeTokenPanel
-										value={row.pattern}
-										onChange={(value) => updateTextTransformOperation(operations, row.id, { pattern: value }, onChange)}
-									/>
-								</>
+								<TextTransformRowInput
+									label="Pattern"
+									field="pattern"
+									row={row}
+									rows={operations}
+									variableCompletions={variableCompletions}
+									onChange={onChange}
+								/>
 							)}
 							{(operation === "split" || operation === "join") && (
 								<TextTransformRowInput
@@ -2472,5 +2468,13 @@ function updateHeader(
 	onChange(
 		"headers",
 		headers.map((header) => (header.id === id ? { ...header, ...patch } : header)),
+	);
+}
+
+/** Whether the node has an operation the format token reference applies to. */
+function formatsADatetime(selectedNode: Node<ScriptNodeData>) {
+	if (selectedNode.data.actionType !== "action.text.format") return false;
+	return getTextTransformOperationRows(selectedNode.data.config.operations).some(
+		(row) => row.operation === "format_datetime",
 	);
 }
