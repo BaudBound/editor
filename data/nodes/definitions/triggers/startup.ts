@@ -1,9 +1,12 @@
 import { Power } from "lucide-react";
 import { defineNode } from "../../node-definition";
+import { triggerOverlapFields } from "../shared-fields";
 
 export const startupTriggerNode = defineNode({
 	actionType: "trigger.startup",
 	capabilities: ["trigger.startup"],
+	configFields: [...triggerOverlapFields],
+	defaultConfig: () => ({ overlap: "queue" }),
 	description: "Start when the computer or runner session starts.",
 	group: "triggers",
 	icon: Power,

@@ -210,3 +210,17 @@ export const desktopDialogSizeOptions: SelectOption[] = [
 	{ label: "Medium", value: "medium" },
 	{ label: "Large", value: "large" },
 ];
+
+/**
+ * What an activation does when a run of its script is already active.
+ *
+ * The runner decides this before it asks the execution queue for a permit, so
+ * stopping or skipping never waits for the run it was meant to replace and
+ * never counts against the per-script concurrency limit.
+ */
+export const triggerOverlapOptions: SelectOption[] = [
+	{ label: "Queue", value: "queue" },
+	{ label: "Skip", value: "skip" },
+	{ label: "Stop", value: "stop" },
+	{ label: "Restart", value: "restart" },
+];

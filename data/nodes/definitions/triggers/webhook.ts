@@ -2,12 +2,14 @@ import { Globe } from "lucide-react";
 import type { JsonValue } from "@/lib/types";
 import { defineNode } from "../../node-definition";
 import { httpMethodOptions } from "../options";
+import { triggerOverlapFields } from "../shared-fields";
 import { configString, requiredConfig, staticPositiveNumberConfig } from "../validators";
 
 export const webhookTriggerNode = defineNode({
 	actionType: "trigger.webhook",
 	capabilities: ["trigger.webhook"],
 	configFields: [
+		...triggerOverlapFields,
 		{ key: "method", label: "Method", type: "select", options: httpMethodOptions },
 		{ key: "hookName", label: "Hook name", identifier: true, type: "text", nonEmpty: true },
 		{
@@ -67,6 +69,7 @@ export const webhookTriggerNode = defineNode({
 		},
 	],
 	defaultConfig: () => ({
+		overlap: "queue",
 		method: "POST",
 		hookName: "",
 		waitForResponse: false,
