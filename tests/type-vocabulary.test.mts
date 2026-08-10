@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -261,15 +261,28 @@ test("a trigger's overlap mode falls back to queue", async () => {
 	assert.equal(triggerOverlapMode(undefined), "queue");
 });
 
+/**
+ * The runner producer, when the runner repository sits beside this one.
+ *
+ * These two checks read the other side of the contract directly, which only
+ * works in a full multi-repo checkout. Editor CI clones this repository alone,
+ * so they skip there rather than fail. The shared fixtures in contracts/ are
+ * what hold the two sides together in CI; these are the extra guard that a
+ * name offered here exists over there at all.
+ */
+function runnerSystemVariableProducer() {
+	const path = join(appRoot, "..", "baudbound", "crates", "baudbound-core", "src", "system_variables.rs");
+	if (!existsSync(path)) return null;
+	const source = readFileSync(path, "utf8");
+	// Only the producing code. The file's own tests name every field too, so
+	// reading the whole file would pass even if the producer supplied none.
+	return source.slice(0, source.indexOf("#[cfg(test)]"));
+}
+
 test("every system variable the picker offers is one the runner supplies", async () => {
 	const { builtInVariableGroups } = await import("../data/project/built-in-variables.ts");
-	// Only the producing code. The file's own tests name every variable too,
-	// so reading the whole file would pass even if the producer supplied none.
-	const producerFile = readFileSync(
-		join(appRoot, "..", "baudbound", "crates", "baudbound-core", "src", "system_variables.rs"),
-		"utf8",
-	);
-	const producer = producerFile.slice(0, producerFile.indexOf("#[cfg(test)]"));
+	const producer = runnerSystemVariableProducer();
+	if (producer === null) return;
 	assert.ok(producer.length > 0, "the producer should be found");
 
 	// Field names, without the "@system." the picker shows, because the
@@ -294,11 +307,8 @@ test("every manifest variable the picker offers is one the runner supplies", asy
 	const { builtInVariableGroups } = await import("../data/project/built-in-variables.ts");
 	// The manifest namespace was never supplied to a run at all, so this guard
 	// exists for the same reason the system one does.
-	const producerFile = readFileSync(
-		join(appRoot, "..", "baudbound", "crates", "baudbound-core", "src", "system_variables.rs"),
-		"utf8",
-	);
-	const producer = producerFile.slice(0, producerFile.indexOf("#[cfg(test)]"));
+	const producer = runnerSystemVariableProducer();
+	if (producer === null) return;
 
 	const offered = (builtInVariableGroups.find((group) => group.id === "manifest")?.variables ?? []).map((variable) =>
 		variable.name.replace("@manifest.", ""),
