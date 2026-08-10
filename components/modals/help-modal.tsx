@@ -128,9 +128,9 @@ const referenceFormatRows = [
 	},
 	{
 		label: "Built-in value",
-		pattern: "{{built_in_name}}",
-		example: "{{manifest_name}}",
-		description: "Reads an always-available read-only manifest or system value.",
+		pattern: "{{@namespace.field}}",
+		example: "{{@manifest.name}}",
+		description: "Reads an always-available read-only value from @manifest, @system, or @settings.",
 	},
 ];
 
@@ -138,9 +138,9 @@ const referenceRuleRows = [
 	"Use double braces for saved variables, built-in values, and node runtime data.",
 	"Do not add spaces inside reference braces.",
 	"Replace node-id with the real node id, for example n-mr3zyt6f-12.",
-	"Use derived fields for generated value facts, for example {{foo.$length}} or {{node-id.output.$count}}. Plain .length and .count always mean real data fields.",
+	"Use derived fields for generated value facts, for example {{foo.$length}} or {{node-id.output.$count}}, and only as the last part of a reference. Plain .length and .count always mean real data fields.",
 	"Built-in variables and node output variables are read-only and cannot be changed with Variable Operation.",
-	"User variable names cannot start with manifest_ or system_; those prefixes are reserved for built-ins.",
+	"Built-ins live behind @, as in {{@system.datetime}}. No user variable name may contain @, so nothing you name can shadow one.",
 	"Node output references only have data after that node has executed in the current run.",
 ];
 
@@ -549,8 +549,8 @@ function VariablesSection() {
 				<SectionTitle icon={Database} title="Variable Operations" />
 				<InfoCard>
 					Variable Operation creates or edits user-writable variables. Built-in variables and node output references are
-					read-only, and variable names cannot start with <Code>{"manifest_"}</Code> or <Code>{"system_"}</Code>. A
-					failed operation follows the failed output and leaves the variable unchanged.
+					read-only, and every built-in lives behind <Code>{"@"}</Code>, which no variable name may contain. A failed
+					operation follows the failed output and leaves the variable unchanged.
 				</InfoCard>
 				<DocTable
 					columns={["Operation", "What it does"]}

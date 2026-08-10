@@ -1,5 +1,5 @@
 import type { Node } from "@xyflow/react";
-import { getBuiltInVariableRuntimeEntries } from "@/data/project/built-in-variables";
+import { getBuiltInVariableRuntimeEntries, SETTINGS_NAMESPACE } from "@/data/project/built-in-variables";
 import {
 	createConfiguredVariableDefinitions,
 	createDerivedVariableMetadataDefinitions,
@@ -92,7 +92,7 @@ export function createEditorVariableRegistry(
 		value: settingsValue,
 	});
 	for (const setting of scriptSettings) {
-		const name = `settings.${setting.name}`;
+		const name = `${SETTINGS_NAMESPACE}.${setting.name}`;
 		variables.set(name, {
 			description: setting.description,
 			name,

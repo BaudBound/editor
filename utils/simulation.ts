@@ -5,7 +5,14 @@ import { isConditionRow, isSwitchCaseRow } from "@/data/nodes/definitions/rows";
 import type { NodeSimulationApi } from "@/data/nodes/node-definition";
 import { numericContractApplies, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
 import { fallibleActionTypes, getNodeDefinition } from "@/data/nodes/registry";
-import { createSimulationBuiltInVariableValues } from "@/data/project/built-in-variables";
+import {
+	createSimulationBuiltInVariableValues,
+	liveSystemFields,
+	readLiveSystemField,
+	SETTINGS_NAMESPACE,
+	SYSTEM_NAMESPACE,
+} from "@/data/project/built-in-variables";
+import { componentFieldValue } from "@/data/project/derived-parts";
 import { createSimulationScriptSettingValues } from "@/data/project/script-settings";
 import type {
 	JsonValue,
@@ -147,6 +154,7 @@ export async function createSimulationRun({
 		failed: false,
 		globalVariables: structuredClone(globalVariables),
 		halted: false,
+		liveReadAt: null,
 		httpSimulation: {
 			authorizedOrigins: new Set(httpSimulation.authorizedOrigins),
 			mode: httpSimulation.mode,
@@ -165,7 +173,7 @@ export async function createSimulationRun({
 		},
 		runtimeVariables: {
 			...createSimulationBuiltInVariableValues(projectSettings),
-			settings: createSimulationScriptSettingValues(scriptSettings),
+			[SETTINGS_NAMESPACE]: createSimulationScriptSettingValues(scriptSettings),
 			...Object.fromEntries(
 				defaultVariables
 					.filter((variable) => variable.scope === "runtime")
@@ -322,6 +330,11 @@ async function executeNodeFrame(
 	if (nodeId === stopAtNodeId) {
 		return;
 	}
+
+	// One clock reading per node execution: every reference inside this node
+	// agrees, and the next node reads again. Cleared on the way in rather than
+	// out, so a node that throws cannot leave a stale reading behind.
+	context.liveReadAt = null;
 
 	const node = context.nodesById.get(nodeId);
 	if (!node) {
@@ -1323,6 +1336,11 @@ function tryGetReferenceValue(expression: string, context: SimulationContext): J
 }
 
 function resolveReferencePath(reference: string, context: SimulationContext): JsonValue | undefined {
+	const live = resolveLiveSystemReference(reference, context);
+	if (live !== undefined) {
+		return live;
+	}
+
 	if (reference in context.runtimeVariables) {
 		return context.runtimeVariables[reference];
 	}
@@ -1375,7 +1393,38 @@ function getRuntimeVariableReference(reference: string, variables: Record<string
 	};
 }
 
-function getPathValue(value: JsonValue, path: string): JsonValue | undefined {
+/**
+ * Resolves a reference into a live `@system` field, or undefined if it is not
+ * one. The clock and the uptime move during a run, so they are read when a
+ * reference asks rather than seeded once, and the reading is held for the rest
+ * of the node execution that asked for it.
+ */
+function resolveLiveSystemReference(reference: string, context: SimulationContext): JsonValue | undefined {
+	const prefix = `${SYSTEM_NAMESPACE}.`;
+	if (!reference.startsWith(prefix)) {
+		return undefined;
+	}
+
+	const [field, ...rest] = reference.slice(prefix.length).split(".");
+	if (!liveSystemFields.has(field)) {
+		return undefined;
+	}
+
+	context.liveReadAt ??= new Date();
+	const value = readLiveSystemField(field, context.liveReadAt) as JsonValue | undefined;
+	if (value === undefined || rest.length === 0) {
+		return value;
+	}
+
+	return getPathValue(value, `.${rest.join(".")}`);
+}
+
+/**
+ * Walks an accessor path from a resolved value, ending in an optional metadata
+ * segment. Exported so the shared conformance fixture can hold it to the
+ * runner, which implements the same walk in `resolve_value_path`.
+ */
+export function getPathValue(value: JsonValue, path: string): JsonValue | undefined {
 	if (!path) {
 		return value;
 	}
@@ -1385,8 +1434,18 @@ function getPathValue(value: JsonValue, path: string): JsonValue | undefined {
 		return undefined;
 	}
 
-	return parts.reduce<JsonValue | undefined>((currentValue, key) => {
+	let currentValue: JsonValue | undefined = value;
+	for (const [index, key] of parts.entries()) {
+		// A metadata segment is only allowed last, matching the runner. A value
+		// can genuinely hold a key spelled like one, so refusing it in the middle
+		// keeps a single meaning rather than guessing which was meant.
 		if (key.startsWith("$")) {
+			// Nothing to describe when the path already fell off the value. A
+			// length of 0 for an absent field would read as "present and empty".
+			// A field that is present and null is a different case and resolves.
+			if (currentValue === undefined || index !== parts.length - 1) {
+				return undefined;
+			}
 			return getDerivedValueMetadata(currentValue, key);
 		}
 
@@ -1395,12 +1454,18 @@ function getPathValue(value: JsonValue, path: string): JsonValue | undefined {
 		}
 
 		if (Array.isArray(currentValue)) {
-			const index = Number(key);
-			return Number.isInteger(index) ? currentValue[index] : undefined;
+			const arrayIndex = Number(key);
+			currentValue = Number.isInteger(arrayIndex) ? currentValue[arrayIndex] : undefined;
+			continue;
 		}
 
-		return currentValue[key];
-	}, value);
+		// A real key wins over a computed one, so a datetime's own "value" and
+		// "type" keep meaning what they always did. A component only answers
+		// when the value does not carry that key itself.
+		currentValue = key in currentValue ? currentValue[key] : componentFieldValue(currentValue, key);
+	}
+
+	return currentValue;
 }
 
 function parseValuePath(path: string): string[] | undefined {
@@ -1532,6 +1597,7 @@ function getDerivedValueMetadata(value: JsonValue | undefined, key: string): Jso
 		return isValueEmpty(value);
 	}
 
+	// Anything else beginning with $ is not metadata this runner knows.
 	return undefined;
 }
 
@@ -1558,6 +1624,12 @@ function getValueType(value: JsonValue | undefined) {
 
 	if (value === undefined) {
 		return "missing";
+	}
+
+	// integer and float are separate types, so a bare "number" would name a type
+	// that no longer exists. These are the names the runner reports.
+	if (typeof value === "number") {
+		return Number.isInteger(value) ? "integer" : "float";
 	}
 
 	return typeof value;

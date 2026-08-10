@@ -130,6 +130,7 @@ export const variableOperationOptions: SelectOption[] = variableOperations.map((
 
 export const textTransformOperationOptions: SelectOption[] = [
 	{ label: "Template", value: "template" },
+	{ label: "Format date and time", value: "format_datetime" },
 	{ label: "Trim", value: "trim" },
 	{ label: "Uppercase", value: "uppercase" },
 	{ label: "Lowercase", value: "lowercase" },

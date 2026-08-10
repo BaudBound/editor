@@ -36,6 +36,7 @@ export type TextTransformOperationRow = {
 	length: string;
 	targetLength: string;
 	pad: string;
+	pattern: string;
 };
 
 export function createConditionRow(left = "", right = "", combinator?: string): ConditionRow {
@@ -69,6 +70,7 @@ export function createTextTransformOperationRow(operation = "trim"): TextTransfo
 		length: "",
 		targetLength: "",
 		pad: "",
+		pattern: "",
 	};
 }
 

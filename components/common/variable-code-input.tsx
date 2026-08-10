@@ -7,6 +7,7 @@ import {
 	type ReactNode,
 	useEffect,
 	useId,
+	useLayoutEffect,
 	useRef,
 	useState,
 } from "react";
@@ -65,6 +66,20 @@ type CompletionState = {
 	start: number;
 };
 
+const MULTILINE_FIELD_CLASS = "min-h-24 resize-y overflow-auto px-2.5 py-2 leading-5";
+
+/**
+ * A single line scrolls sideways.
+ *
+ * This was `overflow-hidden`, which is not what broke the caret — a focused
+ * textarea still scrolls itself to keep the caret in view even when hidden,
+ * measured at scrollLeft 366 either way. It did stop a trackpad or a wheel
+ * from reaching the rest of a long value, which is worth having. The bar
+ * stays hidden because there is no room for one in a 2rem field.
+ */
+const SINGLE_LINE_FIELD_CLASS =
+	"h-8 resize-none overflow-x-auto overflow-y-hidden whitespace-nowrap px-2.5 py-0 leading-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
+
 export function VariableCodeInput({
 	ariaLabel,
 	ariaDescribedBy,
@@ -118,12 +133,24 @@ export function VariableCodeInput({
 		}
 	};
 
+	/**
+	 * Keeps the highlight layer aligned with the field the caret is in.
+	 *
+	 * The textarea's own text is transparent and the `pre` behind it is what a
+	 * reader sees, so the two have to scroll together. This used to return early
+	 * unless `multiline`, which is what made a single-line field look broken: the
+	 * textarea scrolled to follow the caret, the layer stayed at zero, and the
+	 * value appeared to stop dead at the right edge while the caret carried on
+	 * into nothing. A single line scrolls sideways rather than down, but it does
+	 * scroll.
+	 */
 	const syncScroll = () => {
-		if (!multiline || !textareaRef.current) {
+		const textarea = textareaRef.current;
+		if (!textarea) {
 			return;
 		}
 
-		const { scrollTop, scrollLeft } = textareaRef.current;
+		const { scrollTop, scrollLeft } = textarea;
 
 		if (highlightRef.current) {
 			highlightRef.current.scrollTop = scrollTop;
@@ -134,6 +161,11 @@ export function VariableCodeInput({
 			lineNumberRef.current.scrollTop = scrollTop;
 		}
 	};
+
+	// After every render, because a scroll caused by anything other than the
+	// user scrolling — inserting a suggestion, or typing at the end of a full
+	// line — never fires onScroll before React has repainted the layer.
+	useLayoutEffect(syncScroll);
 
 	const applySuggestion = (completionVariable: VariableCompletion) => {
 		if (!completion) {
@@ -293,9 +325,7 @@ export function VariableCodeInput({
 								}}
 								className={cn(
 									"relative z-10 block w-full border-0 bg-transparent font-mono text-sm text-transparent caret-baud-text outline-none selection:bg-baud-red/30",
-									multiline
-										? "min-h-24 resize-y overflow-auto px-2.5 py-2 leading-5"
-										: "h-8 resize-none overflow-hidden whitespace-nowrap px-2.5 py-0 leading-8",
+									multiline ? MULTILINE_FIELD_CLASS : SINGLE_LINE_FIELD_CLASS,
 									contentClassName,
 								)}
 							/>

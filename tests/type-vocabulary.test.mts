@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -9,8 +9,10 @@ import {
 	validateVariableInput,
 	validateVariableReferenceTypes,
 } from "../data/nodes/config-field-validation.ts";
+import { createTextTransformOperationRow } from "../data/nodes/definitions/rows.ts";
 import { validateConditionVariableInputs } from "../data/nodes/definitions/shared.ts";
 import { variableTypes } from "../data/project/variables.ts";
+import type { JsonValue } from "../lib/types.ts";
 import { castSimulatedValue, validateSimulatedValue } from "../utils/value-cast.ts";
 
 const appRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -257,4 +259,274 @@ test("a trigger's overlap mode falls back to queue", async () => {
 	assert.equal(triggerOverlapMode({ data: { config: {} } }), "queue");
 	assert.equal(triggerOverlapMode({ data: { config: { overlap: "nonsense" } } }), "queue");
 	assert.equal(triggerOverlapMode(undefined), "queue");
+});
+
+/**
+ * The runner producer, when the runner repository sits beside this one.
+ *
+ * These two checks read the other side of the contract directly, which only
+ * works in a full multi-repo checkout. Editor CI clones this repository alone,
+ * so they skip there rather than fail. The shared fixtures in contracts/ are
+ * what hold the two sides together in CI; these are the extra guard that a
+ * name offered here exists over there at all.
+ */
+function runnerSystemVariableProducer() {
+	const path = join(appRoot, "..", "baudbound", "crates", "baudbound-core", "src", "system_variables.rs");
+	if (!existsSync(path)) return null;
+	const source = readFileSync(path, "utf8");
+	// Only the producing code. The file's own tests name every field too, so
+	// reading the whole file would pass even if the producer supplied none.
+	return source.slice(0, source.indexOf("#[cfg(test)]"));
+}
+
+test("every system variable the picker offers is one the runner supplies", async () => {
+	const { builtInVariableGroups } = await import("../data/project/built-in-variables.ts");
+	const producer = runnerSystemVariableProducer();
+	if (producer === null) return;
+	assert.ok(producer.length > 0, "the producer should be found");
+
+	// Field names, without the "@system." the picker shows, because the
+	// producer supplies the fields of one object rather than flat names.
+	const offered = (builtInVariableGroups.find((group) => group.id === "system")?.variables ?? []).map((variable) =>
+		variable.name.replace("@system.", ""),
+	);
+	assert.ok(offered.length > 0, "the system group should not be empty");
+
+	// The editor offered these long before the runner supplied any of them, so
+	// a script reading one printed the braces in production. Anything the
+	// picker lists has to exist on the other side. The run-scoped fields are
+	// added by the runtime rather than this producer, and the live ones are
+	// read at reference time, so both are named where they are built.
+	const suppliedElsewhere = new Set(["run_id", "trigger_id", "trigger_type", "run_started_at", "datetime", "uptime"]);
+	for (const name of offered.filter((field) => !suppliedElsewhere.has(field))) {
+		assert.ok(producer.includes(`"${name}"`), `the runner must supply ${name}`);
+	}
+});
+
+test("every manifest variable the picker offers is one the runner supplies", async () => {
+	const { builtInVariableGroups } = await import("../data/project/built-in-variables.ts");
+	// The manifest namespace was never supplied to a run at all, so this guard
+	// exists for the same reason the system one does.
+	const producer = runnerSystemVariableProducer();
+	if (producer === null) return;
+
+	const offered = (builtInVariableGroups.find((group) => group.id === "manifest")?.variables ?? []).map((variable) =>
+		variable.name.replace("@manifest.", ""),
+	);
+	assert.ok(offered.length > 0, "the manifest group should not be empty");
+
+	for (const name of offered) {
+		assert.ok(producer.includes(`"${name}"`), `the runner must supply @manifest.${name}`);
+	}
+});
+
+test("a datetime pattern renders and is validated", async () => {
+	const { formatDatetime, validateDatetimePattern } = await import("../data/project/datetime-format.ts");
+	const value = { type: "datetime", value: "2026-07-03T14:30:45+03:00" };
+
+	assert.equal(formatDatetime(value, "yyyy-MM-dd"), "2026-07-03");
+	assert.equal(formatDatetime(value, "HH:mm"), "14:30");
+	assert.equal(formatDatetime(value, "h:mm a"), "2:30 PM");
+	assert.equal(formatDatetime(value, "EEEE d MMMM yyyy"), "Friday 3 July 2026");
+	assert.equal(formatDatetime(value, "EEE MMM d"), "Fri Jul 3");
+	assert.equal(formatDatetime(value, "yy/M/d H:m:s"), "26/7/3 14:30:45");
+
+	// Read in the offset carried, like the parts, so the machine's zone is
+	// irrelevant. A Date-based implementation would report 22 here.
+	assert.equal(formatDatetime({ type: "datetime", value: "2026-07-03T14:30:45-05:00" }, "HH"), "14");
+
+	// Literal text is quoted, and two quotes are a literal quote.
+	assert.equal(formatDatetime(value, "'on' EEEE"), "on Friday");
+	assert.equal(formatDatetime(value, "HH'h'mm"), "14h30");
+	assert.equal(formatDatetime(value, "''yyyy"), "'2026");
+
+	// Midnight and noon are where 12-hour formats usually go wrong.
+	const midnight = { type: "datetime", value: "2026-07-03T00:15:00+00:00" };
+	const noon = { type: "datetime", value: "2026-07-03T12:15:00+00:00" };
+	assert.equal(formatDatetime(midnight, "hh:mm a"), "12:15 AM");
+	assert.equal(formatDatetime(noon, "hh:mm a"), "12:15 PM");
+	assert.equal(formatDatetime(midnight, "HH"), "00");
+
+	assert.equal(formatDatetime("not a datetime", "yyyy"), undefined);
+
+	// A mistyped token is an error where it is written, not literal text in
+	// the output that nobody notices until production.
+	assert.equal(validateDatetimePattern("yyyy-MM-dd HH:mm"), "");
+	assert.match(validateDatetimePattern("YYYY"), /not a format token/);
+	assert.match(validateDatetimePattern("yyyy 'unclosed"), /closing/);
+	assert.equal(validateDatetimePattern(""), "Enter a format pattern.");
+	assert.equal(validateDatetimePattern("'YYYY' yyyy"), "", "quoting makes it text");
+});
+
+test("the Format Text node renders a datetime from the input", async () => {
+	const { executeTextTransform } = await import("../data/nodes/definitions/actions/format-text.ts");
+	const datetime = { type: "datetime", value: "2026-07-03T14:30:45+03:00" };
+	// The pipeline's own resolver: an exact reference gives the value back
+	// whole, which is how the datetime reaches the operation unflattened.
+	const resolveTemplate = (value: string) => (value === "{{system_datetime}}" ? datetime : value);
+
+	const run = (pattern: string, input = "{{system_datetime}}") =>
+		executeTextTransform({
+			config: {
+				input,
+				operations: [{ ...createTextTransformOperationRow("format_datetime"), pattern }],
+			},
+			resolveTemplate,
+		});
+
+	const formatted = await run("EEEE 'at' HH:mm");
+	assert.equal(formatted.ok, true);
+	if (formatted.ok) {
+		assert.deepEqual(formatted.output, { text: "Friday at 14:30", items: [] });
+	}
+
+	// The operation runs before the string guard, so a datetime is not first
+	// flattened into its JSON text.
+	const wrongType = await run("yyyy", "just text");
+	assert.equal(wrongType.ok, false);
+	if (!wrongType.ok) {
+		assert.match(wrongType.error, /requires a datetime/);
+	}
+
+	const badPattern = await run("YYYY");
+	assert.equal(badPattern.ok, false);
+	if (!badPattern.ok) {
+		assert.match(badPattern.error, /not a format token/);
+	}
+});
+
+test("the simulator agrees with the shared datetime format fixtures", async () => {
+	const { datetimeFormatTokenGroups, formatDatetime, validateDatetimePattern } = await import(
+		"../data/project/datetime-format.ts"
+	);
+	const conformance = JSON.parse(
+		readFileSync(join(appRoot, "contracts", "datetime-format-conformance.json"), "utf8"),
+	) as {
+		cases: { error?: boolean; pattern: string; reason: string; result?: string; value: string }[];
+		tokens: string[];
+		version: number;
+	};
+	assert.equal(conformance.version, 1);
+
+	// A token added on one side only would otherwise pass, because a case only
+	// asserts the patterns it lists.
+	const ours = datetimeFormatTokenGroups.flatMap((group) => group.tokens.map((entry) => entry.token));
+	assert.deepEqual([...conformance.tokens].sort(), [...ours].sort());
+
+	for (const testCase of conformance.cases) {
+		const value = { type: "datetime", value: testCase.value };
+		const problem = validateDatetimePattern(testCase.pattern);
+		if (testCase.error) {
+			assert.notEqual(problem, "", `${testCase.pattern} should be refused: ${testCase.reason}`);
+			continue;
+		}
+		assert.equal(problem, "", `${testCase.pattern} should be valid: ${testCase.reason}`);
+		assert.equal(formatDatetime(value, testCase.pattern), testCase.result, `${testCase.pattern}: ${testCase.reason}`);
+	}
+});
+
+test("the simulator agrees with the shared derived metadata fixtures", async () => {
+	const { getPathValue } = await import("../utils/simulation.ts");
+	const conformance = JSON.parse(
+		readFileSync(join(appRoot, "contracts", "derived-metadata-conformance.json"), "utf8"),
+	) as {
+		cases: { reason: string; reference: string; result?: JsonValue; unresolved?: boolean }[];
+		variables: Record<string, JsonValue>;
+		version: number;
+	};
+	assert.equal(conformance.version, 1);
+
+	for (const testCase of conformance.cases) {
+		const root = /^[A-Za-z_][A-Za-z0-9_]*/.exec(testCase.reference)?.[0] ?? "";
+		const value = conformance.variables[root];
+		const resolved = value === undefined ? undefined : getPathValue(value, testCase.reference.slice(root.length));
+
+		if (testCase.unresolved) {
+			assert.equal(resolved, undefined, `${testCase.reference} should not resolve: ${testCase.reason}`);
+			continue;
+		}
+		assert.deepEqual(resolved, testCase.result, `${testCase.reference}: ${testCase.reason}`);
+	}
+});
+
+test("the simulator agrees with the shared component field fixtures", async () => {
+	const { componentFieldValue, datetimeComponentFields, durationComponentFields } = await import(
+		"../data/project/derived-parts.ts"
+	);
+	const conformance = JSON.parse(
+		readFileSync(join(appRoot, "contracts", "datetime-part-conformance.json"), "utf8"),
+	) as {
+		cases: { fields: Record<string, JsonValue>; reason: string; value: JsonValue }[];
+		datetime_fields: string[];
+		duration_fields: string[];
+		unresolved_cases: { path: string; reason: string; value: JsonValue }[];
+		version: number;
+	};
+	assert.equal(conformance.version, 2);
+
+	// A case only asserts the fields it lists, so a field added on one side
+	// alone would otherwise pass both suites.
+	assert.deepEqual(
+		conformance.datetime_fields,
+		datetimeComponentFields.map((field) => field.name),
+	);
+	assert.deepEqual(
+		conformance.duration_fields,
+		durationComponentFields.map((field) => field.name),
+	);
+
+	for (const testCase of conformance.cases) {
+		for (const [field, expected] of Object.entries(testCase.fields)) {
+			assert.equal(
+				componentFieldValue(testCase.value, field),
+				expected,
+				`${field} of ${JSON.stringify(testCase.value)}: ${testCase.reason}`,
+			);
+		}
+	}
+
+	// Only the single-segment cases apply here: this is the component lookup,
+	// not the path walker, so a case like ".hour.year" belongs to the runner's
+	// own consumer of the same fixture.
+	for (const testCase of conformance.unresolved_cases.filter(({ path }) => !path.slice(1).includes("."))) {
+		assert.equal(
+			componentFieldValue(testCase.value, testCase.path.slice(1)),
+			undefined,
+			`${testCase.path} should not resolve: ${testCase.reason}`,
+		);
+	}
+});
+
+test("the simulator walks a path into a component and then its metadata", async () => {
+	const { getPathValue } = await import("../utils/simulation.ts");
+	const conformance = JSON.parse(
+		readFileSync(join(appRoot, "contracts", "datetime-part-conformance.json"), "utf8"),
+	) as {
+		metadata_after_component_cases: {
+			field: string;
+			reason: string;
+			result: JsonValue;
+			suffix: string;
+			value: JsonValue;
+		}[];
+		unresolved_cases: { path: string; reason: string; value: JsonValue }[];
+	};
+
+	// The whole grammar composing: a path segment that is computed, followed by
+	// one metadata segment describing what it produced.
+	for (const testCase of conformance.metadata_after_component_cases) {
+		assert.equal(
+			getPathValue(testCase.value, `.${testCase.field}.${testCase.suffix}`),
+			testCase.result,
+			`${testCase.field}.${testCase.suffix}: ${testCase.reason}`,
+		);
+	}
+
+	for (const testCase of conformance.unresolved_cases) {
+		assert.equal(
+			getPathValue(testCase.value, testCase.path),
+			undefined,
+			`${testCase.path} should not resolve: ${testCase.reason}`,
+		);
+	}
 });

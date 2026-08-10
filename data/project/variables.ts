@@ -5,6 +5,7 @@ import {
 	validateNumericConfigValue,
 } from "@/data/nodes/numeric-validation";
 import { typedDatetimeIso } from "@/data/project/datetime";
+import { componentFieldsForType, componentFieldValue } from "@/data/project/derived-parts";
 import { userIdentifierPattern } from "@/data/project/user-identifier";
 import type { JsonValue, RuntimeDataType, ScriptNodeData } from "@/lib/types";
 
@@ -50,8 +51,6 @@ export const variableOperations = [
 ] as const;
 
 export type VariableOperation = (typeof variableOperations)[number];
-
-export const reservedVariablePrefixes = ["manifest_", "system_"] as const;
 
 export type EditorVariableScope = VariableScope | "secret" | "setting" | "manifest" | "system" | "node_output";
 
@@ -413,12 +412,10 @@ export function validateVariableName(name: string) {
 		return "Variable names may contain only letters A-Z, letters a-z, numbers 0-9, hyphens, and underscores.";
 	}
 
-	if (trimmed === "settings") {
-		return 'The name "settings" is reserved for Script Settings.';
-	}
-
-	const reservedPrefix = reservedVariablePrefixes.find((prefix) => trimmed.startsWith(prefix));
-	return reservedPrefix ? `Variable names starting with "${reservedPrefix}" are reserved.` : "";
+	// "settings" and the "system_" and "manifest_" prefixes used to be reserved
+	// here. Every built-in now lives behind "@", which no user identifier may
+	// contain, so nothing an author names can shadow one.
+	return "";
 }
 
 export function validateWritableVariableName(name: string, readOnlyNames: ReadonlySet<string>) {
@@ -595,7 +592,10 @@ export function createDerivedVariableMetadataDefinitions(variables: EditorVariab
 			return [];
 		}
 
-		return derivedVariableMetadataFields.map((field) => {
+		// Components are offered only where they exist, so a string does not
+		// advertise an hour that would never resolve. Metadata applies to every
+		// value; a component is part of one, which is why it has no "$".
+		return [...derivedVariableMetadataFields, ...componentFieldsForType(variable.type)].map((field) => {
 			const name = `${variable.name}.${field.name}`;
 			return {
 				description: `${field.description} Derived from ${variable.name}.`,
@@ -605,7 +605,9 @@ export function createDerivedVariableMetadataDefinitions(variables: EditorVariab
 				source: variable.source,
 				token: `{{${name}}}`,
 				type: field.type,
-				value: getDerivedVariableMetadataValue(variable.value, field.name),
+				value:
+					getDerivedVariableMetadataValue(variable.value, field.name) ??
+					componentFieldValue(variable.value, field.name),
 			} satisfies EditorVariable;
 		});
 	});
@@ -634,10 +636,7 @@ const derivedVariableMetadataFields = [
 	},
 ] as const;
 
-function getDerivedVariableMetadataValue(
-	value: JsonValue | undefined,
-	field: (typeof derivedVariableMetadataFields)[number]["name"],
-) {
+function getDerivedVariableMetadataValue(value: JsonValue | undefined, field: string) {
 	if (value === undefined) {
 		return undefined;
 	}

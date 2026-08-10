@@ -1,4 +1,5 @@
 import { TextCursorInput } from "lucide-react";
+import { formatDatetime, validateDatetimePattern } from "@/data/project/datetime-format";
 import type { VariableReferenceCandidate } from "@/data/project/variables";
 import type { JsonValue } from "@/lib/types";
 import { runSafeRegex, validateSafeRegexPattern } from "@/utils/safe-regex";
@@ -136,6 +137,21 @@ async function executeOperation(
 	if (operation === "template") {
 		return { ok: true, value: resolveTemplate(row.template) };
 	}
+	if (operation === "format_datetime") {
+		// Placed before the string guard below, because this is the one operation
+		// that wants the value rather than its text form.
+		const pattern = resolveToString(row.pattern, resolveTemplate);
+		const problem = validateDatetimePattern(pattern);
+		if (problem) return { error: problem, ok: false };
+		const formatted = formatDatetime(current, pattern);
+		if (formatted === undefined) {
+			return {
+				error: "Format date and time requires a datetime from the input or the previous operation.",
+				ok: false,
+			};
+		}
+		return { ok: true, value: formatted };
+	}
 	if (operation === "join") {
 		if (!Array.isArray(current)) {
 			return { error: "Join requires a list from the input or the previous operation.", ok: false };
@@ -250,6 +266,11 @@ export function validateTextTransformField(
 		const patternError = validateSafeRegexPattern(value);
 		if (patternError) return patternError;
 		return portableRegexError(value, row.replacement);
+	}
+	if (field === "pattern" && operation === "format_datetime") {
+		// Reported where it is typed rather than only at run time, the same as
+		// the regex pattern above.
+		return validateDatetimePattern(value);
 	}
 	if (field === "delimiter" && (operation === "split" || operation === "join") && !value) {
 		return "Delimiter is required.";

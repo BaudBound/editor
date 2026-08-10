@@ -2,6 +2,19 @@ import type { ProjectSettings } from "@/lib/types";
 import { DEFAULT_MINIMUM_RUNNER_VERSION } from "@/lib/version";
 import type { EditorVariable } from "./variables";
 
+/**
+ * The values the runner supplies, grouped under the reserved `@` namespaces.
+ *
+ * `@` is not a legal identifier character, so a script cannot spell one of
+ * these names and cannot shadow one. That is what replaced the old blocklist of
+ * reserved `system_` and `manifest_` prefixes, and it is why those prefixes and
+ * the bare name `settings` are ordinary variable names again.
+ *
+ * Each entry is one field of one object. The runtime holds `@system` and
+ * `@manifest` as objects; the picker lists their fields, because a field is
+ * what an author actually references.
+ */
+
 export type BuiltInVariable = Omit<
 	EditorVariable<BuiltInVariableValue | undefined>,
 	"read_only" | "scope" | "source" | "value"
@@ -19,35 +32,67 @@ export type BuiltInVariableGroup = {
 };
 
 type BuiltInVariableScope = "manifest" | "system";
-type BuiltInVariableValue = string | number;
+type BuiltInVariableValue =
+	| string
+	| number
+	| { type: "datetime"; value: string }
+	| { type: "duration"; unit: string; value: number };
 type BuiltInVariableRuntimeEntry = BuiltInVariable &
 	EditorVariable<BuiltInVariableValue | undefined> & {
 		scope: BuiltInVariableScope;
 		value?: BuiltInVariableValue;
 	};
 
-const MANIFEST_FORMAT_VERSION = 1;
+/** The object each group is a field of, spelled once. */
+export const MANIFEST_NAMESPACE = "@manifest";
+export const SYSTEM_NAMESPACE = "@system";
+export const SETTINGS_NAMESPACE = "@settings";
 
 const manifestValueResolvers: Record<string, (settings: ProjectSettings) => BuiltInVariableValue> = {
-	manifest_name: (settings: ProjectSettings) => settings.name,
-	manifest_version: () => MANIFEST_FORMAT_VERSION,
-	manifest_author: (settings: ProjectSettings) => settings.author,
-	manifest_description: (settings: ProjectSettings) => settings.description,
-	manifest_website: (settings: ProjectSettings) => settings.website,
-	manifest_source: (settings: ProjectSettings) => settings.source,
-	manifest_minimum_runner_version: (settings: ProjectSettings) => settings.minimumRunnerVersion,
+	id: (settings: ProjectSettings) => settings.name,
+	name: (settings: ProjectSettings) => settings.name,
+	// The script version the manifest declares. This used to report the
+	// manifest format version, which is a different fact and not one an author
+	// has any use for.
+	version: (settings: ProjectSettings) => settings.version,
+	author: (settings: ProjectSettings) => settings.author,
+	description: (settings: ProjectSettings) => settings.description,
+	website: (settings: ProjectSettings) => settings.website,
+	source: (settings: ProjectSettings) => settings.source,
+	minimum_runner_version: (settings: ProjectSettings) => settings.minimumRunnerVersion,
 };
 
-const systemRuntimeBindings = {
-	system_os: "runner.system.os",
-	system_arch: "runner.system.arch",
-	system_hostname: "runner.system.hostname",
-	system_user: "runner.system.user",
-	system_locale: "runner.system.locale",
-	system_timezone: "runner.system.timezone",
-	system_date: "runner.system.date",
-	system_time: "runner.system.time",
-} satisfies Record<string, string>;
+function manifestField(
+	name: string,
+	type: BuiltInVariable["type"],
+	description: string,
+	example: string,
+): BuiltInVariable {
+	return {
+		name: `${MANIFEST_NAMESPACE}.${name}`,
+		token: `{{${MANIFEST_NAMESPACE}.${name}}}`,
+		type,
+		description,
+		example,
+		runtimeBinding: `manifest.${name}`,
+	};
+}
+
+function systemField(
+	name: string,
+	type: BuiltInVariable["type"],
+	description: string,
+	example: string,
+): BuiltInVariable {
+	return {
+		name: `${SYSTEM_NAMESPACE}.${name}`,
+		token: `{{${SYSTEM_NAMESPACE}.${name}}}`,
+		type,
+		description,
+		example,
+		runtimeBinding: `runner.system.${name}`,
+	};
+}
 
 export const builtInVariableGroups: BuiltInVariableGroup[] = [
 	{
@@ -55,62 +100,24 @@ export const builtInVariableGroups: BuiltInVariableGroup[] = [
 		label: "Manifest",
 		description: "Values from the script manifest and project settings.",
 		variables: [
-			{
-				name: "manifest_name",
-				token: "{{manifest_name}}",
-				type: "string",
-				description: "Current script name from project settings.",
-				example: "server-health-check",
-				runtimeBinding: "manifest.name",
-			},
-			{
-				name: "manifest_version",
-				token: "{{manifest_version}}",
-				type: "integer",
-				description: "Package version written to exported scripts.",
-				example: "1",
-				runtimeBinding: "manifest.format_version",
-			},
-			{
-				name: "manifest_author",
-				token: "{{manifest_author}}",
-				type: "string",
-				description: "Author from project settings.",
-				example: "NATroutter",
-				runtimeBinding: "manifest.author",
-			},
-			{
-				name: "manifest_description",
-				token: "{{manifest_description}}",
-				type: "string",
-				description: "Description from project settings.",
-				example: "Checks server health and reports status.",
-				runtimeBinding: "manifest.description",
-			},
-			{
-				name: "manifest_website",
-				token: "{{manifest_website}}",
-				type: "string",
-				description: "Project website from project settings.",
-				example: "https://example.com",
-				runtimeBinding: "manifest.website",
-			},
-			{
-				name: "manifest_source",
-				token: "{{manifest_source}}",
-				type: "string",
-				description: "Source URL from project settings.",
-				example: "https://github.com/example/script",
-				runtimeBinding: "manifest.source",
-			},
-			{
-				name: "manifest_minimum_runner_version",
-				token: "{{manifest_minimum_runner_version}}",
-				type: "string",
-				description: "Minimum runner version required by the package.",
-				example: DEFAULT_MINIMUM_RUNNER_VERSION,
-				runtimeBinding: "manifest.minimum_runner_version",
-			},
+			manifestField("id", "string", "Stable script identifier.", "8bb0c704-e663-491c-b96f-0af25bcea0ae"),
+			manifestField("name", "string", "Current script name from project settings.", "server-health-check"),
+			manifestField("version", "string", "Script version from project settings.", "1.0.0"),
+			manifestField("author", "string", "Author from project settings.", "NATroutter"),
+			manifestField(
+				"description",
+				"string",
+				"Description from project settings.",
+				"Checks server health and reports status.",
+			),
+			manifestField("website", "string", "Project website from project settings.", "https://example.com"),
+			manifestField("source", "string", "Source URL from project settings.", "https://github.com/example/script"),
+			manifestField(
+				"minimum_runner_version",
+				"string",
+				"Minimum runner version required by the package.",
+				DEFAULT_MINIMUM_RUNNER_VERSION,
+			),
 		],
 	},
 	{
@@ -118,73 +125,43 @@ export const builtInVariableGroups: BuiltInVariableGroup[] = [
 		label: "System",
 		description: "Runner-provided values that are always available at execution time.",
 		variables: [
-			{
-				name: "system_os",
-				token: "{{system_os}}",
-				type: "string",
-				description: "Operating system reported by the runner.",
-				example: "windows",
-				runtimeBinding: systemRuntimeBindings.system_os,
-			},
-			{
-				name: "system_arch",
-				token: "{{system_arch}}",
-				type: "string",
-				description: "CPU architecture reported by the runner.",
-				example: "x64",
-				runtimeBinding: systemRuntimeBindings.system_arch,
-			},
-			{
-				name: "system_hostname",
-				token: "{{system_hostname}}",
-				type: "string",
-				description: "Host name of the machine running the script.",
-				example: "DESKTOP-01",
-				runtimeBinding: systemRuntimeBindings.system_hostname,
-			},
-			{
-				name: "system_user",
-				token: "{{system_user}}",
-				type: "string",
-				description: "Current runner user name when the platform exposes it.",
-				example: "runner",
-				runtimeBinding: systemRuntimeBindings.system_user,
-			},
-			{
-				name: "system_locale",
-				token: "{{system_locale}}",
-				type: "string",
-				description: "Locale reported by the runner environment.",
-				example: "en-US",
-				runtimeBinding: systemRuntimeBindings.system_locale,
-			},
-			{
-				name: "system_timezone",
-				token: "{{system_timezone}}",
-				type: "string",
-				description: "Time zone reported by the runner environment.",
-				example: "Europe/Helsinki",
-				runtimeBinding: systemRuntimeBindings.system_timezone,
-			},
-			{
-				name: "system_date",
-				token: "{{system_date}}",
-				type: "string",
-				description: "Current runner-local date in ISO date format.",
-				example: "2026-07-03",
-				runtimeBinding: systemRuntimeBindings.system_date,
-			},
-			{
-				name: "system_time",
-				token: "{{system_time}}",
-				type: "string",
-				description: "Current runner-local time in 24-hour format.",
-				example: "14:30:00",
-				runtimeBinding: systemRuntimeBindings.system_time,
-			},
+			systemField("os", "string", "Operating system reported by the runner.", "windows"),
+			systemField("os_name", "string", "Full operating system name.", "Windows 11 Pro"),
+			systemField("os_version", "string", "Operating system or kernel version.", "10.0.26200"),
+			systemField("arch", "string", "CPU architecture reported by the runner.", "x86_64"),
+			systemField("hostname", "string", "Host name of the machine running the script.", "DESKTOP-01"),
+			systemField("user", "string", "Current runner user name when the platform exposes it.", "runner"),
+			systemField("locale", "string", "Locale reported by the runner environment.", "en-US"),
+			systemField("timezone", "string", "Time zone reported by the runner environment.", "Europe/Helsinki"),
+			systemField("cpu_count", "integer", "Number of logical CPUs the machine reports.", "16"),
+			systemField("runner_version", "string", "Version of the runner executing the script.", "2.0.0"),
+			systemField("run_id", "string", "Unique identifier for this run.", "script-1:n-trigger:1786365550532:110"),
+			systemField("trigger_id", "string", "Node id of the trigger that started this run.", "n-trigger"),
+			systemField("trigger_type", "string", "Action type of the trigger that started this run.", "trigger.manual"),
+			systemField(
+				"run_started_at",
+				"datetime",
+				"The clock when this run began. Unlike the datetime below it does not move, so two references to it always agree.",
+				"2026-07-03T14:30:00+03:00",
+			),
+			systemField(
+				"datetime",
+				"datetime",
+				"Current runner date and time, carrying the runner's local offset. Read once per node execution, so a loop or a delay sees the clock move.",
+				"2026-07-03T14:30:00+03:00",
+			),
+			systemField(
+				"uptime",
+				"duration",
+				"How long the machine has been running. Read once per node execution, like the datetime.",
+				"3 days",
+			),
 		],
 	},
 ];
+
+/** The fields read afresh for each node execution rather than once per run. */
+export const liveSystemFields = new Set(["datetime", "uptime"]);
 
 export const builtInVariableNames = new Set(
 	builtInVariableGroups.flatMap((group) => group.variables.map((variable) => variable.name)),
@@ -194,7 +171,7 @@ export function createBuiltInVariableRuntimeContext(projectSettings: ProjectSett
 	const variables = getBuiltInVariableRuntimeEntries(projectSettings);
 
 	return {
-		syntax: "{{variable_name}}",
+		syntax: "{{@namespace.field}}",
 		variables: variables.map((variable) => ({
 			name: variable.name,
 			token: variable.token,
@@ -220,24 +197,53 @@ export function getBuiltInVariableRuntimeEntries(projectSettings: ProjectSetting
 	);
 }
 
+/**
+ * The namespace objects a simulated run starts with.
+ *
+ * Only the fields that cannot change during a run are seeded here. The clock
+ * and the uptime are resolved per node execution by the simulator, the same
+ * boundary the runner uses, so a delay or a loop sees them move.
+ */
 export function createSimulationBuiltInVariableValues(projectSettings: ProjectSettings, now = new Date()) {
-	const manifestValues = Object.fromEntries(
+	const manifest = Object.fromEntries(
 		Object.entries(manifestValueResolvers).map(([name, resolver]) => [name, resolver(projectSettings)]),
 	);
-	const locale = getSimulationLocale();
-	const timezone = getSimulationTimeZone();
 
 	return {
-		...manifestValues,
-		system_os: getSimulationOperatingSystem(),
-		system_arch: "simulated",
-		system_hostname: "simulator",
-		system_user: "simulator",
-		system_locale: locale,
-		system_timezone: timezone,
-		system_date: formatSimulationDate(now),
-		system_time: formatSimulationTime(now),
-	} satisfies Record<string, BuiltInVariableValue>;
+		[MANIFEST_NAMESPACE]: manifest,
+		[SYSTEM_NAMESPACE]: {
+			os: getSimulationOperatingSystem(),
+			os_name: getSimulationOperatingSystem(),
+			os_version: "simulated",
+			arch: "simulated",
+			hostname: "simulator",
+			user: "simulator",
+			locale: getSimulationLocale(),
+			timezone: getSimulationTimeZone(),
+			cpu_count: getSimulationCpuCount(),
+			runner_version: DEFAULT_MINIMUM_RUNNER_VERSION,
+			run_id: `simulation:${now.getTime()}`,
+			trigger_id: "",
+			trigger_type: "",
+			run_started_at: { type: "datetime", value: toLocalIsoString(now) },
+		},
+	};
+}
+
+/** One live `@system` field, read at the moment a node execution asks for it. */
+export function readLiveSystemField(field: string, now = new Date()) {
+	if (field === "datetime") {
+		return { type: "datetime", value: toLocalIsoString(now) };
+	}
+
+	if (field === "uptime") {
+		// A browser cannot see machine uptime, so this reports how long the
+		// editor page has been open rather than inventing a number.
+		const elapsed = typeof performance === "undefined" ? 0 : Math.trunc(performance.now());
+		return { type: "duration", unit: "milliseconds", value: elapsed };
+	}
+
+	return undefined;
 }
 
 function resolveBuiltInVariableValue(
@@ -249,12 +255,17 @@ function resolveBuiltInVariableValue(
 		return undefined;
 	}
 
-	const resolver = manifestValueResolvers[name];
+	const field = name.slice(`${MANIFEST_NAMESPACE}.`.length);
+	const resolver = manifestValueResolvers[field];
 	if (!resolver) {
 		throw new Error(`Manifest built-in variable ${name} is missing a value resolver.`);
 	}
 
 	return resolver(projectSettings);
+}
+
+function getSimulationCpuCount() {
+	return typeof navigator === "undefined" ? 1 : (navigator.hardwareConcurrency ?? 1);
 }
 
 function getSimulationOperatingSystem() {
@@ -298,10 +309,19 @@ function getSimulationTimeZone() {
 	}
 }
 
-function formatSimulationDate(date: Date) {
-	return date.toISOString().slice(0, 10);
-}
-
-function formatSimulationTime(date: Date) {
-	return date.toTimeString().slice(0, 8);
+/**
+ * RFC 3339 carrying the local offset, matching what the runner produces.
+ *
+ * toISOString would report UTC, so an author simulating at 14:30 local time
+ * would see a different hour than a real run gives them.
+ */
+function toLocalIsoString(date: Date) {
+	const pad = (value: number, width = 2) => String(Math.abs(value)).padStart(width, "0");
+	const offsetMinutes = -date.getTimezoneOffset();
+	const sign = offsetMinutes < 0 ? "-" : "+";
+	const offset = `${sign}${pad(Math.trunc(offsetMinutes / 60))}:${pad(offsetMinutes % 60)}`;
+	return (
+		`${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+		`T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${offset}`
+	);
 }

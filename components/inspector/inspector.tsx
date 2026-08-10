@@ -101,6 +101,7 @@ import type {
 import { PanelCollapseButton } from "../shell/panel-collapse-button";
 import { RiskBadge } from "../shell/risk-badge";
 import { SimulatorPanel } from "../simulation/simulator-panel";
+import { DatetimeTokenPanel } from "./datetime-token-panel";
 import { EdgeOrderPanel } from "./edge-order-panel";
 import { KeyCaptureInput } from "./key-capture-input";
 import { RuntimeDataPanel } from "./runtime-data-panel";
@@ -449,6 +450,8 @@ function PropertiesPanel({
 					</div>
 				)}
 			</section>
+
+			{formatsADatetime(selectedNode) && <DatetimeTokenPanel />}
 
 			<RuntimeDataPanel selectedNode={selectedNode} />
 
@@ -1050,6 +1053,16 @@ function TextTransformConfigPanel({
 										onChange={onChange}
 									/>
 								</>
+							)}
+							{operation === "format_datetime" && (
+								<TextTransformRowInput
+									label="Pattern"
+									field="pattern"
+									row={row}
+									rows={operations}
+									variableCompletions={variableCompletions}
+									onChange={onChange}
+								/>
 							)}
 							{(operation === "split" || operation === "join") && (
 								<TextTransformRowInput
@@ -2229,6 +2242,10 @@ function getTextTransformHelp(operation: string) {
 		return "Build text from normal content and {{variables}}.";
 	}
 
+	if (operation === "format_datetime") {
+		return "Render a datetime as text with a pattern such as yyyy-MM-dd HH:mm.";
+	}
+
 	if (operation === "replace") {
 		return "Replace every exact text match in the input.";
 	}
@@ -2451,5 +2468,13 @@ function updateHeader(
 	onChange(
 		"headers",
 		headers.map((header) => (header.id === id ? { ...header, ...patch } : header)),
+	);
+}
+
+/** Whether the node has an operation the format token reference applies to. */
+function formatsADatetime(selectedNode: Node<ScriptNodeData>) {
+	if (selectedNode.data.actionType !== "action.text.format") return false;
+	return getTextTransformOperationRows(selectedNode.data.config.operations).some(
+		(row) => row.operation === "format_datetime",
 	);
 }

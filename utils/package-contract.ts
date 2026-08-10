@@ -275,8 +275,8 @@ export function validateManifestContract(value: unknown) {
 				}
 				errors.push(...validateKnownFields(secret, secretFields, "manifest.json secret"));
 				const name = typeof secret.name === "string" ? secret.name : "";
-				if (!userIdentifierPattern.test(name) || name.startsWith("system_") || name.startsWith("manifest_")) {
-					errors.push(`manifest.json secret name "${name}" is invalid or reserved.`);
+				if (!userIdentifierPattern.test(name)) {
+					errors.push(`manifest.json secret name "${name}" is invalid.`);
 				}
 				if (names.has(name)) {
 					errors.push(`manifest.json contains duplicate secret name "${name}".`);
@@ -319,8 +319,8 @@ export function validateManifestContract(value: unknown) {
 				errors.push(...validateKnownFields(variable, variableFields, "manifest.json variable"));
 				const name = typeof variable.name === "string" ? variable.name : "";
 				const type = variable.type as (typeof variableTypes)[number];
-				if (!userIdentifierPattern.test(name) || name.startsWith("system_") || name.startsWith("manifest_")) {
-					errors.push(`manifest.json variable name "${name}" is invalid or reserved.`);
+				if (!userIdentifierPattern.test(name)) {
+					errors.push(`manifest.json variable name "${name}" is invalid.`);
 				}
 				if (names.has(name)) errors.push(`manifest.json contains duplicate variable name "${name}".`);
 				if (secretNames.has(name)) errors.push(`manifest.json variable "${name}" conflicts with a secret declaration.`);

@@ -367,8 +367,8 @@ test("source metadata uses only the current manifest source names", () => {
 
 	assert.ok(manifestSchema.properties.source);
 	assert.equal("repository" in manifestSchema.properties, false);
-	assert.equal(builtInSource.includes("manifest_repository"), false);
-	assert.match(builtInSource, /manifest_source/);
+	assert.equal(builtInSource.includes("repository_url"), false);
+	assert.match(builtInSource, /manifestField\("source"/);
 	assert.match(projectSettingsSource, /Repository URL/);
 	assert.match(projectSettingsSource, /Source/);
 });
@@ -1760,7 +1760,9 @@ test("Script Settings are typed package metadata and read only simulation values
 	assert.match(settingSource, /createSimulationScriptSettingValues/);
 	assert.match(packageSource, /settings:\s*params\.scriptSettings\.map/);
 	assert.match(simulationSource, /createSimulationScriptSettingValues/);
-	assert.match(simulationSource, /settings:\s*createSimulationScriptSettingValues\(scriptSettings\)/);
+	// Seeded under the reserved namespace, so a user variable named "settings"
+	// cannot shadow the Script Settings object.
+	assert.match(simulationSource, /\[SETTINGS_NAMESPACE\]:\s*createSimulationScriptSettingValues\(scriptSettings\)/);
 	assert.match(variableNameInputSource, /\.filter\(\(variable\) => !variable\.readOnly/);
 	assert.match(
 		variableOperationSource,
