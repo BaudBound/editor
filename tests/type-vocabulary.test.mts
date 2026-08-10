@@ -272,16 +272,41 @@ test("every system variable the picker offers is one the runner supplies", async
 	const producer = producerFile.slice(0, producerFile.indexOf("#[cfg(test)]"));
 	assert.ok(producer.length > 0, "the producer should be found");
 
-	const offered = (builtInVariableGroups.find((group) => group.id === "system")?.variables ?? []).map(
-		(variable) => variable.name,
+	// Field names, without the "@system." the picker shows, because the
+	// producer supplies the fields of one object rather than flat names.
+	const offered = (builtInVariableGroups.find((group) => group.id === "system")?.variables ?? []).map((variable) =>
+		variable.name.replace("@system.", ""),
 	);
 	assert.ok(offered.length > 0, "the system group should not be empty");
 
 	// The editor offered these long before the runner supplied any of them, so
 	// a script reading one printed the braces in production. Anything the
-	// picker lists has to exist on the other side.
-	for (const name of offered) {
+	// picker lists has to exist on the other side. The run-scoped fields are
+	// added by the runtime rather than this producer, and the live ones are
+	// read at reference time, so both are named where they are built.
+	const suppliedElsewhere = new Set(["run_id", "trigger_id", "trigger_type", "run_started_at", "datetime", "uptime"]);
+	for (const name of offered.filter((field) => !suppliedElsewhere.has(field))) {
 		assert.ok(producer.includes(`"${name}"`), `the runner must supply ${name}`);
+	}
+});
+
+test("every manifest variable the picker offers is one the runner supplies", async () => {
+	const { builtInVariableGroups } = await import("../data/project/built-in-variables.ts");
+	// The manifest namespace was never supplied to a run at all, so this guard
+	// exists for the same reason the system one does.
+	const producerFile = readFileSync(
+		join(appRoot, "..", "baudbound", "crates", "baudbound-core", "src", "system_variables.rs"),
+		"utf8",
+	);
+	const producer = producerFile.slice(0, producerFile.indexOf("#[cfg(test)]"));
+
+	const offered = (builtInVariableGroups.find((group) => group.id === "manifest")?.variables ?? []).map((variable) =>
+		variable.name.replace("@manifest.", ""),
+	);
+	assert.ok(offered.length > 0, "the manifest group should not be empty");
+
+	for (const name of offered) {
+		assert.ok(producer.includes(`"${name}"`), `the runner must supply @manifest.${name}`);
 	}
 });
 

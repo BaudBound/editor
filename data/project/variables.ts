@@ -52,8 +52,6 @@ export const variableOperations = [
 
 export type VariableOperation = (typeof variableOperations)[number];
 
-export const reservedVariablePrefixes = ["manifest_", "system_"] as const;
-
 export type EditorVariableScope = VariableScope | "secret" | "setting" | "manifest" | "system" | "node_output";
 
 export type EditorVariableSource = "user" | "built_in" | "node_output" | "secret" | "setting";
@@ -414,12 +412,10 @@ export function validateVariableName(name: string) {
 		return "Variable names may contain only letters A-Z, letters a-z, numbers 0-9, hyphens, and underscores.";
 	}
 
-	if (trimmed === "settings") {
-		return 'The name "settings" is reserved for Script Settings.';
-	}
-
-	const reservedPrefix = reservedVariablePrefixes.find((prefix) => trimmed.startsWith(prefix));
-	return reservedPrefix ? `Variable names starting with "${reservedPrefix}" are reserved.` : "";
+	// "settings" and the "system_" and "manifest_" prefixes used to be reserved
+	// here. Every built-in now lives behind "@", which no user identifier may
+	// contain, so nothing an author names can shadow one.
+	return "";
 }
 
 export function validateWritableVariableName(name: string, readOnlyNames: ReadonlySet<string>) {

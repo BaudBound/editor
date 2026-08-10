@@ -192,6 +192,14 @@ export type SimulationRun = {
 };
 
 export type SimulationContext = {
+	/**
+	 * When the live @system fields were last read.
+	 *
+	 * Cleared at the start of every node execution, so two references in one
+	 * node agree while a loop or a delay still sees the clock move. The runner
+	 * draws the same boundary.
+	 */
+	liveReadAt: Date | null;
 	assetsByPackagePath: Map<string, EditorAsset>;
 	edgesBySource: Map<string, Edge[]>;
 	failed: boolean;

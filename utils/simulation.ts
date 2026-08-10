@@ -5,7 +5,13 @@ import { isConditionRow, isSwitchCaseRow } from "@/data/nodes/definitions/rows";
 import type { NodeSimulationApi } from "@/data/nodes/node-definition";
 import { numericContractApplies, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
 import { fallibleActionTypes, getNodeDefinition } from "@/data/nodes/registry";
-import { createSimulationBuiltInVariableValues } from "@/data/project/built-in-variables";
+import {
+	createSimulationBuiltInVariableValues,
+	liveSystemFields,
+	readLiveSystemField,
+	SETTINGS_NAMESPACE,
+	SYSTEM_NAMESPACE,
+} from "@/data/project/built-in-variables";
 import { derivedPartValue } from "@/data/project/derived-parts";
 import { createSimulationScriptSettingValues } from "@/data/project/script-settings";
 import type {
@@ -148,6 +154,7 @@ export async function createSimulationRun({
 		failed: false,
 		globalVariables: structuredClone(globalVariables),
 		halted: false,
+		liveReadAt: null,
 		httpSimulation: {
 			authorizedOrigins: new Set(httpSimulation.authorizedOrigins),
 			mode: httpSimulation.mode,
@@ -166,7 +173,7 @@ export async function createSimulationRun({
 		},
 		runtimeVariables: {
 			...createSimulationBuiltInVariableValues(projectSettings),
-			settings: createSimulationScriptSettingValues(scriptSettings),
+			[SETTINGS_NAMESPACE]: createSimulationScriptSettingValues(scriptSettings),
 			...Object.fromEntries(
 				defaultVariables
 					.filter((variable) => variable.scope === "runtime")
@@ -323,6 +330,11 @@ async function executeNodeFrame(
 	if (nodeId === stopAtNodeId) {
 		return;
 	}
+
+	// One clock reading per node execution: every reference inside this node
+	// agrees, and the next node reads again. Cleared on the way in rather than
+	// out, so a node that throws cannot leave a stale reading behind.
+	context.liveReadAt = null;
 
 	const node = context.nodesById.get(nodeId);
 	if (!node) {
@@ -1324,6 +1336,11 @@ function tryGetReferenceValue(expression: string, context: SimulationContext): J
 }
 
 function resolveReferencePath(reference: string, context: SimulationContext): JsonValue | undefined {
+	const live = resolveLiveSystemReference(reference, context);
+	if (live !== undefined) {
+		return live;
+	}
+
 	if (reference in context.runtimeVariables) {
 		return context.runtimeVariables[reference];
 	}
@@ -1374,6 +1391,32 @@ function getRuntimeVariableReference(reference: string, variables: Record<string
 		path,
 		value: variables[variableName],
 	};
+}
+
+/**
+ * Resolves a reference into a live `@system` field, or undefined if it is not
+ * one. The clock and the uptime move during a run, so they are read when a
+ * reference asks rather than seeded once, and the reading is held for the rest
+ * of the node execution that asked for it.
+ */
+function resolveLiveSystemReference(reference: string, context: SimulationContext): JsonValue | undefined {
+	const prefix = `${SYSTEM_NAMESPACE}.`;
+	if (!reference.startsWith(prefix)) {
+		return undefined;
+	}
+
+	const [field, ...rest] = reference.slice(prefix.length).split(".");
+	if (!liveSystemFields.has(field)) {
+		return undefined;
+	}
+
+	context.liveReadAt ??= new Date();
+	const value = readLiveSystemField(field, context.liveReadAt) as JsonValue | undefined;
+	if (value === undefined || rest.length === 0) {
+		return value;
+	}
+
+	return getPathValue(value, `.${rest.join(".")}`);
 }
 
 /**
