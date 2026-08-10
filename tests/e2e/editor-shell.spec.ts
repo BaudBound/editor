@@ -280,14 +280,23 @@ test("Form Dialog temporal defaults use native pickers with an explicit variable
 	await expect(datePicker).toHaveValue("2026-08-03");
 	await formBuilder.getByRole("button", { name: "Variable", exact: true }).click();
 	const variableInput = formBuilder.getByRole("textbox", { name: "Default value" });
-	await variableInput.fill("{{system_dat");
-	await expect(page.locator('[data-variable-suggestion="system_date"]')).toHaveCount(0);
-	await variableInput.fill("{{system_date}}");
+	// system_os is the string built-in this case needs. It used to be
+	// system_date, which no longer exists: the two date and time strings became
+	// one system_datetime carrying the datetime type.
+	await variableInput.fill("{{system_o");
+	await expect(page.locator('[data-variable-suggestion="system_os"]')).toHaveCount(0);
+	await variableInput.fill("{{system_os}}");
 	await expect(
-		formBuilder.locator('[data-variable-token="system_date"][data-variable-status="type-mismatch"]'),
+		formBuilder.locator('[data-variable-token="system_os"][data-variable-status="type-mismatch"]'),
 	).toBeVisible();
 	await expect(
-		formBuilder.getByRole("alert").filter({ hasText: /system_date.*type string.*accepts datetime variables/i }),
+		formBuilder.getByRole("alert").filter({ hasText: /system_os.*type string.*accepts datetime variables/i }),
+	).toBeVisible();
+
+	// The datetime built-in is the one this field does accept.
+	await variableInput.fill("{{system_datetime}}");
+	await expect(
+		formBuilder.locator('[data-variable-token="system_datetime"][data-variable-status="known"]'),
 	).toBeVisible();
 	await variableInput.fill("{{settings.testv");
 	const suggestions = page.getByRole("listbox", { name: "Default value suggestions" });
@@ -1600,13 +1609,16 @@ test("numeric fields autocomplete number variables and suspend literal stepping"
 	await expect(amountField).toHaveValue("1");
 	await expect(page.getByRole("button", { name: "Decrease Amount" })).toBeDisabled();
 
+	// system_os is the string built-in this case needs. It used to be
+	// system_date, which no longer exists: the two date and time strings became
+	// one system_datetime carrying the datetime type.
 	await amountField.fill("{{system_");
-	await expect(page.locator('[data-variable-suggestion="system_date"]')).toHaveCount(0);
-	await amountField.fill("{{system_date}}");
-	await expect(page.locator('[data-variable-token="system_date"][data-variable-status="type-mismatch"]')).toBeVisible();
+	await expect(page.locator('[data-variable-suggestion="system_os"]')).toHaveCount(0);
+	await amountField.fill("{{system_os}}");
+	await expect(page.locator('[data-variable-token="system_os"][data-variable-status="type-mismatch"]')).toBeVisible();
 	await expect(
 		page.getByText(
-			'Variable "system_date" has type string; this field accepts integer variables. Add a cast such as {{system_date|integer}} to convert it.',
+			'Variable "system_os" has type string; this field accepts integer variables. Add a cast such as {{system_os|integer}} to convert it.',
 			{ exact: true },
 		),
 	).toBeVisible();
@@ -1614,21 +1626,21 @@ test("numeric fields autocomplete number variables and suspend literal stepping"
 	// The cast the message suggests resolves the mismatch: the same field and
 	// the same variable, now accepted, with the target read as the target
 	// rather than as part of the name.
-	await amountField.fill("{{system_date|integer}}");
-	await expect(page.locator('[data-variable-token="system_date"][data-variable-status="known"]')).toBeVisible();
-	await expect(page.locator('[data-variable-token="system_date|integer"]')).toHaveCount(0);
+	await amountField.fill("{{system_os|integer}}");
+	await expect(page.locator('[data-variable-token="system_os"][data-variable-status="known"]')).toBeVisible();
+	await expect(page.locator('[data-variable-token="system_os|integer"]')).toHaveCount(0);
 
 	// An unknown target is still marked invalid.
-	await amountField.fill("{{system_date|nonsense}}");
-	await expect(page.locator('[data-variable-token="system_date"][data-variable-status="invalid"]')).toBeVisible();
+	await amountField.fill("{{system_os|nonsense}}");
+	await expect(page.locator('[data-variable-token="system_os"][data-variable-status="invalid"]')).toBeVisible();
 
-	await amountField.fill("{{system_date}}");
+	await amountField.fill("{{system_os}}");
 
 	await page.getByRole("button", { name: "Verify script" }).click();
 	await expect(page.getByRole("heading", { name: "Verification" })).toBeVisible();
 	await expect(
 		page.locator("[data-verification-result] li").filter({
-			hasText: /Delay.*Variable "system_date" has type string; this field accepts integer variables/i,
+			hasText: /Delay.*Variable "system_os" has type string; this field accepts integer variables/i,
 		}),
 	).toBeVisible();
 });
