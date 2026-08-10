@@ -1,12 +1,14 @@
 import { AppWindow } from "lucide-react";
 import { defineNode } from "../../node-definition";
 import { processMatchModeOptions } from "../options";
+import { triggerOverlapFields } from "../shared-fields";
 import { requiredConfig, windowsDesktopOnlyConfigValue } from "../validators";
 
 export const processStartedTriggerNode = defineNode({
 	actionType: "trigger.process_started",
 	capabilities: ["trigger.process_started"],
 	configFields: [
+		...triggerOverlapFields,
 		{ key: "matchMode", label: "Match by", type: "select", options: processMatchModeOptions },
 		{
 			key: "target",
@@ -18,7 +20,7 @@ export const processStartedTriggerNode = defineNode({
 			help: "Process name, executable path, or window title depending on Match by.",
 		},
 	],
-	defaultConfig: () => ({ matchMode: "process_name", target: "" }),
+	defaultConfig: () => ({ overlap: "queue", matchMode: "process_name", target: "" }),
 	description: "Start when a configured app or process starts.",
 	group: "triggers",
 	icon: AppWindow,

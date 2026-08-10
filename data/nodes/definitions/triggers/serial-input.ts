@@ -1,11 +1,13 @@
 import { Usb } from "lucide-react";
 import { defineNode } from "../../node-definition";
+import { triggerOverlapFields } from "../shared-fields";
 import { configString, requiredConfig } from "../validators";
 
 export const serialInputTriggerNode = defineNode({
 	actionType: "trigger.serial_input",
 	capabilities: ["trigger.serial_input"],
 	configFields: [
+		...triggerOverlapFields,
 		{
 			key: "deviceId",
 			label: "Device id",
@@ -15,6 +17,7 @@ export const serialInputTriggerNode = defineNode({
 		},
 	],
 	defaultConfig: () => ({
+		overlap: "queue",
 		deviceId: "",
 	}),
 	description: "Start when a serial device outputs data.",

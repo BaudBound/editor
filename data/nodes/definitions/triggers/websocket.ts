@@ -1,11 +1,13 @@
 import { Radio } from "lucide-react";
 import { defineNode } from "../../node-definition";
+import { triggerOverlapFields } from "../shared-fields";
 import { configString, requiredConfig } from "../validators";
 
 export const websocketTriggerNode = defineNode({
 	actionType: "trigger.websocket",
 	capabilities: ["trigger.websocket"],
 	configFields: [
+		...triggerOverlapFields,
 		{
 			key: "path",
 			label: "Path",
@@ -18,7 +20,7 @@ export const websocketTriggerNode = defineNode({
 			},
 		},
 	],
-	defaultConfig: () => ({ path: "" }),
+	defaultConfig: () => ({ overlap: "queue", path: "" }),
 	description: "Start when a WebSocket message is received.",
 	group: "triggers",
 	icon: Radio,
