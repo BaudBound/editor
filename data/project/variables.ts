@@ -5,7 +5,7 @@ import {
 	validateNumericConfigValue,
 } from "@/data/nodes/numeric-validation";
 import { typedDatetimeIso } from "@/data/project/datetime";
-import { derivedPartFieldsForType, derivedPartValue } from "@/data/project/derived-parts";
+import { componentFieldsForType, componentFieldValue } from "@/data/project/derived-parts";
 import { userIdentifierPattern } from "@/data/project/user-identifier";
 import type { JsonValue, RuntimeDataType, ScriptNodeData } from "@/lib/types";
 
@@ -592,9 +592,10 @@ export function createDerivedVariableMetadataDefinitions(variables: EditorVariab
 			return [];
 		}
 
-		// Parts are offered only where they exist, so a string does not
-		// advertise a .$hour that would never resolve.
-		return [...derivedVariableMetadataFields, ...derivedPartFieldsForType(variable.type)].map((field) => {
+		// Components are offered only where they exist, so a string does not
+		// advertise an hour that would never resolve. Metadata applies to every
+		// value; a component is part of one, which is why it has no "$".
+		return [...derivedVariableMetadataFields, ...componentFieldsForType(variable.type)].map((field) => {
 			const name = `${variable.name}.${field.name}`;
 			return {
 				description: `${field.description} Derived from ${variable.name}.`,
@@ -605,7 +606,8 @@ export function createDerivedVariableMetadataDefinitions(variables: EditorVariab
 				token: `{{${name}}}`,
 				type: field.type,
 				value:
-					getDerivedVariableMetadataValue(variable.value, field.name) ?? derivedPartValue(variable.value, field.name),
+					getDerivedVariableMetadataValue(variable.value, field.name) ??
+					componentFieldValue(variable.value, field.name),
 			} satisfies EditorVariable;
 		});
 	});

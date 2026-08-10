@@ -310,50 +310,6 @@ test("every manifest variable the picker offers is one the runner supplies", asy
 	}
 });
 
-test("derived parts match what the runner computes", async () => {
-	const { derivedPartValue, datetimePartFields, durationPartFields } = await import("../data/project/derived-parts.ts");
-
-	// The same values the runner's derived_part_tests assert, so simulation
-	// and production cannot drift apart on the arithmetic.
-	const datetime = { type: "datetime", value: "2026-07-03T14:30:45+03:00" };
-	assert.equal(derivedPartValue(datetime, "$year"), 2026);
-	assert.equal(derivedPartValue(datetime, "$month"), 7);
-	assert.equal(derivedPartValue(datetime, "$day"), 3);
-	assert.equal(derivedPartValue(datetime, "$hour"), 14, "read in the offset the value carries, not UTC");
-	assert.equal(derivedPartValue(datetime, "$minute"), 30);
-	assert.equal(derivedPartValue(datetime, "$second"), 45);
-	assert.equal(derivedPartValue(datetime, "$weekday"), 5, "3 July 2026 is a Friday");
-
-	// An offset the test machine does not share, so a Date-based implementation
-	// converting to the local zone would report a different hour and fail here.
-	// The example above cannot catch that when the machine happens to be +03:00.
-	const elsewhere = { type: "datetime", value: "2026-07-03T14:30:45-05:00" };
-	assert.equal(derivedPartValue(elsewhere, "$hour"), 14);
-	assert.equal(derivedPartValue(elsewhere, "$day"), 3);
-	assert.equal(derivedPartValue(elsewhere, "$weekday"), 5);
-
-	const duration = { type: "duration", unit: "seconds", value: 90 };
-	assert.equal(derivedPartValue(duration, "$days"), 0);
-	assert.equal(derivedPartValue(duration, "$hours"), 0);
-	assert.equal(derivedPartValue(duration, "$minutes"), 1, "components, not 1.5 minutes");
-	assert.equal(derivedPartValue(duration, "$seconds"), 30);
-	assert.equal(derivedPartValue(duration, "$total_milliseconds"), 90_000);
-
-	assert.equal(derivedPartValue({ type: "duration", unit: "hours", value: 50 }, "$days"), 2);
-	assert.equal(derivedPartValue({ type: "duration", unit: "hours", value: 50 }, "$hours"), 2);
-
-	// Nothing for a value that has no parts, or a malformed one.
-	assert.equal(derivedPartValue("just text", "$hour"), undefined);
-	assert.equal(derivedPartValue({ type: "datetime", value: "not a date" }, "$hour"), undefined);
-
-	// The field lists are what the picker offers, so they must match the names
-	// the computation answers to.
-	for (const field of [...datetimePartFields, ...durationPartFields]) {
-		const source = field.name.startsWith("$total") || durationPartFields.includes(field) ? duration : datetime;
-		assert.notEqual(derivedPartValue(source, field.name), undefined, `${field.name} should compute`);
-	}
-});
-
 test("a datetime pattern renders and is validated", async () => {
 	const { formatDatetime, validateDatetimePattern } = await import("../data/project/datetime-format.ts");
 	const value = { type: "datetime", value: "2026-07-03T14:30:45+03:00" };
@@ -459,38 +415,6 @@ test("the simulator agrees with the shared datetime format fixtures", async () =
 	}
 });
 
-test("the simulator agrees with the shared datetime part fixtures", async () => {
-	const { datetimePartFields, derivedPartValue, durationPartFields } = await import("../data/project/derived-parts.ts");
-	const conformance = JSON.parse(
-		readFileSync(join(appRoot, "contracts", "datetime-part-conformance.json"), "utf8"),
-	) as {
-		cases: { parts: Record<string, number>; reason: string; value: JsonValue }[];
-		datetime_parts: string[];
-		duration_parts: string[];
-		version: number;
-	};
-	assert.equal(conformance.version, 1);
-
-	assert.deepEqual(
-		conformance.datetime_parts,
-		datetimePartFields.map((field) => field.name),
-	);
-	assert.deepEqual(
-		conformance.duration_parts,
-		durationPartFields.map((field) => field.name),
-	);
-
-	for (const testCase of conformance.cases) {
-		for (const [part, expected] of Object.entries(testCase.parts)) {
-			assert.equal(
-				derivedPartValue(testCase.value, part),
-				expected,
-				`${part} of ${JSON.stringify(testCase.value)}: ${testCase.reason}`,
-			);
-		}
-	}
-});
-
 test("the simulator agrees with the shared derived metadata fixtures", async () => {
 	const { getPathValue } = await import("../utils/simulation.ts");
 	const conformance = JSON.parse(
@@ -512,5 +436,87 @@ test("the simulator agrees with the shared derived metadata fixtures", async () 
 			continue;
 		}
 		assert.deepEqual(resolved, testCase.result, `${testCase.reference}: ${testCase.reason}`);
+	}
+});
+
+test("the simulator agrees with the shared component field fixtures", async () => {
+	const { componentFieldValue, datetimeComponentFields, durationComponentFields } = await import(
+		"../data/project/derived-parts.ts"
+	);
+	const conformance = JSON.parse(
+		readFileSync(join(appRoot, "contracts", "datetime-part-conformance.json"), "utf8"),
+	) as {
+		cases: { fields: Record<string, JsonValue>; reason: string; value: JsonValue }[];
+		datetime_fields: string[];
+		duration_fields: string[];
+		unresolved_cases: { path: string; reason: string; value: JsonValue }[];
+		version: number;
+	};
+	assert.equal(conformance.version, 2);
+
+	// A case only asserts the fields it lists, so a field added on one side
+	// alone would otherwise pass both suites.
+	assert.deepEqual(
+		conformance.datetime_fields,
+		datetimeComponentFields.map((field) => field.name),
+	);
+	assert.deepEqual(
+		conformance.duration_fields,
+		durationComponentFields.map((field) => field.name),
+	);
+
+	for (const testCase of conformance.cases) {
+		for (const [field, expected] of Object.entries(testCase.fields)) {
+			assert.equal(
+				componentFieldValue(testCase.value, field),
+				expected,
+				`${field} of ${JSON.stringify(testCase.value)}: ${testCase.reason}`,
+			);
+		}
+	}
+
+	// Only the single-segment cases apply here: this is the component lookup,
+	// not the path walker, so a case like ".hour.year" belongs to the runner's
+	// own consumer of the same fixture.
+	for (const testCase of conformance.unresolved_cases.filter(({ path }) => !path.slice(1).includes("."))) {
+		assert.equal(
+			componentFieldValue(testCase.value, testCase.path.slice(1)),
+			undefined,
+			`${testCase.path} should not resolve: ${testCase.reason}`,
+		);
+	}
+});
+
+test("the simulator walks a path into a component and then its metadata", async () => {
+	const { getPathValue } = await import("../utils/simulation.ts");
+	const conformance = JSON.parse(
+		readFileSync(join(appRoot, "contracts", "datetime-part-conformance.json"), "utf8"),
+	) as {
+		metadata_after_component_cases: {
+			field: string;
+			reason: string;
+			result: JsonValue;
+			suffix: string;
+			value: JsonValue;
+		}[];
+		unresolved_cases: { path: string; reason: string; value: JsonValue }[];
+	};
+
+	// The whole grammar composing: a path segment that is computed, followed by
+	// one metadata segment describing what it produced.
+	for (const testCase of conformance.metadata_after_component_cases) {
+		assert.equal(
+			getPathValue(testCase.value, `.${testCase.field}.${testCase.suffix}`),
+			testCase.result,
+			`${testCase.field}.${testCase.suffix}: ${testCase.reason}`,
+		);
+	}
+
+	for (const testCase of conformance.unresolved_cases) {
+		assert.equal(
+			getPathValue(testCase.value, testCase.path),
+			undefined,
+			`${testCase.path} should not resolve: ${testCase.reason}`,
+		);
 	}
 });

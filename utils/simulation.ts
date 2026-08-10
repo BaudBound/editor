@@ -12,7 +12,7 @@ import {
 	SETTINGS_NAMESPACE,
 	SYSTEM_NAMESPACE,
 } from "@/data/project/built-in-variables";
-import { derivedPartValue } from "@/data/project/derived-parts";
+import { componentFieldValue } from "@/data/project/derived-parts";
 import { createSimulationScriptSettingValues } from "@/data/project/script-settings";
 import type {
 	JsonValue,
@@ -1459,7 +1459,10 @@ export function getPathValue(value: JsonValue, path: string): JsonValue | undefi
 			continue;
 		}
 
-		currentValue = currentValue[key];
+		// A real key wins over a computed one, so a datetime's own "value" and
+		// "type" keep meaning what they always did. A component only answers
+		// when the value does not carry that key itself.
+		currentValue = key in currentValue ? currentValue[key] : componentFieldValue(currentValue, key);
 	}
 
 	return currentValue;
@@ -1594,9 +1597,8 @@ function getDerivedValueMetadata(value: JsonValue | undefined, key: string): Jso
 		return isValueEmpty(value);
 	}
 
-	// A datetime or duration also exposes its parts. Same computation the
-	// picker uses, so what an author is offered is what a run resolves.
-	return derivedPartValue(value, key);
+	// Anything else beginning with $ is not metadata this runner knows.
+	return undefined;
 }
 
 function getValueLength(value: JsonValue | undefined) {

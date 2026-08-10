@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { SETTINGS_NAMESPACE } from "@/data/project/built-in-variables";
 import { formatScriptSettingValue, validateScriptSetting } from "@/data/project/script-settings";
 import { createEmptyTypedValue, validateTypedValue } from "@/data/project/typed-values";
 import type { ListItemType } from "@/data/project/variables";
@@ -116,7 +117,7 @@ export function ScriptSettingManager({ settings, onChange }: ScriptSettingManage
 		onChange(
 			next.sort((left, right) => left.name.localeCompare(right.name)),
 			editingName && editingName !== normalized.name
-				? { from: `settings.${editingName}`, to: `settings.${normalized.name}` }
+				? { from: `${SETTINGS_NAMESPACE}.${editingName}`, to: `${SETTINGS_NAMESPACE}.${normalized.name}` }
 				: undefined,
 		);
 		setDialogOpen(false);

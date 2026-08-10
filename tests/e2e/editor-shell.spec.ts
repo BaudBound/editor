@@ -280,29 +280,29 @@ test("Form Dialog temporal defaults use native pickers with an explicit variable
 	await expect(datePicker).toHaveValue("2026-08-03");
 	await formBuilder.getByRole("button", { name: "Variable", exact: true }).click();
 	const variableInput = formBuilder.getByRole("textbox", { name: "Default value" });
-	// system_os is the string built-in this case needs. It used to be
-	// system_date, which no longer exists: the two date and time strings became
-	// one system_datetime carrying the datetime type.
-	await variableInput.fill("{{system_o");
-	await expect(page.locator('[data-variable-suggestion="system_os"]')).toHaveCount(0);
-	await variableInput.fill("{{system_os}}");
+	// @system.os is the string built-in this case needs, and it is not offered
+	// for a datetime field. Built-ins moved behind @ so nothing a script names
+	// can shadow one.
+	await variableInput.fill("{{@system.o");
+	await expect(page.locator('[data-variable-suggestion="@system.os"]')).toHaveCount(0);
+	await variableInput.fill("{{@system.os}}");
 	await expect(
-		formBuilder.locator('[data-variable-token="system_os"][data-variable-status="type-mismatch"]'),
+		formBuilder.locator('[data-variable-token="@system.os"][data-variable-status="type-mismatch"]'),
 	).toBeVisible();
 	await expect(
-		formBuilder.getByRole("alert").filter({ hasText: /system_os.*type string.*accepts datetime variables/i }),
+		formBuilder.getByRole("alert").filter({ hasText: /@system.os.*type string.*accepts datetime variables/i }),
 	).toBeVisible();
 
 	// The datetime built-in is the one this field does accept.
-	await variableInput.fill("{{system_datetime}}");
+	await variableInput.fill("{{@system.datetime}}");
 	await expect(
-		formBuilder.locator('[data-variable-token="system_datetime"][data-variable-status="known"]'),
+		formBuilder.locator('[data-variable-token="@system.datetime"][data-variable-status="known"]'),
 	).toBeVisible();
-	await variableInput.fill("{{settings.testv");
+	await variableInput.fill("{{@settings.testv");
 	const suggestions = page.getByRole("listbox", { name: "Default value suggestions" });
-	await expect(suggestions.locator('[data-variable-suggestion="settings.testvar"]')).toBeVisible();
-	await suggestions.locator('[data-variable-suggestion="settings.testvar"]').click();
-	await expect(variableInput).toHaveValue("{{settings.testvar}}");
+	await expect(suggestions.locator('[data-variable-suggestion="@settings.testvar"]')).toBeVisible();
+	await suggestions.locator('[data-variable-suggestion="@settings.testvar"]').click();
+	await expect(variableInput).toHaveValue("{{@settings.testvar}}");
 	await formBuilder.getByRole("button", { name: "Picker", exact: true }).click();
 	await expect(datePicker).toHaveValue("");
 
@@ -324,11 +324,11 @@ test("Form Dialog temporal defaults use native pickers with an explicit variable
 	await page.getByRole("option", { name: "UTC", exact: true }).click();
 	await formBuilder.getByRole("button", { name: "Variable", exact: true }).click();
 	const datetimeVariableInput = formBuilder.getByRole("textbox", { name: "Default value" });
-	await datetimeVariableInput.fill("{{settings.testv");
+	await datetimeVariableInput.fill("{{@settings.testv");
 	const datetimeSuggestions = page.getByRole("listbox", { name: "Default value suggestions" });
-	await expect(datetimeSuggestions.locator('[data-variable-suggestion="settings.testvar"]')).toBeVisible();
-	await datetimeSuggestions.locator('[data-variable-suggestion="settings.testvar"]').click();
-	await expect(datetimeVariableInput).toHaveValue("{{settings.testvar}}");
+	await expect(datetimeSuggestions.locator('[data-variable-suggestion="@settings.testvar"]')).toBeVisible();
+	await datetimeSuggestions.locator('[data-variable-suggestion="@settings.testvar"]').click();
+	await expect(datetimeVariableInput).toHaveValue("{{@settings.testvar}}");
 	await expect(formBuilder.getByText(/accepts text or datetime variables/i)).toHaveCount(0);
 	await formBuilder.getByRole("button", { name: "Apply" }).click();
 
@@ -369,11 +369,11 @@ test("Form Dialog information components render a configurable high-contrast acc
 	await accentColor.fill("invalid");
 	await expect(formBuilder.getByRole("alert").filter({ hasText: /accent color must be #RRGGBB/i })).toBeVisible();
 	await expect(formBuilder.getByRole("button", { name: "1 issue must be resolved" })).toBeVisible();
-	await accentColor.fill("{{settings.InformationAcc");
+	await accentColor.fill("{{@settings.InformationAcc");
 	const suggestions = page.getByRole("listbox", { name: "Accent color suggestions" });
-	await expect(suggestions.locator('[data-variable-suggestion="settings.NotAColor"]')).toHaveCount(0);
-	await suggestions.getByRole("option", { name: /\{\{settings\.InformationAccent\}\}/ }).click();
-	await expect(accentColor).toHaveValue("{{settings.InformationAccent}}");
+	await expect(suggestions.locator('[data-variable-suggestion="@settings.NotAColor"]')).toHaveCount(0);
+	await suggestions.getByRole("option", { name: /\{\{@settings\.InformationAccent\}\}/ }).click();
+	await expect(accentColor).toHaveValue("{{@settings.InformationAccent}}");
 	await expect(formBuilder.getByRole("button", { name: "Open accent color color picker" })).toHaveCSS(
 		"background-color",
 		"rgb(18, 171, 52)",
@@ -536,7 +536,7 @@ test("Form Dialog display values suggest compatible variables while keys remain 
 	await formBuilder.getByRole("textbox", { name: "Label", exact: true }).fill("Target");
 
 	const choiceKey = formBuilder.getByRole("textbox", { name: "Key", exact: true });
-	await choiceKey.fill("{{settings.ChoiceKey}}");
+	await choiceKey.fill("{{@settings.ChoiceKey}}");
 	await expect(page.getByRole("listbox", { name: "Key suggestions" })).toHaveCount(0);
 	await expect(
 		formBuilder.getByText("Key may contain only letters A-Z, a-z, numbers 0-9, hyphens, and underscores.", {
@@ -546,12 +546,12 @@ test("Form Dialog display values suggest compatible variables while keys remain 
 	await choiceKey.fill("production");
 
 	const choiceLabel = formBuilder.getByRole("textbox", { name: "Displayed value", exact: true });
-	await choiceLabel.fill("{{settings.ChoiceL");
+	await choiceLabel.fill("{{@settings.ChoiceL");
 	await page
 		.getByRole("listbox", { name: "Displayed value suggestions" })
-		.getByRole("option", { name: /\{\{settings\.ChoiceLabel\}\}/ })
+		.getByRole("option", { name: /\{\{@settings\.ChoiceLabel\}\}/ })
 		.click();
-	await expect(choiceLabel).toHaveValue("{{settings.ChoiceLabel}}");
+	await expect(choiceLabel).toHaveValue("{{@settings.ChoiceLabel}}");
 	await formBuilder.getByRole("button", { name: "Apply" }).click();
 
 	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
@@ -1148,12 +1148,12 @@ test("Script Settings are available to autocomplete and simulation", async ({ pa
 	await page.getByRole("button", { name: "Output & Timing" }).click();
 	await page.getByRole("button", { name: /^Log low/ }).click();
 	const message = page.getByRole("textbox", { name: "Message" });
-	await message.fill("{{settings.End");
+	await message.fill("{{@settings.End");
 	await page
 		.getByRole("listbox", { name: "Message suggestions" })
-		.getByRole("option", { name: /\{\{settings\.Endpoint\}\}/ })
+		.getByRole("option", { name: /\{\{@settings\.Endpoint\}\}/ })
 		.click();
-	await expect(message).toHaveValue("{{settings.Endpoint}}");
+	await expect(message).toHaveValue("{{@settings.Endpoint}}");
 
 	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
 	const logNode = page.locator(".react-flow__node").filter({ hasText: "Log" });
@@ -1168,7 +1168,7 @@ test("Script Settings are available to autocomplete and simulation", async ({ pa
 	await expect(page.getByText(/https:\/\/simulation\.example/)).toBeVisible();
 
 	await page.getByRole("button", { name: "Variables", exact: true }).click();
-	await expect(page.locator('[data-variable-name="settings.Endpoint"] pre')).toHaveText("https://simulation.example");
+	await expect(page.locator('[data-variable-name="@settings.Endpoint"] pre')).toHaveText("https://simulation.example");
 });
 
 test("Script Setting type and timezone menus stay anchored and scroll vertically", async ({ page }) => {
@@ -1349,11 +1349,11 @@ test("hotkey and color Script Settings use dedicated controls and color variable
 
 	await page.getByRole("button", { name: /Color Match low/ }).click();
 	const actualColor = page.getByRole("textbox", { name: "Actual color" });
-	await actualColor.fill("{{settings.Acc");
+	await actualColor.fill("{{@settings.Acc");
 	const colorSuggestions = page.getByRole("listbox", { name: "Actual color suggestions" });
-	await expect(colorSuggestions.locator('[data-variable-suggestion="settings.Shortcut"]')).toHaveCount(0);
-	await colorSuggestions.getByRole("option", { name: /\{\{settings\.Accent\}\}/ }).click();
-	await expect(actualColor).toHaveValue("{{settings.Accent}}");
+	await expect(colorSuggestions.locator('[data-variable-suggestion="@settings.Shortcut"]')).toHaveCount(0);
+	await colorSuggestions.getByRole("option", { name: /\{\{@settings\.Accent\}\}/ }).click();
+	await expect(actualColor).toHaveValue("{{@settings.Accent}}");
 	await expect(page.getByRole("button", { name: "Open actual color color picker" })).toHaveCSS(
 		"background-color",
 		"rgb(18, 52, 86)",
@@ -1373,9 +1373,9 @@ test("hotkey and color Script Settings use dedicated controls and color variable
 	await expect(inspector.getByRole("textbox", { name: "Key" })).toHaveCount(0);
 	const hotkeyVariable = inspector.getByRole("button", { name: "Key", exact: true });
 	await hotkeyVariable.click();
-	await expect(page.getByRole("option", { name: "settings.Accent", exact: true })).toHaveCount(0);
-	await page.getByRole("option", { name: "settings.Shortcut", exact: true }).click();
-	await expect(hotkeyVariable).toContainText("settings.Shortcut");
+	await expect(page.getByRole("option", { name: "@settings.Accent", exact: true })).toHaveCount(0);
+	await page.getByRole("option", { name: "@settings.Shortcut", exact: true }).click();
+	await expect(hotkeyVariable).toContainText("@settings.Shortcut");
 	await expect(hotkeyVariable).not.toContainText("{{");
 	await expect(inspector.getByText("Supported key reference", { exact: true })).toHaveCount(0);
 });
@@ -1609,16 +1609,16 @@ test("numeric fields autocomplete number variables and suspend literal stepping"
 	await expect(amountField).toHaveValue("1");
 	await expect(page.getByRole("button", { name: "Decrease Amount" })).toBeDisabled();
 
-	// system_os is the string built-in this case needs. It used to be
+	// @system.os is the string built-in this case needs. It used to be
 	// system_date, which no longer exists: the two date and time strings became
-	// one system_datetime carrying the datetime type.
-	await amountField.fill("{{system_");
-	await expect(page.locator('[data-variable-suggestion="system_os"]')).toHaveCount(0);
-	await amountField.fill("{{system_os}}");
-	await expect(page.locator('[data-variable-token="system_os"][data-variable-status="type-mismatch"]')).toBeVisible();
+	// one @system.datetime carrying the datetime type.
+	await amountField.fill("{{@system.");
+	await expect(page.locator('[data-variable-suggestion="@system.os"]')).toHaveCount(0);
+	await amountField.fill("{{@system.os}}");
+	await expect(page.locator('[data-variable-token="@system.os"][data-variable-status="type-mismatch"]')).toBeVisible();
 	await expect(
 		page.getByText(
-			'Variable "system_os" has type string; this field accepts integer variables. Add a cast such as {{system_os|integer}} to convert it.',
+			'Variable "@system.os" has type string; this field accepts integer variables. Add a cast such as {{@system.os|integer}} to convert it.',
 			{ exact: true },
 		),
 	).toBeVisible();
@@ -1626,21 +1626,21 @@ test("numeric fields autocomplete number variables and suspend literal stepping"
 	// The cast the message suggests resolves the mismatch: the same field and
 	// the same variable, now accepted, with the target read as the target
 	// rather than as part of the name.
-	await amountField.fill("{{system_os|integer}}");
-	await expect(page.locator('[data-variable-token="system_os"][data-variable-status="known"]')).toBeVisible();
-	await expect(page.locator('[data-variable-token="system_os|integer"]')).toHaveCount(0);
+	await amountField.fill("{{@system.os|integer}}");
+	await expect(page.locator('[data-variable-token="@system.os"][data-variable-status="known"]')).toBeVisible();
+	await expect(page.locator('[data-variable-token="@system.os|integer"]')).toHaveCount(0);
 
 	// An unknown target is still marked invalid.
-	await amountField.fill("{{system_os|nonsense}}");
-	await expect(page.locator('[data-variable-token="system_os"][data-variable-status="invalid"]')).toBeVisible();
+	await amountField.fill("{{@system.os|nonsense}}");
+	await expect(page.locator('[data-variable-token="@system.os"][data-variable-status="invalid"]')).toBeVisible();
 
-	await amountField.fill("{{system_os}}");
+	await amountField.fill("{{@system.os}}");
 
 	await page.getByRole("button", { name: "Verify script" }).click();
 	await expect(page.getByRole("heading", { name: "Verification" })).toBeVisible();
 	await expect(
 		page.locator("[data-verification-result] li").filter({
-			hasText: /Delay.*Variable "system_os" has type string; this field accepts integer variables/i,
+			hasText: /Delay.*Variable "@system.os" has type string; this field accepts integer variables/i,
 		}),
 	).toBeVisible();
 });
