@@ -2,7 +2,7 @@
 
 import { X } from "lucide-react";
 import { type ClipboardEvent, type KeyboardEvent, useEffect, useId, useState } from "react";
-import { DefaultVariableManager } from "@/components/shell/default-variable-manager";
+import { DeclaredVariableManager } from "@/components/shell/declared-variable-manager";
 import { ScriptSettingManager } from "@/components/shell/script-setting-manager";
 import { SecretReferenceManager } from "@/components/shell/secret-reference-manager";
 import { Badge } from "@/components/ui/badge";
@@ -19,12 +19,12 @@ import { Input } from "@/components/ui/input";
 import { MultiOptionCombobox } from "@/components/ui/multi-option-combobox";
 import { Textarea } from "@/components/ui/textarea";
 import { targetRuntimes } from "@/data/project/runtimes";
-import type { DefaultVariable, ProjectSettings, ScriptSetting, SecretDeclaration, TargetRuntime } from "@/lib/types";
+import type { DeclaredVariable, ProjectSettings, ScriptSetting, SecretDeclaration, TargetRuntime } from "@/lib/types";
 import { DEFAULT_MINIMUM_RUNNER_VERSION } from "@/lib/version";
 import { getRepositoryUrlError, getScriptVersionError } from "@/utils/script-repository";
 import type { VariableRename } from "@/utils/variable-reference-renaming";
 
-type ProjectSettingsTab = "general" | "runtime" | "defaultVariables" | "secrets" | "scriptSettings";
+type ProjectSettingsTab = "general" | "runtime" | "declaredVariables" | "secrets" | "scriptSettings";
 
 type ProjectSettingsModalProps = {
 	description?: string;
@@ -32,13 +32,13 @@ type ProjectSettingsModalProps = {
 	projectId?: string;
 	saveLabel?: string;
 	settings: ProjectSettings;
-	defaultVariables?: DefaultVariable[];
+	declaredVariables?: DeclaredVariable[];
 	secretDeclarations?: SecretDeclaration[];
 	scriptSettings?: ScriptSetting[];
 	simulationSecretValues?: Record<string, string>;
 	title?: string;
 	onClose: () => void;
-	onDefaultVariablesChange?: (variables: DefaultVariable[], renames?: VariableRename[]) => void;
+	onDeclaredVariablesChange?: (variables: DeclaredVariable[], renames?: VariableRename[]) => void;
 	onSave: (settings: ProjectSettings) => void;
 	onScriptSettingsChange?: (settings: ScriptSetting[], renames?: VariableRename[]) => void;
 	onSecretDeclarationsChange?: (declarations: SecretDeclaration[], renames?: VariableRename[]) => void;
@@ -51,13 +51,13 @@ export function ProjectSettingsModal({
 	projectId,
 	saveLabel = "Save Settings",
 	settings,
-	defaultVariables,
+	declaredVariables,
 	secretDeclarations,
 	scriptSettings,
 	simulationSecretValues,
 	title = "Project Settings",
 	onClose,
-	onDefaultVariablesChange,
+	onDeclaredVariablesChange,
 	onSave,
 	onScriptSettingsChange,
 	onSecretDeclarationsChange,
@@ -69,15 +69,15 @@ export function ProjectSettingsModal({
 	const [tagsDraft, setTagsDraft] = useState<string[]>(settings.tags);
 	const [tagInput, setTagInput] = useState("");
 	const [activeTab, setActiveTab] = useState<ProjectSettingsTab>("general");
-	const [defaultVariablesDraft, setDefaultVariablesDraft] = useState(defaultVariables ?? []);
+	const [declaredVariablesDraft, setDeclaredVariablesDraft] = useState(declaredVariables ?? []);
 	const [secretDeclarationsDraft, setSecretDeclarationsDraft] = useState(secretDeclarations ?? []);
 	const [scriptSettingsDraft, setScriptSettingsDraft] = useState(scriptSettings ?? []);
 	const [simulationSecretValuesDraft, setSimulationSecretValuesDraft] = useState(simulationSecretValues ?? {});
-	const [defaultVariableRenames, setDefaultVariableRenames] = useState<VariableRename[]>([]);
+	const [declaredVariableRenames, setDeclaredVariableRenames] = useState<VariableRename[]>([]);
 	const [secretRenames, setSecretRenames] = useState<VariableRename[]>([]);
 	const [scriptSettingRenames, setScriptSettingRenames] = useState<VariableRename[]>([]);
 	const hasDefinitionTabs =
-		defaultVariables !== undefined &&
+		declaredVariables !== undefined &&
 		secretDeclarations !== undefined &&
 		scriptSettings !== undefined &&
 		simulationSecretValues !== undefined;
@@ -91,14 +91,14 @@ export function ProjectSettingsModal({
 		setTagsDraft(settings.tags);
 		setTagInput("");
 		setActiveTab("general");
-		setDefaultVariablesDraft(defaultVariables ?? []);
+		setDeclaredVariablesDraft(declaredVariables ?? []);
 		setSecretDeclarationsDraft(secretDeclarations ?? []);
 		setScriptSettingsDraft(scriptSettings ?? []);
 		setSimulationSecretValuesDraft(simulationSecretValues ?? {});
-		setDefaultVariableRenames([]);
+		setDeclaredVariableRenames([]);
 		setSecretRenames([]);
 		setScriptSettingRenames([]);
-	}, [defaultVariables, open, scriptSettings, secretDeclarations, settings, simulationSecretValues]);
+	}, [declaredVariables, open, scriptSettings, secretDeclarations, settings, simulationSecretValues]);
 
 	const nameError = draft.name.trim().length === 0 ? "Project name is required." : "";
 	const nameLengthError = draft.name.length > 128 ? "Project name cannot exceed 128 characters." : "";
@@ -145,7 +145,7 @@ export function ProjectSettingsModal({
 			minimumRunnerVersion: draft.minimumRunnerVersion.trim() || DEFAULT_MINIMUM_RUNNER_VERSION,
 			tags: nextTags,
 		});
-		onDefaultVariablesChange?.(defaultVariablesDraft, defaultVariableRenames);
+		onDeclaredVariablesChange?.(declaredVariablesDraft, declaredVariableRenames);
 		onSecretDeclarationsChange?.(secretDeclarationsDraft, secretRenames);
 		onScriptSettingsChange?.(scriptSettingsDraft, scriptSettingRenames);
 		onSimulationSecretValuesChange?.(simulationSecretValuesDraft);
@@ -304,14 +304,14 @@ export function ProjectSettingsModal({
 						</div>
 					)}
 
-					{activeTab === "defaultVariables" && (
-						<DefaultVariableManager
+					{activeTab === "declaredVariables" && (
+						<DeclaredVariableManager
 							secrets={secretDeclarationsDraft}
-							variables={defaultVariablesDraft}
+							variables={declaredVariablesDraft}
 							onChange={(variables, rename) => {
-								setDefaultVariablesDraft(variables);
+								setDeclaredVariablesDraft(variables);
 								if (rename) {
-									setDefaultVariableRenames((current) => [...current, rename]);
+									setDeclaredVariableRenames((current) => [...current, rename]);
 								}
 							}}
 						/>
@@ -322,7 +322,7 @@ export function ProjectSettingsModal({
 							declarations={secretDeclarationsDraft}
 							reservedVariableNames={
 								new Set([
-									...defaultVariablesDraft.map((variable) => variable.name),
+									...declaredVariablesDraft.map((variable) => variable.name),
 									...scriptSettingsDraft.map((setting) => setting.name),
 								])
 							}
@@ -379,7 +379,7 @@ function getProjectSettingsTabs(includeDefinitions: boolean): Array<{ id: Projec
 	];
 	if (includeDefinitions) {
 		tabs.push(
-			{ id: "defaultVariables", label: "Default Variables" },
+			{ id: "declaredVariables", label: "Variables" },
 			{ id: "secrets", label: "Secrets" },
 			{ id: "scriptSettings", label: "Script Settings" },
 		);

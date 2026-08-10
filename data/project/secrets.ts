@@ -15,7 +15,7 @@ export function validateSecretDeclaration(
 		return `A secret named "${declaration.name}" already exists.`;
 	}
 	if (reservedVariableNames.has(declaration.name)) {
-		return `A default variable named "${declaration.name}" already exists.`;
+		return `A declared variable named "${declaration.name}" already exists.`;
 	}
 	return null;
 }

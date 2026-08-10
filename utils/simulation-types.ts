@@ -1,6 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 import type {
-	DefaultVariable,
+	DeclaredVariable,
 	EditorAsset,
 	JsonValue,
 	LogEntry,
@@ -23,7 +23,7 @@ export type SimulationRunOptions = {
 	overrides: SimulationOverride[];
 	projectSettings: ProjectSettings;
 	scriptSettings?: ScriptSetting[];
-	defaultVariables?: DefaultVariable[];
+	declaredVariables?: DeclaredVariable[];
 	globalVariables?: Record<string, JsonValue>;
 	httpSimulation: {
 		authorizedOrigins: readonly string[];

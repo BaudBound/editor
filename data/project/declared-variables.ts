@@ -4,7 +4,7 @@ import {
 	validateNumericConfigValue,
 } from "@/data/nodes/numeric-validation";
 import { type VariableType, validateVariableName, validateVariableValue } from "@/data/project/variables";
-import type { DefaultVariable, JsonValue, SecretDeclaration } from "@/lib/types";
+import type { DeclaredVariable, JsonValue, SecretDeclaration } from "@/lib/types";
 
 export function formatDefaultValue(type: VariableType, value: JsonValue) {
 	if (type === "string" || type === "color" || type === "hotkey") {
@@ -47,9 +47,9 @@ export function defaultValueError(type: VariableType, rawValue: string) {
 	return validation || null;
 }
 
-export function validateDefaultVariable(
-	variable: DefaultVariable,
-	existing: DefaultVariable[],
+export function validateDeclaredVariable(
+	variable: DeclaredVariable,
+	existing: DeclaredVariable[],
 	secrets: SecretDeclaration[],
 	originalName?: string,
 ) {
@@ -57,7 +57,7 @@ export function validateDefaultVariable(
 	const nameError = validateVariableName(name);
 	if (nameError) return nameError;
 	if (existing.some((candidate) => candidate.name === name && candidate.name !== originalName)) {
-		return `A default variable named "${name}" already exists.`;
+		return `A declared variable named "${name}" already exists.`;
 	}
 	if (secrets.some((secret) => secret.name === name)) {
 		return `A secret named "${name}" already exists.`;

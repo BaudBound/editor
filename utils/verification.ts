@@ -14,7 +14,7 @@ import {
 	normalizeVariableReferenceName,
 } from "@/data/project/variables";
 import type {
-	DefaultVariable,
+	DeclaredVariable,
 	EditorAsset,
 	PermissionSummary,
 	ScriptNodeData,
@@ -47,7 +47,7 @@ type VerificationRule<Context> = {
 
 type CreateVerificationChecksOptions = {
 	assets: EditorAsset[];
-	defaultVariables?: DefaultVariable[];
+	declaredVariables?: DeclaredVariable[];
 	edges: Edge[];
 	nodes: Node<ScriptNodeData>[];
 	permissions: PermissionSummary[];
@@ -140,11 +140,11 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 		id: "secret-references",
 		title: "Secret references",
 		description: "Checking secret declarations and writable variable conflicts.",
-		run: ({ defaultVariables, nodes, secretDeclarations }) => {
+		run: ({ declaredVariables, nodes, secretDeclarations }) => {
 			const declarations = secretDeclarations ?? [];
 			const writableNames = new Set([
 				...createConfiguredVariableDefinitions(nodes).map((variable) => variable.name),
-				...(defaultVariables ?? []).map((variable) => variable.name),
+				...(declaredVariables ?? []).map((variable) => variable.name),
 			]);
 			const names = new Set<string>();
 			const problems = declarations.flatMap((secret) => {
@@ -290,11 +290,11 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 		id: "variables",
 		title: "Variables",
 		description: "Checking variable writes and read-only runtime references.",
-		run: ({ assets, defaultVariables, edges, nodes, secretDeclarations, variables }) => {
+		run: ({ assets, declaredVariables, edges, nodes, secretDeclarations, variables }) => {
 			const invalidWrites = getInvalidVariableWrites(nodes);
 			const invalidGraphConfigs = getInvalidNodeGraphConfigs(nodes, edges, assets);
 			const invalidNodeConfigKeys = getInvalidNodeConfigKeys(nodes, variables);
-			const invalidDefaults = getInvalidDefaultVariables(defaultVariables ?? [], nodes, secretDeclarations ?? []);
+			const invalidDefaults = getInvalidDeclaredVariables(declaredVariables ?? [], nodes, secretDeclarations ?? []);
 			const errors = [...invalidWrites, ...invalidGraphConfigs, ...invalidNodeConfigKeys, ...invalidDefaults];
 
 			return {
@@ -370,8 +370,8 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 			const invalidNodeConfigKeys = getInvalidNodeConfigKeys(context.nodes, context.variables);
 			const invalidAssets = validateEditorAssets(context.assets).errors;
 			const invalidTargetRuntime = getTargetRuntimeCompatibilityErrors(context.nodes, context.targetRuntimes);
-			const invalidDefaults = getInvalidDefaultVariables(
-				context.defaultVariables ?? [],
+			const invalidDefaults = getInvalidDeclaredVariables(
+				context.declaredVariables ?? [],
 				context.nodes,
 				context.secretDeclarations ?? [],
 			);
@@ -742,8 +742,8 @@ function getInvalidVariableWrites(nodes: Node<ScriptNodeData>[]) {
 		});
 }
 
-function getInvalidDefaultVariables(
-	defaultVariables: DefaultVariable[],
+function getInvalidDeclaredVariables(
+	declaredVariables: DeclaredVariable[],
 	nodes: Node<ScriptNodeData>[],
 	secrets: SecretDeclaration[],
 ) {
@@ -754,8 +754,8 @@ function getInvalidDefaultVariables(
 		createConfiguredVariableDefinitions(nodes).map((variable) => [variable.name, variable]),
 	);
 
-	for (const variable of defaultVariables) {
-		const location = `Variables > Default variables > "${variable.name}"`;
+	for (const variable of declaredVariables) {
+		const location = `Variables > Declared variables > "${variable.name}"`;
 		if (names.has(variable.name)) errors.push(`${location}: this variable is declared more than once.`);
 		if (secretNames.has(variable.name)) {
 			errors.push(`${location}: this name is also used by a secret reference. Rename one of them.`);

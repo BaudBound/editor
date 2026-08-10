@@ -86,7 +86,7 @@ import {
 import { type ActiveReorderDragState, useReorderController } from "@/hooks/use-reorder-controller";
 import type {
 	ActionType,
-	DefaultVariable,
+	DeclaredVariable,
 	EditorAsset,
 	InspectorTab,
 	JsonValue,
@@ -120,7 +120,7 @@ type InspectorProps = {
 	simulationStatus: SimulationRunStatus;
 	simulationTriggerInputDrafts: Record<string, SimulationTriggerInputDraft>;
 	variables: EditorVariable[];
-	declaredVariables: DefaultVariable[];
+	declaredVariables: DeclaredVariable[];
 	width: number;
 	collapsed: boolean;
 	onAddSimulationOverride: (nodeId: string) => void;
@@ -270,7 +270,7 @@ function PropertiesPanel({
 	onDeleteNode,
 }: {
 	assets: EditorAsset[];
-	declaredVariables: DefaultVariable[];
+	declaredVariables: DeclaredVariable[];
 	nodes: Node<ScriptNodeData>[];
 	selectedNode: Node<ScriptNodeData> | null;
 	variables: EditorVariable[];
@@ -1212,14 +1212,14 @@ function VariableOperationConfigPanel({
 	onChange,
 }: {
 	config: Record<string, JsonValue>;
-	declaredVariables: DefaultVariable[];
+	declaredVariables: DeclaredVariable[];
 	variableCompletions: VariableCompletion[];
 	onChange: (key: string, value: JsonValue) => void;
 }) {
 	const operation = normalizeVariableOperation(valueToInputString(config.operation));
 	const fixedType = getVariableOperationFixedType(operation);
 	const savedName = valueToInputString(config.name);
-	// A declared default variable already fixes its scope and type, and a
+	// A declared declared variable already fixes its scope and type, and a
 	// package whose Variable Operation disagrees with the declaration is
 	// rejected. Read both from the declaration rather than asking a second
 	// time for something the project already states.
@@ -1363,7 +1363,7 @@ function VariableOperationConfigPanel({
 			/>
 			{declared ? (
 				<p className="text-xs leading-4 text-baud-muted">
-					Set by the default variable <span className="font-mono">{declared.name}</span>. Rename this node to write a
+					Set by the declared variable <span className="font-mono">{declared.name}</span>. Rename this node to write a
 					different variable.
 				</p>
 			) : (

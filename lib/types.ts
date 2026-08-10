@@ -210,7 +210,7 @@ export type ScriptSetting = {
 	type: ScriptSettingType;
 };
 
-export type DefaultVariable = {
+export type DeclaredVariable = {
 	description: string;
 	itemType?: import("@/data/project/variables").ListItemType;
 	name: string;

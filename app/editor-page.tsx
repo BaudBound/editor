@@ -60,7 +60,7 @@ import { useEditorShortcuts } from "@/hooks/use-editor-shortcuts";
 import { useProjectSaveLifecycle } from "@/hooks/use-project-save-lifecycle";
 import type {
 	CommentNodeData,
-	DefaultVariable,
+	DeclaredVariable,
 	EditorAsset,
 	InspectorTab,
 	JsonValue,
@@ -237,7 +237,7 @@ export function EditorPage({
 	const simulationNetworkAuthorizationResolveRef = useRef<((authorized: boolean) => void) | null>(null);
 	const simulationPersistentVariablesRef = useRef<Record<string, JsonValue>>(
 		Object.fromEntries(
-			initialProject.defaultVariables
+			initialProject.declaredVariables
 				.filter((variable) => variable.scope === "persistent")
 				.map((variable) => [variable.name, structuredClone(variable.value)]),
 		),
@@ -284,7 +284,7 @@ export function EditorPage({
 	const [exportOpen, setExportOpen] = useState(false);
 	const [clipboard, setClipboard] = useState<EditorClipboard | null>(null);
 	const [assets, setAssets] = useState<EditorAsset[]>(initialProject.assets);
-	const [defaultVariables, setDefaultVariables] = useState<DefaultVariable[]>(initialProject.defaultVariables);
+	const [declaredVariables, setDeclaredVariables] = useState<DeclaredVariable[]>(initialProject.declaredVariables);
 	const [secretDeclarations, setSecretDeclarations] = useState<SecretDeclaration[]>(initialProject.secretDeclarations);
 	const [scriptSettings, setScriptSettings] = useState<ScriptSetting[]>(initialProject.scriptSettings);
 	const [simulationSecretValues, setSimulationSecretValues] = useState<Record<string, string>>({});
@@ -340,12 +340,12 @@ export function EditorPage({
 		[setEdges],
 	);
 	const permissions = useMemo(
-		() => calculatePermissions(scriptNodes, secretDeclarations, defaultVariables),
-		[scriptNodes, secretDeclarations, defaultVariables],
+		() => calculatePermissions(scriptNodes, secretDeclarations, declaredVariables),
+		[scriptNodes, secretDeclarations, declaredVariables],
 	);
 	const capabilities = useMemo(
-		() => calculateCapabilities(scriptNodes, secretDeclarations, defaultVariables),
-		[scriptNodes, secretDeclarations, defaultVariables],
+		() => calculateCapabilities(scriptNodes, secretDeclarations, declaredVariables),
+		[scriptNodes, secretDeclarations, declaredVariables],
 	);
 	const riskLevel = useMemo(() => calculateRiskLevel(permissions), [permissions]);
 	const variableEntries = useMemo(
@@ -355,10 +355,10 @@ export function EditorPage({
 				scriptNodes,
 				simulationVariables,
 				secretDeclarations,
-				defaultVariables,
+				declaredVariables,
 				scriptSettings,
 			),
-		[projectSettings, scriptNodes, simulationVariables, secretDeclarations, defaultVariables, scriptSettings],
+		[projectSettings, scriptNodes, simulationVariables, secretDeclarations, declaredVariables, scriptSettings],
 	);
 	const exportSummary = useMemo(
 		() =>
@@ -384,7 +384,7 @@ export function EditorPage({
 				edges,
 				nodes: scriptNodes,
 				permissions,
-				defaultVariables,
+				declaredVariables,
 				secretDeclarations,
 				variables: variableEntries,
 				scriptName: projectSettings.name,
@@ -392,7 +392,7 @@ export function EditorPage({
 			}),
 		[
 			assets,
-			defaultVariables,
+			declaredVariables,
 			edges,
 			scriptNodes,
 			permissions,
@@ -410,9 +410,9 @@ export function EditorPage({
 				edges,
 				assets,
 				secretDeclarations,
-				defaultVariables,
+				declaredVariables,
 			),
-		[projectSettings, scriptNodes, edges, assets, secretDeclarations, defaultVariables],
+		[projectSettings, scriptNodes, edges, assets, secretDeclarations, declaredVariables],
 	);
 	const normalizedProjectSettings = {
 		...projectSettings,
@@ -425,7 +425,7 @@ export function EditorPage({
 		() => ({
 			assets,
 			comments,
-			defaultVariables,
+			declaredVariables,
 			edgeStyle,
 			edges,
 			identity: persistedProject.identity,
@@ -440,7 +440,7 @@ export function EditorPage({
 		[
 			assets,
 			comments,
-			defaultVariables,
+			declaredVariables,
 			edgeStyle,
 			edges,
 			persistedProject,
@@ -495,7 +495,7 @@ export function EditorPage({
 			abortSimulationLifecycle("history restored");
 			setProjectSettings(project.settings);
 			setAssets(project.assets);
-			setDefaultVariables(project.defaultVariables);
+			setDeclaredVariables(project.declaredVariables);
 			setSecretDeclarations(project.secretDeclarations);
 			setScriptSettings(project.scriptSettings);
 			setEdgeStyle(project.edgeStyle);
@@ -596,14 +596,14 @@ export function EditorPage({
 	useEffect(() => {
 		const currentValues = simulationPersistentVariablesRef.current;
 		simulationPersistentVariablesRef.current = Object.fromEntries(
-			defaultVariables
+			declaredVariables
 				.filter((variable) => variable.scope === "persistent")
 				.map((variable) => [
 					variable.name,
 					variable.name in currentValues ? currentValues[variable.name] : structuredClone(variable.value),
 				]),
 		);
-	}, [defaultVariables]);
+	}, [declaredVariables]);
 
 	const handleExport = () => {
 		setExportOpen(true);
@@ -619,7 +619,7 @@ export function EditorPage({
 			comments,
 			edgeStyle,
 			secretDeclarations,
-			defaultVariables,
+			declaredVariables,
 			scriptSettings,
 		});
 	};
@@ -831,7 +831,7 @@ export function EditorPage({
 					edges,
 					overrides: simulationOverrides,
 					projectSettings,
-					defaultVariables,
+					declaredVariables,
 					scriptSettings,
 					globalVariables: simulationGlobalVariablesRef.current,
 					httpSimulation: {
@@ -870,7 +870,7 @@ export function EditorPage({
 			edges,
 			handleSimulationStep,
 			projectSettings,
-			defaultVariables,
+			declaredVariables,
 			secretDeclarations,
 			scriptSettings,
 			scriptNodes,
@@ -1262,7 +1262,7 @@ export function EditorPage({
 	const handleResetStoredSimulationValues = useCallback(() => {
 		abortSimulationLifecycle("stored simulation values reset");
 		const persistentVariables = Object.fromEntries(
-			defaultVariables
+			declaredVariables
 				.filter((variable) => variable.scope === "persistent")
 				.map((variable) => [variable.name, structuredClone(variable.value)]),
 		);
@@ -1284,10 +1284,10 @@ export function EditorPage({
 				message: "Reset simulated persistent values to their defaults and cleared simulated global values.",
 			},
 		]);
-	}, [abortSimulationLifecycle, appendSystemLogs, defaultVariables]);
+	}, [abortSimulationLifecycle, appendSystemLogs, declaredVariables]);
 
-	const handleDefaultVariablesChange = useCallback(
-		(nextVariables: DefaultVariable[], renames: VariableRename[] = []) => {
+	const handleDeclaredVariablesChange = useCallback(
+		(nextVariables: DeclaredVariable[], renames: VariableRename[] = []) => {
 			if (renames.length > 0) {
 				setNodes((currentNodes) =>
 					renames.reduce((nextNodes, rename) => renameNodeVariableReferences(nextNodes, rename, true), currentNodes),
@@ -1308,13 +1308,13 @@ export function EditorPage({
 					appendSystemLogs([
 						{
 							level: "info",
-							message: `Renamed default variable "${rename.from}" to "${rename.to}" and updated its node references.`,
+							message: `Renamed declared variable "${rename.from}" to "${rename.to}" and updated its node references.`,
 						},
 					]);
 				}
 			}
 
-			setDefaultVariables(nextVariables);
+			setDeclaredVariables(nextVariables);
 		},
 		[appendSystemLogs, setNodes],
 	);
@@ -1768,7 +1768,7 @@ export function EditorPage({
 					simulationStatus={simulationStatus}
 					simulationTriggerInputDrafts={simulationTriggerInputDrafts}
 					variables={variableEntries}
-					declaredVariables={defaultVariables}
+					declaredVariables={declaredVariables}
 					width={sizes.right}
 					collapsed={collapsed.right}
 					onAddSimulationOverride={handleAddSimulationOverride}
@@ -1833,13 +1833,13 @@ export function EditorPage({
 				open={projectSettingsOpen}
 				projectId={persistedProject.identity.id}
 				settings={projectSettings}
-				defaultVariables={defaultVariables}
+				declaredVariables={declaredVariables}
 				secretDeclarations={secretDeclarations}
 				scriptSettings={scriptSettings}
 				simulationSecretValues={simulationSecretValues}
 				onClose={() => setProjectSettingsOpen(false)}
 				onSave={handleSaveProjectSettings}
-				onDefaultVariablesChange={handleDefaultVariablesChange}
+				onDeclaredVariablesChange={handleDeclaredVariablesChange}
 				onSecretDeclarationsChange={handleSecretDeclarationsChange}
 				onScriptSettingsChange={handleScriptSettingsChange}
 				onSimulationSecretValuesChange={setSimulationSecretValues}

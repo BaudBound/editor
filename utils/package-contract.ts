@@ -170,7 +170,7 @@ type PackageJsonFiles = Record<string, unknown>;
 export function validatePackageJsonContracts(jsonFiles: PackageJsonFiles) {
 	return [
 		...validateManifestContract(jsonFiles["manifest.json"]),
-		...validateDefaultVariableProgramContract(jsonFiles["manifest.json"], jsonFiles["program.json"]),
+		...validateDeclaredVariableProgramContract(jsonFiles["manifest.json"], jsonFiles["program.json"]),
 		...validateProgramContract(jsonFiles["program.json"]),
 		...validatePermissionsContract(
 			jsonFiles["permissions.json"],
@@ -472,7 +472,7 @@ function serializedByteLength(value: unknown) {
 	}
 }
 
-function validateDefaultVariableProgramContract(manifestValue: unknown, programValue: unknown) {
+function validateDeclaredVariableProgramContract(manifestValue: unknown, programValue: unknown) {
 	const manifest = asRecord(manifestValue);
 	const program = asRecord(programValue);
 	const entry = asRecord(program?.entry);

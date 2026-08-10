@@ -811,7 +811,7 @@ test("node finder searches configuration and focuses the selected node", async (
 test("Schedule triggers can start and stop their simulator timer", async ({ page }) => {
 	await openEditor(page);
 
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("interval");
@@ -1074,10 +1074,10 @@ test("If / Else unary conditions hide the target field", async ({ page }) => {
 	await expect(page.getByRole("textbox", { name: "Target" })).toHaveCount(0);
 });
 
-test("text transform accepts a default variable with inactive optional numeric fields", async ({ page }) => {
+test("text transform accepts a declared variable with inactive optional numeric fields", async ({ page }) => {
 	await openEditor(page);
 
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("test");
@@ -1111,7 +1111,7 @@ test("text transform accepts a default variable with inactive optional numeric f
 test("variable operation completes writable variable names without template braces", async ({ page }) => {
 	await openEditor(page);
 
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("preferred_status");
@@ -1219,9 +1219,9 @@ test("Script Setting type and timezone menus stay anchored and scroll vertically
 	expect(menuBoundsAfterScroll?.y).toBe(menuBoundsBeforeScroll.y);
 });
 
-test("Default Variables and Script Settings display typed values without internal JSON wrappers", async ({ page }) => {
+test("Variables and Script Settings display typed values without internal JSON wrappers", async ({ page }) => {
 	await openEditor(page);
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	let valueDialog = page.getByRole("dialog");
 	await valueDialog.getByRole("textbox", { name: "Name" }).fill("Timeout");
@@ -1383,7 +1383,7 @@ test("hotkey and color Script Settings use dedicated controls and color variable
 test("renaming defaults and secrets updates every node reference", async ({ page }) => {
 	await openEditor(page);
 
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	let variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("inventory");
@@ -1412,7 +1412,7 @@ test("renaming defaults and secrets updates every node reference", async ({ page
 		.fill("{{inventory}} {{inventory.items[0]}} {{api_token}} {{api_token.value}} {{inventory_backup}}");
 	const logNode = page.locator(".react-flow__node").filter({ hasText: "Log" });
 
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Edit inventory" }).click();
 	variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("stock");
@@ -1485,7 +1485,7 @@ test("variable editors do not insert example values", async ({ page }) => {
 	await expect(page.getByRole("textbox", { name: "Object field path" })).toHaveValue("");
 	await expect(page.getByRole("textbox", { name: "Field value" })).toHaveValue("");
 
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("combobox", { name: "Type" }).click();
@@ -1498,7 +1498,7 @@ test("variable editors do not insert example values", async ({ page }) => {
 test("persistent variable simulation carries changes into the next run", async ({ page }) => {
 	await openEditor(page);
 
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("counter");
@@ -1565,7 +1565,7 @@ test("persistent variable simulation carries changes into the next run", async (
 test("numeric fields autocomplete number variables and suspend literal stepping", async ({ page }) => {
 	await openEditor(page);
 
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("distance");
@@ -2487,7 +2487,7 @@ test("exported package preserves editor metadata and imports back", async ({ pag
 	await openEditor(page);
 
 	await page.getByRole("button", { name: "Manual" }).click();
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	await page.getByRole("textbox", { name: "Name" }).fill("counter");
 	await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
@@ -2649,7 +2649,7 @@ async function openEditor(page: Page) {
 	await expect(page.getByRole("button", { name: "Open asset editor" })).toBeVisible();
 }
 
-async function openProjectSettingsTab(page: Page, tab: "Default Variables" | "Secrets" | "Script Settings") {
+async function openProjectSettingsTab(page: Page, tab: "Variables" | "Secrets" | "Script Settings") {
 	await page.getByRole("button", { name: "Open project settings" }).click();
 	await page.getByRole("tab", { name: tab }).click();
 }

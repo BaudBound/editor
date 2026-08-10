@@ -112,7 +112,7 @@ test("history restores project settings, variables, secrets, comments, and edge 
 	await expect(page.getByText("Windows Desktop, Linux Desktop", { exact: true })).toBeVisible();
 
 	await page.getByRole("button", { name: "Open project settings" }).click();
-	await page.getByRole("tab", { name: "Default Variables" }).click();
+	await page.getByRole("tab", { name: "Variables" }).click();
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("history_value");
@@ -137,7 +137,7 @@ test("history restores project settings, variables, secrets, comments, and edge 
 	await expect(page.locator('[data-variable-name="history_secret"]')).toBeVisible();
 
 	await page.getByRole("button", { name: "Open project settings" }).click();
-	await page.getByRole("tab", { name: "Default Variables" }).click();
+	await page.getByRole("tab", { name: "Variables" }).click();
 	await page.getByRole("button", { name: "Delete history_value" }).click();
 	await page.getByRole("tab", { name: "Secrets" }).click();
 	await page.getByRole("button", { name: "Delete history_secret" }).click();

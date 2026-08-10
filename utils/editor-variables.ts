@@ -7,7 +7,7 @@ import {
 	type EditorVariable,
 } from "@/data/project/variables";
 import type {
-	DefaultVariable,
+	DeclaredVariable,
 	ProjectSettings,
 	ScriptNodeData,
 	ScriptSetting,
@@ -20,7 +20,7 @@ export function createVariablePanelEntries(
 	nodes: Node<ScriptNodeData>[],
 	snapshots: SimulationVariableSnapshot[],
 	secretDeclarations: SecretDeclaration[] = [],
-	defaultVariables: DefaultVariable[] = [],
+	declaredVariables: DeclaredVariable[] = [],
 	scriptSettings: ScriptSetting[] = [],
 ): EditorVariable[] {
 	return createEditorVariableRegistry(
@@ -28,7 +28,7 @@ export function createVariablePanelEntries(
 		nodes,
 		snapshots,
 		secretDeclarations,
-		defaultVariables,
+		declaredVariables,
 		scriptSettings,
 	);
 }
@@ -38,7 +38,7 @@ export function createEditorVariableRegistry(
 	nodes: Node<ScriptNodeData>[],
 	snapshots: SimulationVariableSnapshot[] = [],
 	secretDeclarations: SecretDeclaration[] = [],
-	defaultVariables: DefaultVariable[] = [],
+	declaredVariables: DeclaredVariable[] = [],
 	scriptSettings: ScriptSetting[] = [],
 ): EditorVariable[] {
 	const variables = new Map<string, EditorVariable>();
@@ -50,7 +50,7 @@ export function createEditorVariableRegistry(
 	]) {
 		variables.set(variable.name, variable);
 	}
-	for (const variable of defaultVariables) {
+	for (const variable of declaredVariables) {
 		variables.set(variable.name, {
 			description: variable.description,
 			name: variable.name,

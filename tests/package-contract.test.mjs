@@ -1690,9 +1690,9 @@ test("secret declarations are package metadata while simulation values remain se
 	assert.match(simulationSource, /\[REDACTED\]/);
 });
 
-test("default variables are typed package metadata and runner execution state", () => {
+test("declared variables are typed package metadata and runner execution state", () => {
 	const manifestSchema = JSON.parse(read(join(schemasRoot, "manifest.schema.json")));
-	const defaultVariableSource = read(join(appRoot, "data", "project", "default-variables.ts"));
+	const declaredVariableSource = read(join(appRoot, "data", "project", "declared-variables.ts"));
 	const editorPage = read(join(appRoot, "app", "editor-page.tsx"));
 	const packageSource = read(join(appRoot, "utils", "bbs-package.ts"));
 	const simulationSource = read(join(appRoot, "utils", "simulation.ts"));
@@ -1703,11 +1703,11 @@ test("default variables are typed package metadata and runner execution state", 
 	assert.ok(manifestSchema.properties.variables, "manifest must declare default variables");
 	assert.deepEqual(manifestSchema.properties.variables.items.properties.scope.enum, ["runtime", "persistent"]);
 	assert.equal(stringDefaultSchema.properties.value.pattern, "\\S");
-	assert.match(defaultVariableSource, /Default value is required/);
-	assert.match(editorPage, /defaultVariables/);
-	assert.match(packageSource, /variables:\s*params\.defaultVariables\.map/);
-	assert.match(simulationSource, /defaultVariables[\s\S]*variable\.scope === "persistent"/);
-	assert.match(simulationSource, /defaultVariables[\s\S]*variable\.scope === "runtime"/);
+	assert.match(declaredVariableSource, /Default value is required/);
+	assert.match(editorPage, /declaredVariables/);
+	assert.match(packageSource, /variables:\s*params\.declaredVariables\.map/);
+	assert.match(simulationSource, /declaredVariables[\s\S]*variable\.scope === "persistent"/);
+	assert.match(simulationSource, /declaredVariables[\s\S]*variable\.scope === "runtime"/);
 	assert.match(simulationSource, /persistentVariables:\s*structuredClone/);
 });
 

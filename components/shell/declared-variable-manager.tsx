@@ -13,19 +13,19 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { validateDefaultVariable } from "@/data/project/default-variables";
+import { validateDeclaredVariable } from "@/data/project/declared-variables";
 import { createEmptyTypedValue, formatTypedValueForDisplay, validateTypedValue } from "@/data/project/typed-values";
 import { type ListItemType, type VariableType, variableTypes } from "@/data/project/variables";
-import type { DefaultVariable, SecretDeclaration } from "@/lib/types";
+import type { DeclaredVariable, SecretDeclaration } from "@/lib/types";
 import type { VariableRename } from "@/utils/variable-reference-renaming";
 
-type DefaultVariableManagerProps = {
+type DeclaredVariableManagerProps = {
 	secrets: SecretDeclaration[];
-	variables: DefaultVariable[];
-	onChange: (variables: DefaultVariable[], rename?: VariableRename) => void;
+	variables: DeclaredVariable[];
+	onChange: (variables: DeclaredVariable[], rename?: VariableRename) => void;
 };
 
-function emptyVariable(): DefaultVariable {
+function emptyVariable(): DeclaredVariable {
 	return {
 		description: "",
 		name: "",
@@ -35,17 +35,17 @@ function emptyVariable(): DefaultVariable {
 	};
 }
 
-export function DefaultVariableManager({ secrets, variables, onChange }: DefaultVariableManagerProps) {
+export function DeclaredVariableManager({ secrets, variables, onChange }: DeclaredVariableManagerProps) {
 	const [dialogOpen, setDialogOpen] = useState(false);
 	const [editingName, setEditingName] = useState<string | null>(null);
-	const [draft, setDraft] = useState<DefaultVariable>(emptyVariable);
+	const [draft, setDraft] = useState<DeclaredVariable>(emptyVariable);
 	const nameId = useId();
 	const scopeId = useId();
 	const typeId = useId();
 	const valueId = useId();
 	const descriptionId = useId();
 	const declarationError = useMemo(
-		() => validateDefaultVariable(draft, variables, secrets, editingName ?? undefined),
+		() => validateDeclaredVariable(draft, variables, secrets, editingName ?? undefined),
 		[draft, editingName, secrets, variables],
 	);
 	const valueError =
@@ -59,7 +59,7 @@ export function DefaultVariableManager({ secrets, variables, onChange }: Default
 		setDraft(variable);
 		setDialogOpen(true);
 	};
-	const openEdit = (variable: DefaultVariable) => {
+	const openEdit = (variable: DeclaredVariable) => {
 		setEditingName(variable.name);
 		setDraft(structuredClone(variable));
 		setDialogOpen(true);
@@ -74,7 +74,7 @@ export function DefaultVariableManager({ secrets, variables, onChange }: Default
 	};
 	const save = () => {
 		if (declarationError || valueError) return;
-		const normalized: DefaultVariable = {
+		const normalized: DeclaredVariable = {
 			...draft,
 			description: draft.description.trim(),
 			name: draft.name.trim(),
@@ -94,7 +94,7 @@ export function DefaultVariableManager({ secrets, variables, onChange }: Default
 			<div className="min-w-0">
 				<div className="flex items-center gap-2 text-sm font-semibold text-baud-text">
 					<Database size={14} className="text-baud-green" />
-					Default variables
+					Declared variables
 				</div>
 				<p className="mt-0.5 text-xs text-baud-muted">
 					Runtime values reset for every run. Persistent values are used only until the runner stores a value.
@@ -171,7 +171,7 @@ export function DefaultVariableManager({ secrets, variables, onChange }: Default
 			<Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
 				<DialogContent className="sm:max-w-lg">
 					<DialogHeader>
-						<DialogTitle>{editingName ? "Edit default variable" : "Add default variable"}</DialogTitle>
+						<DialogTitle>{editingName ? "Edit variable" : "Add variable"}</DialogTitle>
 						<DialogDescription>
 							The value is saved in the script package and can be changed by Variable Operation nodes.
 						</DialogDescription>
@@ -190,7 +190,7 @@ export function DefaultVariableManager({ secrets, variables, onChange }: Default
 							<Select
 								value={draft.scope}
 								onValueChange={(scope) =>
-									setDraft((current) => ({ ...current, scope: scope as DefaultVariable["scope"] }))
+									setDraft((current) => ({ ...current, scope: scope as DeclaredVariable["scope"] }))
 								}
 							>
 								<SelectTrigger id={scopeId} className="w-full">

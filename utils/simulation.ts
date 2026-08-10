@@ -131,7 +131,7 @@ const nodeSimulationApi: NodeSimulationApi = {
 
 export async function createSimulationRun({
 	assets,
-	defaultVariables = [],
+	declaredVariables = [],
 	edges,
 	globalVariables = {},
 	httpSimulation,
@@ -165,7 +165,7 @@ export async function createSimulationRun({
 		overridesByNodeId: new Map(overrides.map((override) => [override.nodeId, override.outcome])),
 		persistentVariables: {
 			...Object.fromEntries(
-				defaultVariables
+				declaredVariables
 					.filter((variable) => variable.scope === "persistent")
 					.map((variable) => [variable.name, structuredClone(variable.value)]),
 			),
@@ -175,7 +175,7 @@ export async function createSimulationRun({
 			...createSimulationBuiltInVariableValues(projectSettings),
 			[SETTINGS_NAMESPACE]: createSimulationScriptSettingValues(scriptSettings),
 			...Object.fromEntries(
-				defaultVariables
+				declaredVariables
 					.filter((variable) => variable.scope === "runtime")
 					.map((variable) => [variable.name, structuredClone(variable.value)]),
 			),

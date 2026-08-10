@@ -16,7 +16,7 @@ import type { ProjectIdentity } from "../data/projects/model";
 import {
 	type ActionType,
 	type AssetKind,
-	type DefaultVariable,
+	type DeclaredVariable,
 	type EditorAsset,
 	type EditorComment,
 	type JsonValue,
@@ -44,7 +44,7 @@ import {
 export type ImportedBbsPackage = {
 	assets: EditorAsset[];
 	comments: EditorComment[];
-	defaultVariables: DefaultVariable[];
+	declaredVariables: DeclaredVariable[];
 	edgeStyle: EditorEdgeStyle;
 	edges: Edge[];
 	projectSettings: ProjectSettings;
@@ -84,11 +84,11 @@ export async function buildBbsPackage(params: {
 	comments: EditorComment[];
 	edgeStyle: EditorEdgeStyle;
 	secretDeclarations: SecretDeclaration[];
-	defaultVariables: DefaultVariable[];
+	declaredVariables: DeclaredVariable[];
 	scriptSettings: ScriptSetting[];
 }) {
-	const permissions = calculatePermissions(params.nodes, params.secretDeclarations, params.defaultVariables);
-	const capabilities = calculateCapabilities(params.nodes, params.secretDeclarations, params.defaultVariables);
+	const permissions = calculatePermissions(params.nodes, params.secretDeclarations, params.declaredVariables);
+	const capabilities = calculateCapabilities(params.nodes, params.secretDeclarations, params.declaredVariables);
 	const assetManifest = params.assets.map(toAssetManifestEntry);
 	const now = new Date().toISOString();
 	const zip = new JSZip();
@@ -122,7 +122,7 @@ export async function buildBbsPackage(params: {
 			description: secret.description,
 			required: secret.required,
 		})),
-		variables: params.defaultVariables.map((variable) => ({
+		variables: params.declaredVariables.map((variable) => ({
 			name: variable.name,
 			scope: variable.scope,
 			type: variable.type,
@@ -285,13 +285,13 @@ async function importVerifiedPackageArchive(
 	const comments = toEditorComments(editorMetadata);
 	const edgeStyle = toEditorEdgeStyle(editorMetadata);
 	const secretDeclarations = toSecretDeclarations(manifest);
-	const defaultVariables = toDefaultVariables(manifest);
+	const declaredVariables = toDeclaredVariables(manifest);
 	const scriptSettings = toScriptSettings(manifest);
 
 	return {
 		assets,
 		comments,
-		defaultVariables,
+		declaredVariables,
 		edgeStyle,
 		edges,
 		nodes,
@@ -313,7 +313,7 @@ function toProjectIdentity(manifest: Record<string, unknown>): ProjectIdentity {
 	};
 }
 
-function toDefaultVariables(manifest: Record<string, unknown>): DefaultVariable[] {
+function toDeclaredVariables(manifest: Record<string, unknown>): DeclaredVariable[] {
 	if (!Array.isArray(manifest.variables)) {
 		return [];
 	}
@@ -325,7 +325,7 @@ function toDefaultVariables(manifest: Record<string, unknown>): DefaultVariable[
 			typeof variable.name !== "string" ||
 			(variable.scope !== "runtime" && variable.scope !== "persistent") ||
 			typeof variable.type !== "string" ||
-			!variableTypes.includes(variable.type as DefaultVariable["type"]) ||
+			!variableTypes.includes(variable.type as DeclaredVariable["type"]) ||
 			!isJsonValue(variable.value)
 		) {
 			return [];
@@ -336,9 +336,9 @@ function toDefaultVariables(manifest: Record<string, unknown>): DefaultVariable[
 				description: typeof variable.description === "string" ? variable.description : "",
 				name: variable.name,
 				scope: variable.scope,
-				type: variable.type as DefaultVariable["type"],
+				type: variable.type as DeclaredVariable["type"],
 				...(variable.type === "list" && typeof variable.item_type === "string"
-					? { itemType: variable.item_type as DefaultVariable["itemType"] }
+					? { itemType: variable.item_type as DeclaredVariable["itemType"] }
 					: {}),
 				value: variable.value,
 			},

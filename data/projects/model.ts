@@ -1,7 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { EditorEdgeStyle } from "@/data/editor/flow-canvas";
 import type {
-	DefaultVariable,
+	DeclaredVariable,
 	EditorAsset,
 	EditorComment,
 	ProjectSettings,
@@ -20,7 +20,7 @@ export type ProjectIdentity = {
 export type EditorProject = {
 	assets: EditorAsset[];
 	comments: EditorComment[];
-	defaultVariables: DefaultVariable[];
+	declaredVariables: DeclaredVariable[];
 	edgeStyle: EditorEdgeStyle;
 	edges: Edge[];
 	identity: ProjectIdentity;

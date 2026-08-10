@@ -12,7 +12,7 @@ import { createNodeOutputVariables } from "@/data/project/variables";
 import type {
 	ActionType,
 	CapabilitySummary,
-	DefaultVariable,
+	DeclaredVariable,
 	EditorAsset,
 	ExecutableActionType,
 	ExportSummary,
@@ -38,7 +38,7 @@ const riskWeight: Record<RiskLevel, number> = {
 export function calculatePermissions(
 	nodes: Node<ScriptNodeData>[],
 	secretDeclarations: SecretDeclaration[] = [],
-	defaultVariables: DefaultVariable[] = [],
+	declaredVariables: DeclaredVariable[] = [],
 ): PermissionSummary[] {
 	const permissions = new Map<string, PermissionSummary>();
 
@@ -53,10 +53,10 @@ export function calculatePermissions(
 	if (secretDeclarations.length > 0) {
 		permissions.set("secret.read", { name: "secret.read", risk: "high" });
 	}
-	if (defaultVariables.some((variable) => variable.scope === "runtime")) {
+	if (declaredVariables.some((variable) => variable.scope === "runtime")) {
 		permissions.set("variable.local.set", { name: "variable.local.set", risk: "low" });
 	}
-	if (defaultVariables.some((variable) => variable.scope === "persistent")) {
+	if (declaredVariables.some((variable) => variable.scope === "persistent")) {
 		permissions.set("variable.persistent.set", { name: "variable.persistent.set", risk: "medium" });
 	}
 
@@ -68,7 +68,7 @@ export function calculatePermissions(
 export function calculateCapabilities(
 	nodes: Node<ScriptNodeData>[],
 	secretDeclarations: SecretDeclaration[] = [],
-	defaultVariables: DefaultVariable[] = [],
+	declaredVariables: DeclaredVariable[] = [],
 ): CapabilitySummary[] {
 	const capabilities = new Set<string>();
 
@@ -80,10 +80,10 @@ export function calculateCapabilities(
 	if (secretDeclarations.length > 0) {
 		capabilities.add("runtime.secrets");
 	}
-	if (defaultVariables.length > 0) {
+	if (declaredVariables.length > 0) {
 		capabilities.add("runtime.variables");
 	}
-	if (defaultVariables.some((variable) => variable.scope === "persistent")) {
+	if (declaredVariables.some((variable) => variable.scope === "persistent")) {
 		capabilities.add("runtime.persistent_storage");
 	}
 

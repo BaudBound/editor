@@ -30,7 +30,7 @@ export function createEmptyEditorProject(settings: ProjectSettings, now = new Da
 	return {
 		assets: [],
 		comments: [],
-		defaultVariables: [],
+		declaredVariables: [],
 		edgeStyle: defaultEditorEdgeStyle,
 		edges: [],
 		identity,
