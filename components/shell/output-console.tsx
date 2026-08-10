@@ -544,7 +544,7 @@ function isErrorOutputVariable(variable: EditorVariable) {
 }
 
 function isSystemVariable(variable: EditorVariable) {
-	return variable.source === "built_in" && variable.name.startsWith("system_");
+	return variable.source === "built_in" && variable.name.startsWith("@system.");
 }
 
 function isBuiltInVariable(variable: EditorVariable) {

@@ -2618,7 +2618,7 @@ function addMinimalPackageDocuments(zip: JSZip) {
 					edges: [],
 					execution_model: "directed_graph",
 					runtime_context: {
-						built_in_variables: { syntax: "{{variable_name}}", variables: [] },
+						built_in_variables: { syntax: "{{@namespace.field}}", variables: [] },
 						expression_reference: "{{node-id.data_name}}",
 						node_outputs: [],
 						template_reference: "{{node-id.data_name}}",
