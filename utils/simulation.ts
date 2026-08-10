@@ -1376,7 +1376,12 @@ function getRuntimeVariableReference(reference: string, variables: Record<string
 	};
 }
 
-function getPathValue(value: JsonValue, path: string): JsonValue | undefined {
+/**
+ * Walks an accessor path from a resolved value, ending in an optional metadata
+ * segment. Exported so the shared conformance fixture can hold it to the
+ * runner, which implements the same walk in `resolve_value_path`.
+ */
+export function getPathValue(value: JsonValue, path: string): JsonValue | undefined {
 	if (!path) {
 		return value;
 	}
@@ -1386,8 +1391,18 @@ function getPathValue(value: JsonValue, path: string): JsonValue | undefined {
 		return undefined;
 	}
 
-	return parts.reduce<JsonValue | undefined>((currentValue, key) => {
+	let currentValue: JsonValue | undefined = value;
+	for (const [index, key] of parts.entries()) {
+		// A metadata segment is only allowed last, matching the runner. A value
+		// can genuinely hold a key spelled like one, so refusing it in the middle
+		// keeps a single meaning rather than guessing which was meant.
 		if (key.startsWith("$")) {
+			// Nothing to describe when the path already fell off the value. A
+			// length of 0 for an absent field would read as "present and empty".
+			// A field that is present and null is a different case and resolves.
+			if (currentValue === undefined || index !== parts.length - 1) {
+				return undefined;
+			}
 			return getDerivedValueMetadata(currentValue, key);
 		}
 
@@ -1396,12 +1411,15 @@ function getPathValue(value: JsonValue, path: string): JsonValue | undefined {
 		}
 
 		if (Array.isArray(currentValue)) {
-			const index = Number(key);
-			return Number.isInteger(index) ? currentValue[index] : undefined;
+			const arrayIndex = Number(key);
+			currentValue = Number.isInteger(arrayIndex) ? currentValue[arrayIndex] : undefined;
+			continue;
 		}
 
-		return currentValue[key];
-	}, value);
+		currentValue = currentValue[key];
+	}
+
+	return currentValue;
 }
 
 function parseValuePath(path: string): string[] | undefined {
@@ -1561,6 +1579,12 @@ function getValueType(value: JsonValue | undefined) {
 
 	if (value === undefined) {
 		return "missing";
+	}
+
+	// integer and float are separate types, so a bare "number" would name a type
+	// that no longer exists. These are the names the runner reports.
+	if (typeof value === "number") {
+		return Number.isInteger(value) ? "integer" : "float";
 	}
 
 	return typeof value;

@@ -465,3 +465,27 @@ test("the simulator agrees with the shared datetime part fixtures", async () => 
 		}
 	}
 });
+
+test("the simulator agrees with the shared derived metadata fixtures", async () => {
+	const { getPathValue } = await import("../utils/simulation.ts");
+	const conformance = JSON.parse(
+		readFileSync(join(appRoot, "contracts", "derived-metadata-conformance.json"), "utf8"),
+	) as {
+		cases: { reason: string; reference: string; result?: JsonValue; unresolved?: boolean }[];
+		variables: Record<string, JsonValue>;
+		version: number;
+	};
+	assert.equal(conformance.version, 1);
+
+	for (const testCase of conformance.cases) {
+		const root = /^[A-Za-z_][A-Za-z0-9_]*/.exec(testCase.reference)?.[0] ?? "";
+		const value = conformance.variables[root];
+		const resolved = value === undefined ? undefined : getPathValue(value, testCase.reference.slice(root.length));
+
+		if (testCase.unresolved) {
+			assert.equal(resolved, undefined, `${testCase.reference} should not resolve: ${testCase.reason}`);
+			continue;
+		}
+		assert.deepEqual(resolved, testCase.result, `${testCase.reference}: ${testCase.reason}`);
+	}
+});
