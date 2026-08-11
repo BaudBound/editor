@@ -894,15 +894,29 @@ export function recalculateProgramDeclarations(programValue: unknown, manifestVa
 		});
 	const capabilities = new Set<string>();
 	const permissions = new Map<string, PermissionSummary>();
+	// A Variable Operation asks for a permission matching the scope of what it
+	// writes, and that scope lives in the declaration. Deriving it without one
+	// made every write look runtime-scoped, so a package writing a persistent
+	// variable was told it had a local.set permission it did not need.
+	const declaredScopes = new Map(
+		(Array.isArray(asRecord(manifestValue)?.variables) ? (asRecord(manifestValue)?.variables as unknown[]) : [])
+			.map((value) => asRecord(value))
+			.flatMap((variable) =>
+				typeof variable?.name === "string" && typeof variable.scope === "string"
+					? [[variable.name, variable.scope] as const]
+					: [],
+			),
+	);
 
 	for (const node of programNodes) {
 		const actionType = node.action_type as ActionType;
 		const config = isJsonObject(node.config) ? node.config : {};
-		for (const capability of getNodeCapabilities(actionType, config)) {
+		const declaredScope = typeof config.name === "string" ? declaredScopes.get(config.name) : undefined;
+		for (const capability of getNodeCapabilities(actionType, config, declaredScope)) {
 			capabilities.add(capability);
 		}
 
-		for (const permission of getNodePermissions(actionType, config)) {
+		for (const permission of getNodePermissions(actionType, config, declaredScope)) {
 			const existing = permissions.get(permission.name);
 			if (!existing || riskWeight[permission.risk] > riskWeight[existing.risk]) {
 				permissions.set(permission.name, permission);

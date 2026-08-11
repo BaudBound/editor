@@ -330,32 +330,10 @@ function createVariableOperationConfigSchema(definition) {
 		additionalProperties: false,
 		...(required.length > 0 ? { required: required.sort() } : {}),
 		properties,
+		// A set used to have to carry valueType, and a set of a list itemType
+		// alongside it. Neither is a node property now: the declaration carries
+		// the type and, for a list, what it holds.
 		allOf: [
-			{
-				if: {
-					properties: {
-						operation: { const: "set" },
-					},
-					required: ["operation"],
-				},
-				// biome-ignore lint/suspicious/noThenProperty: JSON Schema conditionals use the then keyword.
-				then: {
-					required: ["valueType"],
-				},
-			},
-			{
-				if: {
-					properties: {
-						operation: { const: "set" },
-						valueType: { const: "list" },
-					},
-					required: ["operation", "valueType"],
-				},
-				// biome-ignore lint/suspicious/noThenProperty: JSON Schema conditionals use the then keyword.
-				then: {
-					required: ["itemType"],
-				},
-			},
 			{
 				if: {
 					properties: {

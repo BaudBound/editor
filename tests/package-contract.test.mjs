@@ -627,13 +627,17 @@ test("select config fields produce enum values in generated node schemas", () =>
 		"clear",
 		"reset",
 	]);
-	assert.equal(variableSchema.$defs.config.required.includes("valueType"), false);
-	assert.ok(
-		variableSchema.$defs.config.allOf.some(
-			(rule) => rule.if?.properties?.operation?.const === "set" && rule.then?.required?.includes("valueType"),
-		),
-		"Only Set requires a configured valueType",
-	);
+	// Neither valueType nor itemType is a node property. A variable's type,
+	// and what a list holds, live in its declaration, so no operation can
+	// require either on the node.
+	for (const key of ["valueType", "itemType", "scope"]) {
+		assert.equal(variableSchema.$defs.config.required.includes(key), false, `config must not require ${key}`);
+		assert.equal(Object.hasOwn(variableSchema.$defs.config.properties, key), false, `config must not offer ${key}`);
+		assert.ok(
+			!variableSchema.$defs.config.allOf.some((rule) => rule.then?.required?.includes(key)),
+			`no operation may require ${key}`,
+		);
+	}
 });
 
 test("schemas are served with public canonical ids", () => {
@@ -1333,7 +1337,7 @@ test("file permissions are derived from node config paths", async () => {
 	// The declared scope rides along, because a Variable Operation no longer
 	// carries one and the permission a write needs depends entirely on it.
 	assert.match(analysisSource, /getNodePermissions\(\s*node\.data\.actionType,\s*node\.data\.config,/);
-	assert.match(contractSource, /getNodePermissions\(actionType, config\)/);
+	assert.match(contractSource, /getNodePermissions\(actionType, config, declaredScope\)/);
 	assert.match(filePolicySource, /file\.read\.any/);
 	assert.match(filePolicySource, /file\.write\.any/);
 	assert.match(filePolicySource, /pathUsesRuntimeData/);
