@@ -426,20 +426,22 @@ test("the simulator agrees with the shared datetime format fixtures", async () =
 test("the simulator agrees with the shared clear and reset fixtures", async () => {
 	const { getClearedSimulationValue } = await import("../data/nodes/definitions/actions/variable-operation.ts");
 	const conformance = JSON.parse(
-		readFileSync(join(appRoot, "contracts", "variable-reset-conformance.json"), "utf8"),
+		readFileSync(join(appRoot, "contracts", "variable-declaration-conformance.json"), "utf8"),
 	) as {
 		cases: {
-			clear: JsonValue | null;
-			declared: { itemType?: string; type: string; value: JsonValue };
-			name: string;
-			reset: JsonValue;
-			stored: JsonValue;
-		}[];
+			clearAndReset: {
+				clear: JsonValue | null;
+				declared: { itemType?: string; type: string; value: JsonValue };
+				name: string;
+				reset: JsonValue;
+				stored: JsonValue;
+			}[];
+		};
 		version: number;
 	};
 	assert.equal(conformance.version, 1);
 
-	for (const testCase of conformance.cases) {
+	for (const testCase of conformance.cases.clearAndReset) {
 		// Reset writes the declared value verbatim, so the fixture's reset is
 		// the declaration's own value. Stating both in the fixture is what lets
 		// the runner check the same thing without knowing this rule.

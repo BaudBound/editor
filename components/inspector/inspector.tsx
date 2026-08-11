@@ -383,6 +383,7 @@ function PropertiesPanel({
 						{usesConditionRows(selectedNode.data.actionType) && (
 							<IfElseConfigPanel
 								config={selectedNode.data.config}
+								declaredVariables={declaredVariables}
 								variableCompletions={variableCompletions}
 								onChange={(key, value) => onUpdateNodeConfig(selectedNode.id, key, value)}
 							/>
@@ -673,12 +674,34 @@ function StringListField({
 	);
 }
 
+/**
+ * Warns that Is null or missing cannot be true for a declared variable.
+ *
+ * A declaration is what makes a variable exist, so one always has a value.
+ * The operator still means something for a node output that has not run and
+ * for a null inside an object, which is why this is a note rather than a
+ * rejected combination.
+ */
+function declaredVariableConditionNote(
+	condition: { left: string; operator: string },
+	declaredVariables: DeclaredVariable[],
+) {
+	if (condition.operator !== "is_null_or_missing") return "";
+	const referenced = /^\s*\{\{\s*([A-Za-z0-9_-]+)\s*\}\}\s*$/.exec(condition.left)?.[1];
+	if (!referenced) return "";
+	const declared = declaredVariables.find((variable) => variable.name === referenced);
+	if (!declared) return "";
+	return `"${referenced}" is declared, so it always has a value and this is never true. Compare it against its value instead.`;
+}
+
 function IfElseConfigPanel({
 	config,
+	declaredVariables,
 	variableCompletions,
 	onChange,
 }: {
 	config: Record<string, JsonValue>;
+	declaredVariables: DeclaredVariable[];
 	variableCompletions: VariableCompletion[];
 	onChange: (key: string, value: JsonValue) => void;
 }) {
@@ -757,6 +780,11 @@ function IfElseConfigPanel({
 											)
 										}
 									/>
+									{declaredVariableConditionNote(condition, declaredVariables) && (
+										<p className="text-xs leading-4 text-baud-amber">
+											{declaredVariableConditionNote(condition, declaredVariables)}
+										</p>
+									)}
 									<ConditionInvertCheckbox
 										checked={condition.invert === true}
 										onChange={(checked) => updateCondition(conditions, condition.id, { invert: checked }, onChange)}
@@ -1240,7 +1268,13 @@ function VariableOperationConfigPanel({
 			if (operation === "clear") return variable.type !== "hotkey";
 			return fixedType ? variable.type === fixedType : true;
 		})
-		.map((variable) => ({ label: `${variable.name} (${variable.scope} ${variable.type})`, value: variable.name }));
+		.map((variable) => ({
+			// The description is what tells two similarly named variables apart,
+			// so it belongs where the choice is made.
+			description: variable.description || undefined,
+			label: `${variable.name} (${variable.scope} ${variable.type})`,
+			value: variable.name,
+		}));
 	// The mirror of the rule above: with a hotkey selected, Clear is not on
 	// offer at all rather than offered and then refused by the runner.
 	const availableOperationOptions = variableOperationOptions.filter(

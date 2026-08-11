@@ -6,6 +6,8 @@ import {
 } from "../../project/variables";
 
 export type SelectOption = {
+	/** Optional second line in the picker, for telling similar options apart. */
+	description?: string;
 	label: string;
 	value: string;
 };

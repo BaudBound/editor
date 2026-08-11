@@ -1166,10 +1166,108 @@ test("the variable picker offers only what the operation can write, and can decl
 	await expect(page.getByRole("option", { name: /^label \(/ })).toHaveCount(0);
 	await page.keyboard.press("Escape");
 
-	// Declaring from the node lands on the Variables tab, so a variable that
-	// does not exist yet does not mean leaving the node to find the tab.
-	await page.getByRole("button", { name: "Declare a variable in Settings" }).click();
-	await expect(page.getByRole("tab", { name: "Variables" })).toHaveAttribute("aria-selected", "true");
+	// Declaring from the node opens the same form Settings uses, prefilled with
+	// the type the operation implies, and selects the result on the node. The
+	// round trip through Settings is what this control exists to remove.
+	await page.getByRole("button", { name: "Declare a variable" }).click();
+	const declareDialog = page.getByRole("dialog");
+	await expect(declareDialog.getByRole("combobox", { name: "Type" })).toHaveText(/integer/);
+	await declareDialog.getByRole("textbox", { name: "Name" }).fill("streak");
+	await declareDialog.getByRole("button", { name: "Save" }).click();
+
+	await expect(page.getByRole("button", { name: "Variable name", exact: true })).toHaveText(/streak/);
+});
+
+test("Is null or missing warns that a declared variable always has a value", async ({ page }) => {
+	await openEditor(page);
+
+	await openProjectSettingsTab(page, "Variables");
+	await page.getByRole("button", { name: "Add variable" }).click();
+	const variableDialog = page.getByRole("dialog");
+	await variableDialog.getByRole("textbox", { name: "Name" }).fill("status");
+	await variableDialog.getByRole("textbox", { name: "Default value" }).fill("ready");
+	await variableDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
+	await page.getByRole("button", { name: "If / Else" }).click();
+	await page.getByRole("button", { name: "Expression" }).click();
+	await page.getByRole("option", { name: "Is null or missing" }).click();
+
+	// A node output can still be missing, so the note is tied to the reference
+	// actually naming a declared variable rather than to the operator alone.
+	await expect(page.getByText(/always has a value and this is never true/)).toHaveCount(0);
+
+	await page.getByRole("textbox", { name: "Value", exact: true }).fill("{{status}}");
+	await expect(page.getByText(/"status" is declared, so it always has a value/)).toBeVisible();
+});
+
+test("renaming a declared variable rewrites both its writer and its readers", async ({ page }) => {
+	await openEditor(page);
+
+	await openProjectSettingsTab(page, "Variables");
+	await page.getByRole("button", { name: "Add variable" }).click();
+	let variableDialog = page.getByRole("dialog");
+	await variableDialog.getByRole("textbox", { name: "Name" }).fill("stock");
+	await variableDialog.getByRole("textbox", { name: "Default value" }).fill("none");
+	await variableDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
+	// One node writes it, another reads it. A rename that fixed only one would
+	// leave the other pointing at a name nothing declares.
+	await page.getByRole("button", { name: "Data & Variables" }).click();
+	await page.getByRole("button", { name: "Variable Operation" }).click();
+	await selectVariableToWrite(page, "stock");
+
+	await page.getByRole("button", { name: "Output & Timing" }).click();
+	await page.getByRole("button", { name: /^Log/ }).click();
+	await page.getByRole("textbox", { name: "Message" }).fill("stock is {{stock}}");
+
+	await openProjectSettingsTab(page, "Variables");
+	await page.getByRole("button", { name: "Edit stock" }).click();
+	variableDialog = page.getByRole("dialog");
+	await variableDialog.getByRole("textbox", { name: "Name" }).fill("inventory");
+	await variableDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
+	// The reader's reference followed the rename.
+	const logNode = page.locator(".react-flow__node").filter({ hasText: "Log" }).first();
+	await logNode.click();
+	await expect(page.getByRole("textbox", { name: "Message" })).toHaveValue("stock is {{inventory}}");
+
+	// And so did the writer's target, which is a name rather than a reference.
+	// The two nodes are dropped at overlapping positions, so selecting the one
+	// underneath goes through the event rather than a real click.
+	const variableNode = page.locator(".react-flow__node").filter({ hasText: "Variable Operation" }).first();
+	await variableNode.dispatchEvent("click", { bubbles: true });
+	await expect(page.getByRole("button", { name: "Variable name", exact: true })).toHaveText(/inventory/);
+});
+
+test("a variable declared from the node runs in the simulator", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "Manual" }).click();
+	await page.getByRole("button", { name: "Data & Variables" }).click();
+	await page.getByRole("button", { name: "Variable Operation" }).click();
+	await page.getByRole("button", { name: "Operation", exact: true }).click();
+	await page.getByRole("option", { name: "Increment" }).click();
+
+	// Declare it from the node rather than through Settings, then run it. This
+	// is the whole path the control exists for.
+	await page.getByRole("button", { name: "Declare a variable" }).click();
+	const declareDialog = page.getByRole("dialog");
+	await declareDialog.getByRole("textbox", { name: "Name" }).fill("streak");
+	await declareDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("textbox", { name: "Amount" }).fill("2");
+
+	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
+	const variableNode = page.locator(".react-flow__node").filter({ hasText: "Variable Operation" });
+	await manualNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
+	await variableNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await expect(page.locator('[data-variable-name="streak"] pre')).toHaveText("2");
 });
 
 test("Script Settings are available to autocomplete and simulation", async ({ page }) => {

@@ -39,6 +39,7 @@ import { VerificationModal } from "@/components/modals/verification-modal";
 import { SaveRecoveryDialog } from "@/components/projects/save-recovery-dialog";
 import { UnsavedChangesDialog } from "@/components/projects/unsaved-changes-dialog";
 import { BlockLibrary } from "@/components/shell/block-library";
+import { DeclaredVariableDialog } from "@/components/shell/declared-variable-dialog";
 import { type BottomPanelTab, OutputConsole } from "@/components/shell/output-console";
 import { ResizeHandle } from "@/components/shell/resize-handle";
 import { StatusBar } from "@/components/shell/status-bar";
@@ -51,6 +52,8 @@ import { createDevelopmentEditorNodes, isDevelopmentGraphEnabled } from "@/data/
 import { createNodeFromPaletteItem, getFlatPaletteItems, getRuntimeDataOutputs } from "@/data/nodes/registry";
 import { getScriptSettingSimulationProblems } from "@/data/project/script-settings";
 import { createSimulationSecretValues, getSecretSimulationProblems } from "@/data/project/secrets";
+import { createEmptyTypedValue } from "@/data/project/typed-values";
+import { getVariableOperationFixedType, normalizeVariableOperation } from "@/data/project/variables";
 import { getProjectHistoryCoalesceKey } from "@/data/projects/history";
 import type { EditorProject } from "@/data/projects/model";
 import { projectContentSignature } from "@/data/projects/serialization";
@@ -281,6 +284,11 @@ export function EditorPage({
 	// here to declare a variable, and landing on General would make them find
 	// the tab themselves.
 	const [projectSettingsTab, setProjectSettingsTab] = useState<ProjectSettingsTab>("general");
+	// A declaration started from a Variable Operation node. It opens the same
+	// dialog Settings uses, prefilled with the type the operation implies, and
+	// selects the new variable on the node when it saves — so declaring one
+	// does not cost a trip through Settings and back.
+	const [nodeDeclaration, setNodeDeclaration] = useState<{ draft: DeclaredVariable; nodeId: string } | null>(null);
 	const [assetEditorOpen, setAssetEditorOpen] = useState(false);
 	const [helpOpen, setHelpOpen] = useState(false);
 	const [nodeFinderOpen, setNodeFinderOpen] = useState(false);
@@ -1462,6 +1470,46 @@ export function EditorPage({
 		expandPanel("bottom");
 	};
 
+	/**
+	 * Opens the declaration dialog for the selected Variable Operation.
+	 *
+	 * The type is prefilled from what the operation implies, because a
+	 * declaration made for Toggle boolean that is not a boolean is one the
+	 * picker would immediately refuse to offer back.
+	 */
+	const handleDeclareFromNode = () => {
+		if (!selectedNode || selectedNode.data.actionType !== "runtime.set_variable") return;
+		const rawOperation = selectedNode.data.config.operation;
+		const operation = normalizeVariableOperation(typeof rawOperation === "string" ? rawOperation : "");
+		const impliedType = getVariableOperationFixedType(operation) ?? (operation === "increment" ? "integer" : "string");
+		setNodeDeclaration({
+			draft: {
+				description: "",
+				name: "",
+				scope: "runtime",
+				type: impliedType,
+				value: createEmptyTypedValue(impliedType),
+				...(impliedType === "list" ? { itemType: "string" as const } : {}),
+			},
+			nodeId: selectedNode.id,
+		});
+	};
+
+	/** Declares the drafted variable and selects it on the node that asked. */
+	const handleSaveNodeDeclaration = () => {
+		if (!nodeDeclaration) return;
+		const declared: DeclaredVariable = {
+			...nodeDeclaration.draft,
+			description: nodeDeclaration.draft.description.trim(),
+			name: nodeDeclaration.draft.name.trim(),
+		};
+		handleDeclaredVariablesChange(
+			[...declaredVariables, declared].sort((left, right) => left.name.localeCompare(right.name)),
+		);
+		handleUpdateNodeConfig(nodeDeclaration.nodeId, "name", declared.name);
+		setNodeDeclaration(null);
+	};
+
 	const handleUpdateNodeConfig = (nodeId: string, key: string, value: JsonValue) => {
 		const nextSwitchOutputs = key === "cases" ? createSwitchOutputPorts(getSwitchCaseRowsFromValue(value)) : null;
 
@@ -1773,10 +1821,7 @@ export function EditorPage({
 					simulationTriggerInputDrafts={simulationTriggerInputDrafts}
 					variables={variableEntries}
 					declaredVariables={declaredVariables}
-					onDeclareVariable={() => {
-						setProjectSettingsTab("declaredVariables");
-						setProjectSettingsOpen(true);
-					}}
+					onDeclareVariable={handleDeclareFromNode}
 					width={sizes.right}
 					collapsed={collapsed.right}
 					onAddSimulationOverride={handleAddSimulationOverride}
@@ -1837,6 +1882,18 @@ export function EditorPage({
 				title={verificationErrorDialog.title}
 				onClose={() => setVerificationErrorDialog((currentDialog) => ({ ...currentDialog, open: false }))}
 			/>
+			{nodeDeclaration && (
+				<DeclaredVariableDialog
+					draft={nodeDeclaration.draft}
+					editingName={null}
+					open
+					secrets={secretDeclarations}
+					variables={declaredVariables}
+					onCancel={() => setNodeDeclaration(null)}
+					onDraftChange={(draft) => setNodeDeclaration((current) => (current ? { ...current, draft } : current))}
+					onSave={handleSaveNodeDeclaration}
+				/>
+			)}
 			<ProjectSettingsModal
 				initialTab={projectSettingsTab}
 				open={projectSettingsOpen}
