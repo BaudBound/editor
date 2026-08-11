@@ -154,6 +154,12 @@ export async function createSimulationRun({
 		failed: false,
 		globalVariables: structuredClone(globalVariables),
 		halted: false,
+		declaredVariables: Object.fromEntries(
+			declaredVariables.map((variable) => [
+				variable.name,
+				{ scope: variable.scope, type: variable.type, itemType: variable.itemType },
+			]),
+		),
 		liveReadAt: null,
 		httpSimulation: {
 			authorizedOrigins: new Set(httpSimulation.authorizedOrigins),

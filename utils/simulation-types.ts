@@ -193,6 +193,14 @@ export type SimulationRun = {
 
 export type SimulationContext = {
 	/**
+	 * The scope and type each variable was declared with.
+	 *
+	 * A Variable Operation node names a declared variable; the declaration
+	 * settles its scope and type. The simulator looks them up here so it picks
+	 * the same store and the same type the runner does.
+	 */
+	declaredVariables: Record<string, { scope: string; type: string; itemType?: string }>;
+	/**
 	 * When the live @system fields were last read.
 	 *
 	 * Cleared at the start of every node execution, so two references in one

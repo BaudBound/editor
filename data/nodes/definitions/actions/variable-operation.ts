@@ -73,18 +73,17 @@ export const variableOperationNode = defineNode({
 		const name = configString(config.name);
 		const nameError = validateVariableName(name);
 		const operation = normalizeVariableOperation(configString(config.operation));
-		const rawType = configString(config.valueType);
-		const scope = configString(config.scope);
+		// Neither scope nor type is checked here any more. The node does not
+		// carry them: it names a declared variable, and the declaration settles
+		// both. What this can still catch is a name that is not a legal
+		// identifier, and an operation's own options.
 		const fixedType = getVariableOperationFixedType(operation);
-		const declaredType = variableTypes.find((type) => type === rawType);
-		const valueType = fixedType ?? declaredType;
 		const itemType = normalizeListItemType(configString(config.itemType));
 		const fieldValueType = normalizeVariableTypeOrUndefined(configString(config.fieldValueType));
 		const fieldItemType = normalizeListItemType(configString(config.fieldItemType));
+		const valueType = fixedType;
 		const errors = [
 			nameError ? `has invalid variable name: ${nameError}` : "",
-			["runtime", "persistent", "global"].includes(scope) ? "" : `has invalid variable scope "${scope || "missing"}".`,
-			operation !== "set" || valueType ? "" : `has invalid variable type "${rawType || "missing"}".`,
 			operation === "remove_list_items" && !["first", "all"].includes(configString(config.removeMode))
 				? `has invalid removal mode "${configString(config.removeMode) || "missing"}".`
 				: "",
@@ -137,8 +136,10 @@ export const variableOperationNode = defineNode({
 			}
 
 			const result = applyVariableOperation(node.data.config, context, api);
-			const scope = api.getConfigString(node, "scope");
-			const variables = getVariableStore(scope, context);
+			// The declaration, like applyVariableOperation above. Reading the
+			// node here and the declaration there would put the value in one
+			// store and read it from another the moment the two disagreed.
+			const variables = getVariableStore(declaredScope(name, context), context);
 			if (result.deleted) {
 				delete variables[name];
 			} else {
@@ -205,11 +206,16 @@ function applyVariableOperation(
 		throw new Error(nameError);
 	}
 	const operation = normalizeVariableOperation(configString(config.operation));
-	const type = getVariableOperationFixedType(operation) ?? normalizeVariableType(configString(config.valueType));
-	const itemType = normalizeListItemType(configString(config.itemType));
+	// The declaration settles the type, as it does on the runner. An operation
+	// that implies one still wins, because that is a property of the operation
+	// rather than of the variable.
+	const declared = context.declaredVariables[name];
+	const type = getVariableOperationFixedType(operation) ?? normalizeVariableType(declared?.type ?? "");
+	const itemType = normalizeListItemType(declared?.itemType ?? "");
 	const fieldValueType = normalizeVariableType(configString(config.fieldValueType));
 	const fieldItemType = normalizeListItemType(configString(config.fieldItemType));
-	const scope = configString(config.scope);
+	// From the declaration, matching the runner. A node no longer settles this.
+	const scope = declaredScope(name, context);
 	const variables = getVariableStore(scope, context);
 	const scopeLabel = scope === "persistent" ? "persistent" : scope === "global" ? "global" : "runtime";
 	const currentValue = variables[name];
@@ -357,9 +363,9 @@ function applyVariableOperation(
 
 function getVariableOperationConfigKeys(operation: ReturnType<typeof normalizeVariableOperation>) {
 	// scope, valueType and itemType belong to the declaration, and the runner
-	// reads both from there now. They stay in the exported config only until the
-	// simulator does the same: it still reads scope off the node to choose which
-	// store to write, so removing them here first breaks simulation.
+	// and simulator both read them from there. They stay in the exported config
+	// for now: removing them fails one e2e case that is not yet understood, and
+	// a package that omits them is refused by the schema until that is settled.
 	const base = ["customName", "operation", "name", "scope"];
 	const operationKeys: Record<ReturnType<typeof normalizeVariableOperation>, string[]> = {
 		set: ["valueType", "itemType", "value"],
@@ -370,13 +376,15 @@ function getVariableOperationConfigKeys(operation: ReturnType<typeof normalizeVa
 		set_object_field: ["fieldPath", "fieldValueType", "fieldItemType", "value"],
 		remove_object_field: ["fieldPath"],
 		merge_object: ["value"],
-		// Clear keeps valueType so the runner can tell a color or a keyboard key
-		// from a plain string. All three are strings once stored, and each has a
-		// different empty value, or none at all.
 		clear: ["valueType"],
 		delete: [],
 	};
 	return new Set([...base, ...operationKeys[operation]]);
+}
+
+/** The scope a declared variable lives in, or runtime when it is undeclared. */
+function declaredScope(name: string, context: SimulationContext) {
+	return context.declaredVariables[name]?.scope ?? "runtime";
 }
 
 function getVariableStore(scope: string, context: SimulationContext) {
