@@ -15,23 +15,21 @@ import type { JsonValue } from "@/lib/types";
 import type { SimulationContext } from "@/utils/simulation-types";
 import { validateVariableInput } from "../../config-field-validation";
 import { defineNode, type NodeSimulationApi } from "../../node-definition";
-import { variableOperationOptions, variableScopeOptions, variableTypeOptions } from "../options";
+import { variableOperationOptions } from "../options";
 
 export const variableOperationNode = defineNode({
 	actionType: "runtime.set_variable",
 	capabilities: ["runtime.variables"],
+	// No Scope or Variable type control. Both belong to the declaration, which
+	// is the only place they live now, so asking for them again on the node
+	// offered an author a second answer that could contradict the first.
 	configFields: [
 		{ key: "operation", label: "Operation", type: "select", options: variableOperationOptions },
 		{ key: "name", label: "Variable name", identifier: true, type: "text" },
-		{ key: "scope", label: "Scope", type: "select", options: variableScopeOptions },
-		{ key: "valueType", label: "Variable type", type: "select", options: variableTypeOptions, required: false },
 	],
 	defaultConfig: () => ({
 		operation: "set",
 		name: "",
-		scope: "runtime",
-		valueType: "string",
-		itemType: "string",
 		value: "",
 		fieldPath: "",
 		fieldValueType: "string",
@@ -366,9 +364,9 @@ function getVariableOperationConfigKeys(operation: ReturnType<typeof normalizeVa
 	// and simulator both read them from there. They stay in the exported config
 	// for now: removing them fails one e2e case that is not yet understood, and
 	// a package that omits them is refused by the schema until that is settled.
-	const base = ["customName", "operation", "name", "scope"];
+	const base = ["customName", "operation", "name"];
 	const operationKeys: Record<ReturnType<typeof normalizeVariableOperation>, string[]> = {
-		set: ["valueType", "itemType", "value"],
+		set: ["value"],
 		increment: ["value"],
 		toggle_boolean: [],
 		append_list: ["value"],
@@ -376,7 +374,7 @@ function getVariableOperationConfigKeys(operation: ReturnType<typeof normalizeVa
 		set_object_field: ["fieldPath", "fieldValueType", "fieldItemType", "value"],
 		remove_object_field: ["fieldPath"],
 		merge_object: ["value"],
-		clear: ["valueType"],
+		clear: [],
 		delete: [],
 	};
 	return new Set([...base, ...operationKeys[operation]]);

@@ -1472,10 +1472,8 @@ test("variable editors do not insert example values", async ({ page }) => {
 	await expect(page.getByRole("textbox", { name: "Value" })).toHaveValue("");
 	await expect(page.getByText(/^Example:/)).toHaveCount(0);
 
-	await page.getByRole("button", { name: "Variable type" }).click();
-	await page.getByRole("option", { name: "integer" }).click();
-	await expect(page.getByRole("textbox", { name: "Value" })).toHaveValue("");
-
+	// The node has no Variable type control any more; the declaration carries
+	// the type. Changing the operation is what changes the value editor here.
 	await page.getByRole("button", { name: "Operation", exact: true }).click();
 	await page.getByRole("option", { name: "Increment" }).click();
 	await expect(page.getByRole("textbox", { name: "Amount" })).toHaveValue("");
@@ -1518,18 +1516,12 @@ test("persistent variable simulation carries changes into the next run", async (
 	await page.getByRole("combobox", { name: "Variable name" }).fill("counter");
 	await page.getByRole("textbox", { name: "Amount" }).fill("1");
 
-	// counter is declared persistent, so the node takes the scope from that
-	// declaration instead of asking for it a second time.
-	const nodeScope = page.getByRole("button", { name: "Scope", exact: true });
-	await expect(nodeScope).toBeDisabled();
-	await expect(nodeScope).toContainText("persistent");
-	// Disabled has to be visible, not only refused on click.
-	const lockedStyle = await nodeScope.evaluate((element) => {
-		const style = getComputedStyle(element);
-		return { cursor: style.cursor, opacity: Number(style.opacity) };
-	});
-	expect(lockedStyle.cursor).toBe("not-allowed");
-	expect(lockedStyle.opacity).toBeLessThan(1);
+	// counter is declared persistent, and the node has no Scope control at all
+	// now. It used to show one, locked to the declaration; not offering it is
+	// the stronger version of the same idea, since there is nothing to read as
+	// a second answer.
+	await expect(page.getByRole("button", { name: "Scope", exact: true })).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Variable type", exact: true })).toHaveCount(0);
 
 	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
 	const variableNode = page.locator(".react-flow__node").filter({ hasText: "Variable Operation" });

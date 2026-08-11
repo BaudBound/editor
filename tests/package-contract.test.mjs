@@ -1682,7 +1682,14 @@ test("secret declarations are package metadata while simulation values remain se
 	const simulationSource = read(join(appRoot, "utils", "simulation.ts"));
 
 	assert.ok(manifestSchema.properties.secrets, "manifest must declare secret references");
-	assert.deepEqual(variableSchema.$defs.config.properties.scope.enum, ["runtime", "persistent", "global"]);
+	// A Variable Operation no longer carries a scope: the declaration settles it,
+	// so the node schema has no scope property to enumerate.
+	assert.equal(variableSchema.$defs.config.properties.scope, undefined);
+	assert.deepEqual(manifestSchema.properties.variables.items.properties.scope.enum, [
+		"runtime",
+		"persistent",
+		"global",
+	]);
 	assert.ok(permissionsSchema.properties.declared_permissions.items.enum.includes("secret.read"));
 	assert.match(editorPage, /simulationSecretValues/);
 	assert.match(packageSource, /secretDeclarations/);

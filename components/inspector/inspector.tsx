@@ -33,7 +33,6 @@ import {
 	type SelectOption,
 	textTransformOperationOptions,
 	variableOperationOptions,
-	variableScopeOptions,
 	variableTypeOptions,
 } from "@/data/nodes/definitions/options";
 import {
@@ -1274,7 +1273,7 @@ function VariableOperationConfigPanel({
 	const definition = variableTypeDefinitions[selectedType];
 	const operationDefinition = variableOperationDefinitions[operation];
 
-	const handleTypeChange = (value: string) => {
+	const _handleTypeChange = (value: string) => {
 		const nextType = normalizeVariableType(value);
 		onChange("valueType", nextType);
 		if (nextType === "list") {
@@ -1354,29 +1353,19 @@ function VariableOperationConfigPanel({
 				/>
 				{nameValidationMessage && <p className="mt-1 text-xs leading-4 text-baud-danger">{nameValidationMessage}</p>}
 			</div>
-			<ComboboxField
-				label="Scope"
-				value={scope}
-				options={variableScopeOptions}
-				disabled={Boolean(declared)}
-				onChange={(value) => onChange("scope", value)}
-			/>
+			{/* Scope and type are read, not chosen. They belong to the declaration,
+			    which is the only place they live, so the node states what it is
+			    writing rather than offering a second answer that could differ. */}
 			{declared ? (
 				<p className="text-xs leading-4 text-baud-muted">
-					Set by the declared variable <span className="font-mono">{declared.name}</span>. Rename this node to write a
-					different variable.
+					Writes <span className="font-mono">{declared.name}</span>, declared {scope} and typed{" "}
+					<span className="font-mono">{declared.type}</span>. {variableScopeDefinitions[normalizeScope(scope)]}
 				</p>
 			) : (
-				<p className="text-xs leading-4 text-baud-muted">{variableScopeDefinitions[normalizeScope(scope)]}</p>
-			)}
-			{operation === "set" && (
-				<ComboboxField
-					label="Variable type"
-					value={selectedType}
-					options={variableTypeOptions}
-					disabled={Boolean(declared)}
-					onChange={handleTypeChange}
-				/>
+				<p className="text-xs leading-4 text-baud-danger">
+					No variable named <span className="font-mono">{savedName || "…"}</span> is declared. Declare it under
+					Settings, then Variables.
+				</p>
 			)}
 			{typeCompatibilityMessage && <p className="text-xs leading-4 text-baud-danger">{typeCompatibilityMessage}</p>}
 			{(operation === "set_object_field" || operation === "remove_object_field") && (
