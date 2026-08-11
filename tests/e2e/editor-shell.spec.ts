@@ -1121,12 +1121,55 @@ test("variable operation completes writable variable names without template brac
 
 	await page.getByRole("button", { name: "Data & Variables" }).click();
 	await page.getByRole("button", { name: "Variable Operation" }).click();
-	const nameInput = page.getByRole("combobox", { name: "Variable name" });
-	await nameInput.fill("preferred");
-	await page.getByRole("option", { name: /preferred_status/ }).click();
+	// Picking a declared variable stores the bare name. It used to be typed
+	// into an autocomplete that could leave the {{...}} reference form behind,
+	// which is not a name the runner could match.
+	await selectVariableToWrite(page, "preferred_status");
 
-	await expect(nameInput).toHaveValue("preferred_status");
-	await expect(nameInput).not.toHaveValue("{{preferred_status}}");
+	const nameInput = page.getByRole("button", { name: "Variable name", exact: true });
+	await expect(nameInput).toHaveText(/preferred_status/);
+	await expect(nameInput).not.toHaveText(/{{preferred_status}}/);
+});
+
+test("the variable picker offers only what the operation can write, and can declare one", async ({ page }) => {
+	await openEditor(page);
+
+	await openProjectSettingsTab(page, "Variables");
+	await page.getByRole("button", { name: "Add variable" }).click();
+	let variableDialog = page.getByRole("dialog");
+	await variableDialog.getByRole("textbox", { name: "Name" }).fill("label");
+	await variableDialog.getByRole("textbox", { name: "Default value" }).fill("ready");
+	await variableDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("button", { name: "Add variable" }).click();
+	variableDialog = page.getByRole("dialog");
+	await variableDialog.getByRole("textbox", { name: "Name" }).fill("tally");
+	await variableDialog.getByRole("combobox", { name: "Type" }).click();
+	await page.getByRole("option", { name: "integer" }).click();
+	await variableDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
+	await page.getByRole("button", { name: "Data & Variables" }).click();
+	await page.getByRole("button", { name: "Variable Operation" }).click();
+
+	// Set accepts any type, so both are on offer.
+	await page.getByRole("button", { name: "Variable name", exact: true }).click();
+	await expect(page.getByRole("option", { name: /^label \(/ })).toBeVisible();
+	await expect(page.getByRole("option", { name: /^tally \(/ })).toBeVisible();
+	await page.keyboard.press("Escape");
+
+	// Increment only works on a number, so the string is not offered at all
+	// rather than offered and then rejected.
+	await page.getByRole("button", { name: "Operation", exact: true }).click();
+	await page.getByRole("option", { name: "Increment" }).click();
+	await page.getByRole("button", { name: "Variable name", exact: true }).click();
+	await expect(page.getByRole("option", { name: /^tally \(/ })).toBeVisible();
+	await expect(page.getByRole("option", { name: /^label \(/ })).toHaveCount(0);
+	await page.keyboard.press("Escape");
+
+	// Declaring from the node lands on the Variables tab, so a variable that
+	// does not exist yet does not mean leaving the node to find the tab.
+	await page.getByRole("button", { name: "Declare a variable in Settings" }).click();
+	await expect(page.getByRole("tab", { name: "Variables" })).toHaveAttribute("aria-selected", "true");
 });
 
 test("Script Settings are available to autocomplete and simulation", async ({ page }) => {
@@ -1402,7 +1445,7 @@ test("renaming defaults and secrets updates every node reference", async ({ page
 
 	await page.getByRole("button", { name: "Data & Variables" }).click();
 	await page.getByRole("button", { name: "Variable Operation" }).click();
-	await page.getByRole("combobox", { name: "Variable name" }).fill("inventory");
+	await selectVariableToWrite(page, "inventory");
 	const variableNode = page.locator(".react-flow__node").filter({ hasText: "Variable Operation" });
 
 	await page.getByRole("button", { name: "Output & Timing" }).click();
@@ -1513,7 +1556,7 @@ test("persistent variable simulation carries changes into the next run", async (
 	await page.getByRole("button", { name: "Variable Operation" }).click();
 	await page.getByRole("button", { name: "Operation", exact: true }).click();
 	await page.getByRole("option", { name: "Increment" }).click();
-	await page.getByRole("combobox", { name: "Variable name" }).fill("counter");
+	await selectVariableToWrite(page, "counter");
 	await page.getByRole("textbox", { name: "Amount" }).fill("1");
 
 	// counter is declared persistent, and the node has no Scope control at all
@@ -2639,6 +2682,14 @@ async function openEditor(page: Page) {
 	await page.getByRole("button", { name: "New project" }).click();
 	await page.getByRole("button", { name: "Create project" }).click();
 	await expect(page.getByRole("button", { name: "Open asset editor" })).toBeVisible();
+}
+
+// The Variable Operation node picks its target from the declared variables
+// rather than accepting a typed name, so a test that writes a variable has to
+// declare it first and then select it here.
+async function selectVariableToWrite(page: Page, name: string) {
+	await page.getByRole("button", { name: "Variable name", exact: true }).click();
+	await page.getByRole("option", { name: new RegExp(`^${name} \\(`) }).click();
 }
 
 async function openProjectSettingsTab(page: Page, tab: "Variables" | "Secrets" | "Script Settings") {

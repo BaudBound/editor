@@ -24,7 +24,7 @@ import { DEFAULT_MINIMUM_RUNNER_VERSION } from "@/lib/version";
 import { getRepositoryUrlError, getScriptVersionError } from "@/utils/script-repository";
 import type { VariableRename } from "@/utils/variable-reference-renaming";
 
-type ProjectSettingsTab = "general" | "runtime" | "declaredVariables" | "secrets" | "scriptSettings";
+export type ProjectSettingsTab = "general" | "runtime" | "declaredVariables" | "secrets" | "scriptSettings";
 
 type ProjectSettingsModalProps = {
 	description?: string;
@@ -37,6 +37,8 @@ type ProjectSettingsModalProps = {
 	scriptSettings?: ScriptSetting[];
 	simulationSecretValues?: Record<string, string>;
 	title?: string;
+	/** Tab to open on. Lets a caller send the user straight to Variables. */
+	initialTab?: ProjectSettingsTab;
 	onClose: () => void;
 	onDeclaredVariablesChange?: (variables: DeclaredVariable[], renames?: VariableRename[]) => void;
 	onSave: (settings: ProjectSettings) => void;
@@ -47,6 +49,7 @@ type ProjectSettingsModalProps = {
 
 export function ProjectSettingsModal({
 	description = "Configure package metadata and runtime settings used during export.",
+	initialTab = "general",
 	open,
 	projectId,
 	saveLabel = "Save Settings",
@@ -90,7 +93,7 @@ export function ProjectSettingsModal({
 		setDraft(settings);
 		setTagsDraft(settings.tags);
 		setTagInput("");
-		setActiveTab("general");
+		setActiveTab(initialTab);
 		setDeclaredVariablesDraft(declaredVariables ?? []);
 		setSecretDeclarationsDraft(secretDeclarations ?? []);
 		setScriptSettingsDraft(scriptSettings ?? []);
@@ -98,7 +101,7 @@ export function ProjectSettingsModal({
 		setDeclaredVariableRenames([]);
 		setSecretRenames([]);
 		setScriptSettingRenames([]);
-	}, [declaredVariables, open, scriptSettings, secretDeclarations, settings, simulationSecretValues]);
+	}, [declaredVariables, initialTab, open, scriptSettings, secretDeclarations, settings, simulationSecretValues]);
 
 	const nameError = draft.name.trim().length === 0 ? "Project name is required." : "";
 	const nameLengthError = draft.name.length > 128 ? "Project name cannot exceed 128 characters." : "";

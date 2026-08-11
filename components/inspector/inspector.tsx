@@ -58,7 +58,6 @@ import {
 import { numericContractApplies, runtimeNumberContract } from "@/data/nodes/numeric-validation";
 import { createDefaultNodeConfig, getNodeConfigFields } from "@/data/nodes/registry";
 import { validateSwitchCaseName, validateSwitchCaseValue } from "@/data/nodes/switch-validation";
-import { builtInVariableNames } from "@/data/project/built-in-variables";
 import { createSerialDeviceOptions, serialLineEndingOptions } from "@/data/project/serial";
 import { createEmptyTypedValue, normalizeListItemType, validateTypedValue } from "@/data/project/typed-values";
 import {
@@ -71,7 +70,6 @@ import {
 	validateObjectFieldPath,
 	validateVariableOperationType,
 	validateVariableOperationValue,
-	validateWritableVariableName,
 	variableOperationDefinitions,
 	variableScopeDefinitions,
 	variableTypeDefinitions,
@@ -104,7 +102,6 @@ import { DatetimeTokenPanel } from "./datetime-token-panel";
 import { EdgeOrderPanel } from "./edge-order-panel";
 import { KeyCaptureInput } from "./key-capture-input";
 import { RuntimeDataPanel } from "./runtime-data-panel";
-import { VariableNameInput } from "./variable-name-input";
 
 type InspectorProps = {
 	activeTab: InspectorTab;
@@ -120,6 +117,8 @@ type InspectorProps = {
 	simulationTriggerInputDrafts: Record<string, SimulationTriggerInputDraft>;
 	variables: EditorVariable[];
 	declaredVariables: DeclaredVariable[];
+	/** Opens Settings on the Variables tab so a variable can be declared without leaving the node. */
+	onDeclareVariable: () => void;
 	width: number;
 	collapsed: boolean;
 	onAddSimulationOverride: (nodeId: string) => void;
@@ -154,6 +153,7 @@ export function Inspector({
 	simulationTriggerInputDrafts,
 	variables,
 	declaredVariables,
+	onDeclareVariable,
 	width,
 	collapsed,
 	onAddSimulationOverride,
@@ -227,6 +227,7 @@ export function Inspector({
 						<PropertiesPanel
 							assets={assets}
 							declaredVariables={declaredVariables}
+							onDeclareVariable={onDeclareVariable}
 							nodes={nodes}
 							selectedNode={selectedNode}
 							variables={variables}
@@ -265,6 +266,7 @@ function PropertiesPanel({
 	nodes,
 	selectedNode,
 	variables,
+	onDeclareVariable,
 	onUpdateNodeConfig,
 	onDeleteNode,
 }: {
@@ -273,6 +275,7 @@ function PropertiesPanel({
 	nodes: Node<ScriptNodeData>[];
 	selectedNode: Node<ScriptNodeData> | null;
 	variables: EditorVariable[];
+	onDeclareVariable: () => void;
 	onUpdateNodeConfig: (nodeId: string, key: string, value: JsonValue) => void;
 	onDeleteNode: (nodeId: string) => void;
 }) {
@@ -359,6 +362,7 @@ function PropertiesPanel({
 								config={selectedNode.data.config}
 								declaredVariables={declaredVariables}
 								variableCompletions={configVariableCompletions}
+								onDeclareVariable={onDeclareVariable}
 								onChange={(key, value) => onUpdateNodeConfig(selectedNode.id, key, value)}
 							/>
 						)}
@@ -1209,11 +1213,13 @@ function VariableOperationConfigPanel({
 	declaredVariables,
 	variableCompletions,
 	onChange,
+	onDeclareVariable,
 }: {
 	config: Record<string, JsonValue>;
 	declaredVariables: DeclaredVariable[];
 	variableCompletions: VariableCompletion[];
 	onChange: (key: string, value: JsonValue) => void;
+	onDeclareVariable: () => void;
 }) {
 	const operation = normalizeVariableOperation(valueToInputString(config.operation));
 	const fixedType = getVariableOperationFixedType(operation);
@@ -1223,6 +1229,15 @@ function VariableOperationConfigPanel({
 	// rejected. Read both from the declaration rather than asking a second
 	// time for something the project already states.
 	const declared = declaredVariables.find((variable) => variable.name === savedName);
+	// What this operation can be applied to. An operation with a fixed type
+	// accepts only that type; increment accepts either numeric type, since it
+	// preserves whichever the variable was declared with.
+	const writableVariableOptions = declaredVariables
+		.filter((variable) => {
+			if (operation === "increment") return variable.type === "integer" || variable.type === "float";
+			return fixedType ? variable.type === fixedType : true;
+		})
+		.map((variable) => ({ label: `${variable.name} (${variable.scope} ${variable.type})`, value: variable.name }));
 	const scope = declared ? declared.scope : normalizeScope(valueToInputString(config.scope));
 	const selectedType = fixedType ?? declared?.type ?? normalizeVariableType(valueToInputString(config.valueType));
 	const itemType = declared?.itemType ?? normalizeListItemType(config.itemType) ?? "string";
@@ -1230,31 +1245,18 @@ function VariableOperationConfigPanel({
 	const fieldItemType = normalizeListItemType(config.fieldItemType) ?? "string";
 	const savedValue = valueToInputString(config.value);
 	const savedFieldPath = valueToInputString(config.fieldPath);
-	const [draftName, setDraftName] = useState(savedName);
 	const [draftValue, setDraftValue] = useState(savedValue);
 	const [draftFieldPath, setDraftFieldPath] = useState(savedFieldPath);
 
 	useEffect(() => {
-		setDraftName(savedName);
 		setDraftValue(savedValue);
 		setDraftFieldPath(savedFieldPath);
 	}, [savedName, savedValue, savedFieldPath]);
 
-	// The stored config still carries scope and type, because the package
-	// format and the export check both read them. Write the declared values
-	// through so what is shown and what is exported cannot drift apart.
-	useEffect(() => {
-		if (!declared) return;
-		if (valueToInputString(config.scope) !== declared.scope) onChange("scope", declared.scope);
-		if (operation === "set" && valueToInputString(config.valueType) !== declared.type) {
-			onChange("valueType", declared.type);
-		}
-		if (operation === "set" && declared.itemType && valueToInputString(config.itemType) !== declared.itemType) {
-			onChange("itemType", declared.itemType);
-		}
-	}, [declared, operation, config.scope, config.valueType, config.itemType, onChange]);
-
-	const nameValidationMessage = validateWritableVariableName(draftName, builtInVariableNames);
+	// The name is picked from the declarations, so the only way it fails is a
+	// variable that was declared once and has since been renamed or removed.
+	const nameValidationMessage =
+		savedName && !declared ? `"${savedName}" is not declared. Pick a declared variable or declare it in Settings.` : "";
 	const typeCompatibilityMessage = validateVariableOperationType(operation, selectedType);
 	const validationMessage = validateVariableOperationValue(
 		operation,
@@ -1273,27 +1275,20 @@ function VariableOperationConfigPanel({
 	const definition = variableTypeDefinitions[selectedType];
 	const operationDefinition = variableOperationDefinitions[operation];
 
-	const _handleTypeChange = (value: string) => {
-		const nextType = normalizeVariableType(value);
-		onChange("valueType", nextType);
-		if (nextType === "list") {
-			onChange("itemType", "string");
-		}
-		const nextValue = createEmptyVariableOperationInput(nextType);
-		onChange("value", nextValue);
-		setDraftValue(nextValue);
-	};
-
+	// Changing the operation can narrow which variables are writable. If the
+	// one already named is no longer among them, clear it rather than leave a
+	// selection the picker cannot show.
 	const handleOperationChange = (value: string) => {
 		const nextOperation = normalizeVariableOperation(value);
-		const nextType = getVariableOperationFixedType(nextOperation) ?? selectedType;
+		const nextFixedType = getVariableOperationFixedType(nextOperation);
+		const nextType = nextFixedType ?? selectedType;
 		onChange("operation", nextOperation);
-		if (nextOperation === "set") {
-			onChange("valueType", nextType);
-		}
-		if (nextOperation === "set" && nextType === "list") {
-			onChange("itemType", itemType);
-		}
+		const stillWritable = declared
+			? nextOperation === "increment"
+				? declared.type === "integer" || declared.type === "float"
+				: !nextFixedType || declared.type === nextFixedType
+			: false;
+		if (!stillWritable && savedName) onChange("name", "");
 		if (nextOperation === "set_object_field") {
 			onChange("fieldValueType", fieldValueType);
 		}
@@ -1327,11 +1322,17 @@ function VariableOperationConfigPanel({
 		}
 	};
 
+	// Picking a different variable can change the type being written, so the
+	// value is reset to an empty input of the new type rather than left as
+	// something the previous variable's type made sense of.
 	const handleNameChange = (value: string) => {
-		setDraftName(value);
-		if (!validateWritableVariableName(value, builtInVariableNames)) {
-			onChange("name", value.trim());
-		}
+		const nextDeclared = declaredVariables.find((variable) => variable.name === value);
+		onChange("name", value);
+		const nextType = fixedType ?? nextDeclared?.type ?? selectedType;
+		const inputType = getVariableOperationInputType(operation, nextType, fieldValueType);
+		const nextValue = variableOperationNeedsValue(operation) ? createEmptyVariableOperationInput(inputType) : "";
+		onChange("value", nextValue);
+		setDraftValue(nextValue);
 	};
 
 	return (
@@ -1343,16 +1344,36 @@ function VariableOperationConfigPanel({
 				onChange={handleOperationChange}
 			/>
 			<p className="text-xs leading-4 text-baud-muted">{operationDefinition.description}</p>
-			<div>
-				<VariableNameInput
-					label="Variable name"
-					value={draftName}
-					variables={variableCompletions}
-					onChange={handleNameChange}
-					hasError={!!nameValidationMessage}
-				/>
-				{nameValidationMessage && <p className="mt-1 text-xs leading-4 text-baud-danger">{nameValidationMessage}</p>}
-			</div>
+			{/* A picker over declared variables rather than free text. A name
+			    that is not declared cannot be written, so typing one was only
+			    ever a way to build a package the runner refuses. The list is
+			    narrowed to what this operation can accept: Append list offers
+			    only lists, Toggle boolean only booleans. */}
+			<ComboboxField
+				label="Variable name"
+				value={savedName}
+				options={writableVariableOptions}
+				emptyMessage={
+					declaredVariables.length === 0
+						? "No variables are declared yet."
+						: `No declared variable accepts ${operationDefinition.label}.`
+				}
+				placeholder="Select a variable"
+				hasError={!!nameValidationMessage}
+				trailing={
+					<button
+						type="button"
+						className="shrink-0 rounded border border-baud-border px-2 py-1 text-xs text-baud-muted transition-colors hover:border-baud-red hover:text-baud-text"
+						aria-label="Declare a variable in Settings"
+						title="Declare a variable in Settings"
+						onClick={onDeclareVariable}
+					>
+						Declare
+					</button>
+				}
+				onChange={handleNameChange}
+			/>
+			{nameValidationMessage && <p className="mt-1 text-xs leading-4 text-baud-danger">{nameValidationMessage}</p>}
 			{/* Scope and type are read, not chosen. They belong to the declaration,
 			    which is the only place they live, so the node states what it is
 			    writing rather than offering a second answer that could differ. */}
@@ -2057,6 +2078,7 @@ function ComboboxField({
 	value,
 	options,
 	onChange,
+	trailing,
 	triggerClassName,
 }: {
 	ariaDescribedBy?: string;
@@ -2070,6 +2092,8 @@ function ComboboxField({
 	value: string;
 	options: SelectOption[];
 	onChange: (value: string) => void;
+	/** Control rendered beside the combobox, sharing its row. */
+	trailing?: ReactNode;
 	triggerClassName?: string;
 }) {
 	const generatedErrorId = useId();
@@ -2089,14 +2113,23 @@ function ComboboxField({
 		/>
 	);
 
+	const row = trailing ? (
+		<div className="flex items-center gap-2">
+			{combobox}
+			{trailing}
+		</div>
+	) : (
+		combobox
+	);
+
 	if (!label) {
-		return combobox;
+		return row;
 	}
 
 	return (
 		<div>
 			<span className="mb-1 block font-mono text-sm text-baud-muted">{label}</span>
-			{combobox}
+			{row}
 			<FieldError id={errorId} message={error} />
 		</div>
 	);

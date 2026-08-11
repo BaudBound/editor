@@ -291,10 +291,10 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 		title: "Variables",
 		description: "Checking variable writes and read-only runtime references.",
 		run: ({ assets, declaredVariables, edges, nodes, secretDeclarations, variables }) => {
-			const invalidWrites = getInvalidVariableWrites(nodes);
+			const invalidWrites = getInvalidVariableWrites(nodes, declaredVariables ?? []);
 			const invalidGraphConfigs = getInvalidNodeGraphConfigs(nodes, edges, assets);
 			const invalidNodeConfigKeys = getInvalidNodeConfigKeys(nodes, variables);
-			const invalidDefaults = getInvalidDeclaredVariables(declaredVariables ?? [], nodes, secretDeclarations ?? []);
+			const invalidDefaults = getInvalidDeclaredVariables(declaredVariables ?? [], secretDeclarations ?? []);
 			const errors = [...invalidWrites, ...invalidGraphConfigs, ...invalidNodeConfigKeys, ...invalidDefaults];
 
 			return {
@@ -365,14 +365,13 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 			const invalidEdgeOrders = getEdgeExecutionOrderErrors(context.edges);
 			const triggerCount = context.nodes.filter((node) => node.data.kind === "trigger").length;
 			const manualTriggers = context.nodes.filter((node) => node.data.actionType === "trigger.manual");
-			const invalidVariableWrites = getInvalidVariableWrites(context.nodes);
+			const invalidVariableWrites = getInvalidVariableWrites(context.nodes, context.declaredVariables ?? []);
 			const invalidGraphConfigs = getInvalidNodeGraphConfigs(context.nodes, context.edges, context.assets);
 			const invalidNodeConfigKeys = getInvalidNodeConfigKeys(context.nodes, context.variables);
 			const invalidAssets = validateEditorAssets(context.assets).errors;
 			const invalidTargetRuntime = getTargetRuntimeCompatibilityErrors(context.nodes, context.targetRuntimes);
 			const invalidDefaults = getInvalidDeclaredVariables(
 				context.declaredVariables ?? [],
-				context.nodes,
 				context.secretDeclarations ?? [],
 			);
 			const details = [
@@ -720,11 +719,12 @@ function getInvalidNodeGraphConfigs(nodes: Node<ScriptNodeData>[], edges: Edge[]
 	);
 }
 
-function getInvalidVariableWrites(nodes: Node<ScriptNodeData>[]) {
+function getInvalidVariableWrites(nodes: Node<ScriptNodeData>[], declaredVariables: DeclaredVariable[]) {
 	const readOnlyNames = new Set([
 		...builtInVariableNames,
 		...createNodeOutputVariables(nodes).map((variable) => variable.name),
 	]);
+	const declaredNames = new Set(declaredVariables.map((variable) => variable.name));
 
 	return nodes
 		.filter((node) => node.data.actionType === "runtime.set_variable")
@@ -738,21 +738,27 @@ function getInvalidVariableWrites(nodes: Node<ScriptNodeData>[]) {
 				];
 			}
 
+			// A declaration is the only thing that brings a variable into
+			// existence, so a write to an undeclared name has no target. The
+			// runner refuses such a run outright; catching it here means the
+			// simulator says so before the export does.
+			if (!normalizedName) {
+				return [`${getNodeLocation(node)} > Variable name: select a declared variable to write.`];
+			}
+			if (!declaredNames.has(normalizedName)) {
+				return [
+					`${getNodeLocation(node)} > Variable name: "${normalizedName}" is not declared. Declare it under Settings > Variables.`,
+				];
+			}
+
 			return [];
 		});
 }
 
-function getInvalidDeclaredVariables(
-	declaredVariables: DeclaredVariable[],
-	nodes: Node<ScriptNodeData>[],
-	secrets: SecretDeclaration[],
-) {
+function getInvalidDeclaredVariables(declaredVariables: DeclaredVariable[], secrets: SecretDeclaration[]) {
 	const errors: string[] = [];
 	const names = new Set<string>();
 	const secretNames = new Set(secrets.map((secret) => secret.name));
-	const configuredVariables = new Map(
-		createConfiguredVariableDefinitions(nodes).map((variable) => [variable.name, variable]),
-	);
 
 	for (const variable of declaredVariables) {
 		const location = `Variables > Declared variables > "${variable.name}"`;
@@ -761,25 +767,10 @@ function getInvalidDeclaredVariables(
 			errors.push(`${location}: this name is also used by a secret reference. Rename one of them.`);
 		}
 		names.add(variable.name);
-		const configured = configuredVariables.get(variable.name);
-		if (configured && (configured.scope !== variable.scope || configured.type !== variable.type)) {
-			errors.push(
-				`${location}: scope "${variable.scope}" and type "${variable.type}" do not match the Variable Operation definition with scope "${configured.scope}" and type "${configured.type}".`,
-			);
-		}
-		for (const node of nodes) {
-			if (
-				node.data.actionType === "runtime.set_variable" &&
-				["clear", "delete"].includes(configString(node, "operation")) &&
-				normalizeVariableReferenceName(configString(node, "name")) === variable.name &&
-				configString(node, "scope") !== variable.scope
-			) {
-				const operation = configString(node, "operation");
-				errors.push(
-					`${location}: scope "${variable.scope}" does not match the ${operation === "clear" ? "Clear" : "Delete Variable"} operation at ${getNodeLocation(node)} with scope "${configString(node, "scope")}".`,
-				);
-			}
-		}
+		// A Variable Operation used to carry its own scope and type, so this
+		// checked the two answers against each other. The node carries neither
+		// now — it names a declared variable and the declaration settles both,
+		// leaving nothing that could disagree.
 	}
 
 	return errors;

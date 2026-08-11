@@ -30,7 +30,7 @@ import { AssetEditorModal } from "@/components/modals/asset-editor-modal";
 import { ExportWizardModal } from "@/components/modals/export-wizard-modal";
 import { HelpModal } from "@/components/modals/help-modal";
 import { NodeFinderModal } from "@/components/modals/node-finder-modal";
-import { ProjectSettingsModal } from "@/components/modals/project-settings-modal";
+import { ProjectSettingsModal, type ProjectSettingsTab } from "@/components/modals/project-settings-modal";
 import { SimulationFormDialog } from "@/components/modals/simulation-form-dialog";
 import { SimulationMessageBoxDialog } from "@/components/modals/simulation-message-box-dialog";
 import { SimulationNetworkAuthorizationDialog } from "@/components/modals/simulation-network-authorization-dialog";
@@ -277,6 +277,10 @@ export function EditorPage({
 		title: "",
 	});
 	const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
+	// Which tab Settings opens on. The Variable Operation node sends the user
+	// here to declare a variable, and landing on General would make them find
+	// the tab themselves.
+	const [projectSettingsTab, setProjectSettingsTab] = useState<ProjectSettingsTab>("general");
 	const [assetEditorOpen, setAssetEditorOpen] = useState(false);
 	const [helpOpen, setHelpOpen] = useState(false);
 	const [nodeFinderOpen, setNodeFinderOpen] = useState(false);
@@ -1769,6 +1773,10 @@ export function EditorPage({
 					simulationTriggerInputDrafts={simulationTriggerInputDrafts}
 					variables={variableEntries}
 					declaredVariables={declaredVariables}
+					onDeclareVariable={() => {
+						setProjectSettingsTab("declaredVariables");
+						setProjectSettingsOpen(true);
+					}}
 					width={sizes.right}
 					collapsed={collapsed.right}
 					onAddSimulationOverride={handleAddSimulationOverride}
@@ -1830,6 +1838,7 @@ export function EditorPage({
 				onClose={() => setVerificationErrorDialog((currentDialog) => ({ ...currentDialog, open: false }))}
 			/>
 			<ProjectSettingsModal
+				initialTab={projectSettingsTab}
 				open={projectSettingsOpen}
 				projectId={persistedProject.identity.id}
 				settings={projectSettings}
@@ -1837,7 +1846,10 @@ export function EditorPage({
 				secretDeclarations={secretDeclarations}
 				scriptSettings={scriptSettings}
 				simulationSecretValues={simulationSecretValues}
-				onClose={() => setProjectSettingsOpen(false)}
+				onClose={() => {
+					setProjectSettingsOpen(false);
+					setProjectSettingsTab("general");
+				}}
 				onSave={handleSaveProjectSettings}
 				onDeclaredVariablesChange={handleDeclaredVariablesChange}
 				onSecretDeclarationsChange={handleSecretDeclarationsChange}
