@@ -207,17 +207,18 @@ test("a whole number can be declared as a float", async () => {
 	assert.notDeepEqual(settingErrors("300"), []);
 });
 
-test("a declared variable settles the operation's scope and type", async () => {
+test("a node cannot write a variable the manifest does not declare", async () => {
 	const { validatePackageJsonContracts } = await import("../utils/package-contract.ts");
 
-	// The inspector derives scope and type from the declaration and writes them
-	// back into the config, so the combination the package check rejects can no
-	// longer be produced by editing the node. This pins the rule being relied
-	// on: a mismatch is an error, and the derived values are what satisfies it.
-	const contract = (variableScope: string, operationScope: string, operationType: string) =>
+	// This used to check a node's scope and type against the declaration's.
+	// They cannot disagree now: a node carries neither, it names a declared
+	// variable and the declaration settles both. What is left to catch is a
+	// node naming a variable that was never declared, which the runner refuses
+	// to start, so an import that accepted one would only defer the failure.
+	const contract = (declaredName: string, writtenName: string) =>
 		validatePackageJsonContracts({
 			"manifest.json": {
-				variables: [{ name: "counter", scope: variableScope, type: "integer", value: 5, description: "" }],
+				variables: [{ name: declaredName, scope: "persistent", type: "integer", value: 5, description: "" }],
 			},
 			"program.json": {
 				entry: {
@@ -226,25 +227,22 @@ test("a declared variable settles the operation's scope and type", async () => {
 							{
 								id: "n-1",
 								action_type: "runtime.set_variable",
-								config: {
-									name: "counter",
-									operation: "set",
-									scope: operationScope,
-									valueType: operationType,
-									value: "9",
-								},
+								config: { name: writtenName, operation: "set", value: "9" },
 							},
 						],
 					},
 				},
 			},
-		} as never).filter((error) => error.includes("counter"));
+		} as never).filter((error) => error.includes(writtenName));
 
-	// What the inspector now produces for a declared persistent integer.
-	assert.deepEqual(contract("persistent", "persistent", "integer"), []);
-	// What it used to be possible to type by hand.
-	assert.notDeepEqual(contract("persistent", "runtime", "integer"), []);
-	assert.notDeepEqual(contract("persistent", "persistent", "string"), []);
+	assert.deepEqual(contract("counter", "counter"), []);
+
+	const undeclared = contract("counter", "tally");
+	assert.equal(undeclared.length, 1);
+	assert.match(undeclared[0] ?? "", /does not declare/);
+	// The message names the node as well as the variable, because a package
+	// with many writes is otherwise a hunt.
+	assert.match(undeclared[0] ?? "", /n-1/);
 });
 
 test("a trigger's overlap mode falls back to queue", async () => {

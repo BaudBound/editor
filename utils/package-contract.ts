@@ -13,14 +13,7 @@ import {
 import { typedDatetimeIso } from "@/data/project/datetime";
 import { targetRuntimes } from "@/data/project/runtimes";
 import { userIdentifierPattern } from "@/data/project/user-identifier";
-import {
-	durationUnits,
-	getVariableOperationFixedType,
-	listItemTypes,
-	normalizeVariableOperation,
-	variableScopes,
-	variableTypes,
-} from "@/data/project/variables";
+import { durationUnits, listItemTypes, variableScopes, variableTypes } from "@/data/project/variables";
 import {
 	type ActionType,
 	type JsonValue,
@@ -482,34 +475,24 @@ function validateDeclaredVariableProgramContract(manifestValue: unknown, program
 		return [];
 	}
 
-	const defaults = new Map(
+	// This used to check a node's scope and type against the declaration's. They
+	// cannot disagree now, because a node carries neither. What it checks is
+	// that the variable is declared at all: a node writing a name the manifest
+	// does not list is a package fault, and the runner refuses to start such a
+	// run, so an import that accepted one would only defer the failure.
+	const declared = new Set(
 		manifest.variables.flatMap((value) => {
 			const variable = asRecord(value);
-			return typeof variable?.name === "string" ? [[variable.name, variable] as const] : [];
+			return typeof variable?.name === "string" ? [variable.name] : [];
 		}),
 	);
 	return block.steps.flatMap((value) => {
 		const step = asRecord(value);
 		const config = asRecord(step?.config);
 		if (step?.action_type !== "runtime.set_variable" || typeof config?.name !== "string") return [];
-		const variable = defaults.get(config.name);
-		const operation = normalizeVariableOperation(typeof config.operation === "string" ? config.operation : "set");
-		const declaredType =
-			operation === "set"
-				? typeof config.valueType === "string"
-					? config.valueType
-					: undefined
-				: getVariableOperationFixedType(operation);
-		const itemTypesMatch = operation !== "set" || variable?.type !== "list" || variable.item_type === config.itemType;
-		const typeMatches = declaredType === null || (variable?.type === declaredType && itemTypesMatch);
-		if (!variable || (variable.scope === config.scope && typeMatches)) {
-			return [];
-		}
-		return [
-			declaredType === null
-				? `manifest.json variable "${config.name}" must match its ${operation === "clear" ? "Clear" : "Delete Variable"} operation scope.`
-				: `manifest.json variable "${config.name}" must match its Variable Operation scope, type, and list item type.`,
-		];
+		if (declared.has(config.name)) return [];
+		const nodeId = typeof step?.id === "string" ? step.id : "unknown";
+		return [`program.json node "${nodeId}" writes variable "${config.name}", which manifest.json does not declare.`];
 	});
 }
 
