@@ -505,23 +505,31 @@ export function getRuntimeDataOutputs(actionType: ActionType, config: Record<str
 	return definition.fallible ? [failureErrorOutput] : [];
 }
 
-export function getNodeCapabilities(actionType: ActionType, config: Record<string, JsonValue> = {}) {
+export function getNodeCapabilities(
+	actionType: ActionType,
+	config: Record<string, JsonValue> = {},
+	declaredScope?: string,
+) {
 	const definition = getNodeDefinition(actionType);
-	return definition?.deriveCapabilities?.(config) ?? definition?.capabilities ?? [];
+	return definition?.deriveCapabilities?.(config, declaredScope) ?? definition?.capabilities ?? [];
 }
 
 export function getNodePermission(actionType: ActionType) {
 	return getNodeDefinition(actionType)?.permission;
 }
 
-export function getNodePermissions(actionType: ActionType, config: Record<string, JsonValue> = {}) {
+export function getNodePermissions(
+	actionType: ActionType,
+	config: Record<string, JsonValue> = {},
+	declaredScope?: string,
+) {
 	const definition = getNodeDefinition(actionType);
 	if (!definition) {
 		return [];
 	}
 
 	if (definition.derivePermissions) {
-		return definition.derivePermissions(config);
+		return definition.derivePermissions(config, declaredScope);
 	}
 
 	const pathRules = definition.permissionPathRules ?? [];

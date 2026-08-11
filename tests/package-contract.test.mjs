@@ -1330,7 +1330,9 @@ test("file permissions are derived from node config paths", async () => {
 	const copyFileSource = read(join(appRoot, "data", "nodes", "definitions", "actions", "file-copy.ts"));
 	const watchFileSource = read(join(appRoot, "data", "nodes", "definitions", "triggers", "file-watch.ts"));
 
-	assert.match(analysisSource, /getNodePermissions\(node\.data\.actionType, node\.data\.config\)/);
+	// The declared scope rides along, because a Variable Operation no longer
+	// carries one and the permission a write needs depends entirely on it.
+	assert.match(analysisSource, /getNodePermissions\(\s*node\.data\.actionType,\s*node\.data\.config,/);
 	assert.match(contractSource, /getNodePermissions\(actionType, config\)/);
 	assert.match(filePolicySource, /file\.read\.any/);
 	assert.match(filePolicySource, /file\.write\.any/);

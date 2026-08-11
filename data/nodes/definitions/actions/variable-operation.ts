@@ -40,16 +40,19 @@ export const variableOperationNode = defineNode({
 	}),
 	description: "Create, change, merge, clear, or delete variable values.",
 	fallible: true,
-	deriveCapabilities: (config) =>
-		configString(config.scope) === "runtime"
-			? ["runtime.variables"]
-			: ["runtime.variables", "runtime.persistent_storage"],
-	derivePermissions: (config) => {
-		const scope = configString(config.scope);
-		if (scope === "persistent") {
+	// Both read the declared scope rather than the node, which no longer has
+	// one. An undeclared name yields the least privileged answer here; the
+	// package contract refuses the write outright, so this is never the only
+	// thing standing between a script and a permission it did not ask for.
+	deriveCapabilities: (_config, declaredScope) =>
+		declaredScope === "persistent" || declaredScope === "global"
+			? ["runtime.variables", "runtime.persistent_storage"]
+			: ["runtime.variables"],
+	derivePermissions: (_config, declaredScope) => {
+		if (declaredScope === "persistent") {
 			return [{ name: "variable.persistent.set", risk: "medium" }];
 		}
-		if (scope === "global") {
+		if (declaredScope === "global") {
 			return [{ name: "variable.global.set", risk: "high" }];
 		}
 		return [{ name: "variable.local.set", risk: "low" }];

@@ -35,6 +35,22 @@ const riskWeight: Record<RiskLevel, number> = {
 	dangerous: 4,
 };
 
+/**
+ * The scope a Variable Operation node writes at.
+ *
+ * Read from the declaration rather than the node, because a node no longer
+ * carries a scope. The permission a write needs depends entirely on it, so a
+ * node naming an undeclared variable contributes none rather than guessing at
+ * the least privileged one.
+ */
+function declaredScopeForNode(node: Node<ScriptNodeData>, declaredVariables: DeclaredVariable[]) {
+	if (node.data.actionType !== "runtime.set_variable") {
+		return undefined;
+	}
+	const name = typeof node.data.config.name === "string" ? node.data.config.name : "";
+	return declaredVariables.find((variable) => variable.name === name)?.scope;
+}
+
 export function calculatePermissions(
 	nodes: Node<ScriptNodeData>[],
 	secretDeclarations: SecretDeclaration[] = [],
@@ -43,7 +59,11 @@ export function calculatePermissions(
 	const permissions = new Map<string, PermissionSummary>();
 
 	for (const node of nodes) {
-		for (const permission of getNodePermissions(node.data.actionType, node.data.config)) {
+		for (const permission of getNodePermissions(
+			node.data.actionType,
+			node.data.config,
+			declaredScopeForNode(node, declaredVariables),
+		)) {
 			const existing = permissions.get(permission.name);
 			if (!existing || riskWeight[permission.risk] > riskWeight[existing.risk]) {
 				permissions.set(permission.name, permission);
@@ -73,7 +93,11 @@ export function calculateCapabilities(
 	const capabilities = new Set<string>();
 
 	for (const node of nodes) {
-		for (const capability of getNodeCapabilities(node.data.actionType, node.data.config)) {
+		for (const capability of getNodeCapabilities(
+			node.data.actionType,
+			node.data.config,
+			declaredScopeForNode(node, declaredVariables),
+		)) {
 			capabilities.add(capability);
 		}
 	}

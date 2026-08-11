@@ -179,8 +179,14 @@ export type NodeDefinition = {
 	permission?: PermissionSummary;
 	permissionPathRules?: readonly NodePermissionPathRule[];
 	portPolicy?: NodePortPolicy;
-	deriveCapabilities?: (config: Record<string, JsonValue>) => CapabilitySummary["name"][];
-	derivePermissions?: (config: Record<string, JsonValue>) => PermissionSummary[];
+	deriveCapabilities?: (config: Record<string, JsonValue>, declaredScope?: string) => CapabilitySummary["name"][];
+	/**
+	 * `declaredScope` is the scope of the variable a Variable Operation names,
+	 * looked up from the declarations rather than read off the node. A node no
+	 * longer carries a scope, and the permission a write needs depends entirely
+	 * on it: local, persistent, or the shared global.
+	 */
+	derivePermissions?: (config: Record<string, JsonValue>, declaredScope?: string) => PermissionSummary[];
 	deriveRuntimeOutputs?: (config: Record<string, JsonValue>) => RuntimeDataOutput[];
 	risk: RiskLevel;
 	runtimeOutputs?: RuntimeDataOutput[];
