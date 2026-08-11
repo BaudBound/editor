@@ -157,7 +157,7 @@ export async function createSimulationRun({
 		declaredVariables: Object.fromEntries(
 			declaredVariables.map((variable) => [
 				variable.name,
-				{ scope: variable.scope, type: variable.type, itemType: variable.itemType },
+				{ scope: variable.scope, type: variable.type, itemType: variable.itemType, value: variable.value },
 			]),
 		),
 		liveReadAt: null,

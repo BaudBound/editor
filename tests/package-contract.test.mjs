@@ -625,7 +625,7 @@ test("select config fields produce enum values in generated node schemas", () =>
 		"remove_object_field",
 		"merge_object",
 		"clear",
-		"delete",
+		"reset",
 	]);
 	assert.equal(variableSchema.$defs.config.required.includes("valueType"), false);
 	assert.ok(

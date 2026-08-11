@@ -199,7 +199,7 @@ export type SimulationContext = {
 	 * settles its scope and type. The simulator looks them up here so it picks
 	 * the same store and the same type the runner does.
 	 */
-	declaredVariables: Record<string, { scope: string; type: string; itemType?: string }>;
+	declaredVariables: Record<string, { scope: string; type: string; itemType?: string; value: JsonValue }>;
 	/**
 	 * When the live @system fields were last read.
 	 *

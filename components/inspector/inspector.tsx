@@ -1235,9 +1235,17 @@ function VariableOperationConfigPanel({
 	const writableVariableOptions = declaredVariables
 		.filter((variable) => {
 			if (operation === "increment") return variable.type === "integer" || variable.type === "float";
+			// A hotkey has no empty value — there is no key combination that
+			// means "no key" — so clearing one has no answer. Reset does.
+			if (operation === "clear") return variable.type !== "hotkey";
 			return fixedType ? variable.type === fixedType : true;
 		})
 		.map((variable) => ({ label: `${variable.name} (${variable.scope} ${variable.type})`, value: variable.name }));
+	// The mirror of the rule above: with a hotkey selected, Clear is not on
+	// offer at all rather than offered and then refused by the runner.
+	const availableOperationOptions = variableOperationOptions.filter(
+		(option) => option.value !== "clear" || declared?.type !== "hotkey",
+	);
 	const scope = declared ? declared.scope : normalizeScope(valueToInputString(config.scope));
 	const selectedType = fixedType ?? declared?.type ?? normalizeVariableType(valueToInputString(config.valueType));
 	const itemType = declared?.itemType ?? normalizeListItemType(config.itemType) ?? "string";
@@ -1340,7 +1348,7 @@ function VariableOperationConfigPanel({
 			<ComboboxField
 				label="Operation"
 				value={operation}
-				options={variableOperationOptions}
+				options={availableOperationOptions}
 				onChange={handleOperationChange}
 			/>
 			<p className="text-xs leading-4 text-baud-muted">{operationDefinition.description}</p>
@@ -1610,7 +1618,7 @@ function getVariableOperationInputType(
 }
 
 function variableOperationNeedsValue(operation: ReturnType<typeof normalizeVariableOperation>) {
-	return !["clear", "delete", "toggle_boolean", "remove_object_field"].includes(operation);
+	return !["clear", "reset", "toggle_boolean", "remove_object_field"].includes(operation);
 }
 
 function parseTypedConfigValue(value: string, type: VariableType, itemType?: ListItemType): JsonValue {

@@ -36,7 +36,7 @@ export const variableOperationNode = defineNode({
 		fieldItemType: "string",
 		removeMode: "all",
 	}),
-	description: "Create, change, merge, clear, or delete variable values.",
+	description: "Create, change, merge, clear, or reset variable values.",
 	fallible: true,
 	// Both read the declared scope rather than the node, which no longer has
 	// one. An undeclared name yields the least privileged answer here; the
@@ -87,7 +87,7 @@ export const variableOperationNode = defineNode({
 				: "",
 		];
 
-		if (operation !== "clear" && operation !== "delete" && valueType) {
+		if (operation !== "clear" && operation !== "reset" && valueType) {
 			const valueError = validateVariableOperationValue(
 				operation,
 				valueType,
@@ -138,11 +138,7 @@ export const variableOperationNode = defineNode({
 			// node here and the declaration there would put the value in one
 			// store and read it from another the moment the two disagreed.
 			const variables = getVariableStore(declaredScope(name, context), context);
-			if (result.deleted) {
-				delete variables[name];
-			} else {
-				variables[name] = result.value;
-			}
+			variables[name] = result.value;
 
 			return [
 				{
@@ -167,7 +163,7 @@ function validateVariableOperationVariables(
 	variables: readonly VariableReferenceCandidate[],
 ) {
 	const operation = normalizeVariableOperation(configString(config.operation));
-	if (["clear", "delete", "toggle_boolean", "remove_object_field"].includes(operation)) return [];
+	if (["clear", "reset", "toggle_boolean", "remove_object_field"].includes(operation)) return [];
 	// Increment applies to either an integer or a float variable. There is no
 	// wildcard for "either numeric type" in the exact-match contract, so this
 	// follows the same default other generic numeric inputs use.
@@ -331,19 +327,24 @@ function applyVariableOperation(
 		};
 	}
 
-	if (operation === "delete") {
+	// Reset restores the declared default. Deleting the variable is not on
+	// offer any more: a declaration is what makes a variable exist, so a run
+	// cannot remove one and leave the rest of the script reading a name that
+	// nothing declares.
+	if (operation === "reset") {
+		const value = structuredClone(declared.value);
 		return {
-			deleted: true,
-			value: null,
-			message:
-				currentValue === undefined
-					? `${scopeLabel[0].toUpperCase()}${scopeLabel.slice(1)} variable "${name}" was already missing.`
-					: `Deleted ${scopeLabel} variable "${name}".`,
+			value,
+			message: `Reset ${scopeLabel} variable "${name}" to its declared value ${api.formatValue(value)}.`,
 		};
 	}
 
+	// Clear empties the variable for its declared type, whatever it holds now.
+	// It used to derive the empty value from the current one, which made the
+	// result depend on what happened to be stored rather than on what the
+	// variable is.
 	if (operation === "clear") {
-		const value = getClearedSimulationValue(currentValue, name);
+		const value = getClearedSimulationValue(type);
 
 		return {
 			value,
@@ -375,7 +376,7 @@ function getVariableOperationConfigKeys(operation: ReturnType<typeof normalizeVa
 		remove_object_field: ["fieldPath"],
 		merge_object: ["value"],
 		clear: [],
-		delete: [],
+		reset: [],
 	};
 	return new Set([...base, ...operationKeys[operation]]);
 }
@@ -485,24 +486,36 @@ function getListItemKind(value: JsonValue) {
 	return "object";
 }
 
-function getClearedSimulationValue(value: JsonValue | undefined, name: string): JsonValue {
-	if (value === undefined) {
-		throw new Error(`Clearing requires existing variable "${name}".`);
+/**
+ * The empty value for a type — what Clear writes.
+ *
+ * Not createEmptyTypedValue, which gives a datetime the current instant: right
+ * for a new declaration, wrong for clearing, where the empty datetime is the
+ * epoch. Exported so the shared clear and reset fixtures can check it against
+ * what the runner does.
+ */
+export function getClearedSimulationValue(type: VariableType): JsonValue {
+	switch (type) {
+		case "integer":
+		case "float":
+			return 0;
+		case "boolean":
+			return false;
+		case "list":
+			return [];
+		case "object":
+			return {};
+		case "datetime":
+			return { type: "datetime", value: "1970-01-01T00:00:00.000Z" };
+		case "duration":
+			return { type: "duration", unit: "seconds", value: 0 };
+		// A color is a JSON string, but "" is not a color. Black is its empty
+		// value, which is what the runner writes.
+		case "color":
+			return "#000000";
+		default:
+			return "";
 	}
-	if (typeof value === "string") return "";
-	if (typeof value === "number") return 0;
-	if (typeof value === "boolean") return false;
-	if (Array.isArray(value)) return [];
-	if (!value || typeof value !== "object") {
-		throw new Error(`Existing variable "${name}" has an unsupported value type.`);
-	}
-	if (value.type === "datetime") {
-		return { type: "datetime", value: "1970-01-01T00:00:00.000Z" };
-	}
-	if (value.type === "duration") {
-		return { type: "duration", unit: "seconds", value: 0 };
-	}
-	return {};
 }
 
 function resolveVariableInput(

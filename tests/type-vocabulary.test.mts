@@ -11,7 +11,7 @@ import {
 } from "../data/nodes/config-field-validation.ts";
 import { createTextTransformOperationRow } from "../data/nodes/definitions/rows.ts";
 import { validateConditionVariableInputs } from "../data/nodes/definitions/shared.ts";
-import { variableTypes } from "../data/project/variables.ts";
+import { type VariableType, variableTypes } from "../data/project/variables.ts";
 import type { JsonValue } from "../lib/types.ts";
 import { castSimulatedValue, validateSimulatedValue } from "../utils/value-cast.ts";
 
@@ -420,6 +420,39 @@ test("the simulator agrees with the shared datetime format fixtures", async () =
 		}
 		assert.equal(problem, "", `${testCase.pattern} should be valid: ${testCase.reason}`);
 		assert.equal(formatDatetime(value, testCase.pattern), testCase.result, `${testCase.pattern}: ${testCase.reason}`);
+	}
+});
+
+test("the simulator agrees with the shared clear and reset fixtures", async () => {
+	const { getClearedSimulationValue } = await import("../data/nodes/definitions/actions/variable-operation.ts");
+	const conformance = JSON.parse(
+		readFileSync(join(appRoot, "contracts", "variable-reset-conformance.json"), "utf8"),
+	) as {
+		cases: {
+			clear: JsonValue | null;
+			declared: { itemType?: string; type: string; value: JsonValue };
+			name: string;
+			reset: JsonValue;
+			stored: JsonValue;
+		}[];
+		version: number;
+	};
+	assert.equal(conformance.version, 1);
+
+	for (const testCase of conformance.cases) {
+		// Reset writes the declared value verbatim, so the fixture's reset is
+		// the declaration's own value. Stating both in the fixture is what lets
+		// the runner check the same thing without knowing this rule.
+		assert.deepEqual(testCase.reset, testCase.declared.value, `${testCase.name}: reset is the declared value`);
+
+		const type = testCase.declared.type as VariableType;
+		if (testCase.clear === null) {
+			// A hotkey has no empty value. The editor keeps Clear off the menu
+			// for one rather than offering an operation with no answer.
+			assert.equal(type, "hotkey", `only a hotkey may refuse clear, not ${testCase.name}`);
+			continue;
+		}
+		assert.deepEqual(getClearedSimulationValue(type), testCase.clear, `${testCase.name}: clear empties for the type`);
 	}
 });
 
