@@ -393,6 +393,40 @@ test("the Format Text node renders a datetime from the input", async () => {
 	}
 });
 
+test("a text format operation survives export and matches the runner schema", async () => {
+	const { textTransformOperationOptions } = await import("../data/nodes/definitions/options.ts");
+	const { sanitizeNodeConfig, validateNodeConfig } = await import("../data/nodes/registry.ts");
+	const schema = JSON.parse(
+		readFileSync(join(appRoot, "contracts", "nodes", "action-text-format.schema.json"), "utf8"),
+	) as {
+		$defs: { config: { properties: { operations: { items: { properties: { operation: { enum: string[] } } } } } } };
+	};
+	const accepted = schema.$defs.config.properties.operations.items.properties.operation.enum;
+
+	// Every operation the editor offers has to be one the runner will accept.
+	// format_datetime was offered for a while without being listed here, so a
+	// script using it exported cleanly and was then refused at install.
+	assert.deepEqual(textTransformOperationOptions.map((option) => option.value).toSorted(), [...accepted].toSorted());
+
+	// Export keeps the pattern. It used to be dropped, so the operation reached
+	// the package carrying only its id and name.
+	const exported = sanitizeNodeConfig("action.text.format", {
+		input: "{{@system.datetime}}",
+		operations: [{ id: "op-1", operation: "format_datetime", pattern: "HH:mm:ss" }],
+	}) as { operations: { pattern?: string }[] };
+	assert.equal(exported.operations[0]?.pattern, "HH:mm:ss");
+
+	// And a missing pattern is caught before export rather than at run time.
+	const missing = validateNodeConfig("action.text.format", {
+		input: "{{@system.datetime}}",
+		operations: [{ id: "op-1", operation: "format_datetime", pattern: "" }],
+	});
+	assert.ok(
+		missing.some((error) => /format pattern/i.test(error)),
+		`a missing datetime pattern must be reported, got ${JSON.stringify(missing)}`,
+	);
+});
+
 test("the simulator agrees with the shared datetime format fixtures", async () => {
 	const { datetimeFormatTokenGroups, formatDatetime, validateDatetimePattern } = await import(
 		"../data/project/datetime-format.ts"

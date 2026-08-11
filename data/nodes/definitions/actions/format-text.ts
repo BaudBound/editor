@@ -315,6 +315,11 @@ function sanitizeOperation(row: TextTransformOperationRow) {
 		result.targetLength = row.targetLength;
 		result.pad = row.pad;
 	}
+	// Without this the pattern was dropped on export, so every exported
+	// format_datetime carried only its id and operation and the runner refused
+	// the package. Nothing caught it because `pattern` was also missing from
+	// the validated fields below.
+	if (operation === "format_datetime") result.pattern = row.pattern;
 	return result;
 }
 
@@ -342,6 +347,10 @@ const textTransformValidatedFields = [
 	"length",
 	"targetLength",
 	"pad",
+	// The datetime pattern is checked per field in the inspector, but it was
+	// left out here, so verification never asked about it and a node with no
+	// pattern exported cleanly and then failed to install.
+	"pattern",
 ] as const satisfies readonly (keyof Omit<TextTransformOperationRow, "id" | "operation">)[];
 
 function parseNonNegativeInteger(value: string, label: string) {

@@ -384,6 +384,12 @@ function createVariableOperationConfigSchema(definition) {
 	};
 }
 
+function readTextTransformOperations() {
+	const operations = optionValues.get("textTransformOperationOptions") ?? [];
+	assert.ok(operations.length > 0, "textTransformOperationOptions must define at least one operation");
+	return operations;
+}
+
 function createTextTransformOperationsSchema() {
 	return {
 		type: "array",
@@ -392,37 +398,32 @@ function createTextTransformOperationsSchema() {
 		items: {
 			type: "object",
 			additionalProperties: false,
+			// A datetime format is the one operation whose own field is required:
+			// the runner refuses an empty pattern, so a package carrying one would
+			// install and then fail mid-run.
+			allOf: [
+				{
+					if: { required: ["operation"], properties: { operation: { const: "format_datetime" } } },
+					// biome-ignore lint/suspicious/noThenProperty: "then" is the JSON Schema keyword, not a thenable.
+					then: { required: ["pattern"] },
+				},
+			],
 			required: ["id", "operation"],
 			properties: {
 				id: { type: "string", minLength: 1 },
 				operation: {
 					type: "string",
-					enum: [
-						"template",
-						"trim",
-						"uppercase",
-						"lowercase",
-						"sentence_case",
-						"capitalize_words",
-						"replace",
-						"regex_replace",
-						"split",
-						"join",
-						"substring",
-						"pad_start",
-						"pad_end",
-						"url_encode",
-						"url_decode",
-						"base64_encode",
-						"base64_decode",
-						"json_escape",
-						"json_unescape",
-					],
+					// Read from the editor's own option list rather than repeating it,
+					// for the same reason readVariableTypes does. This copy went stale
+					// when format_datetime was added: the editor offered the operation
+					// and the runner refused every package that used one.
+					enum: readTextTransformOperations(),
 				},
 				template: { type: "string" },
 				search: { type: "string" },
 				replacement: { type: "string" },
 				delimiter: { type: "string" },
+				pattern: { type: "string", minLength: 1 },
 				start: {
 					anyOf: [
 						{ type: "integer", minimum: 0 },
