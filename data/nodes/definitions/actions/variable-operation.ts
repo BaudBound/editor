@@ -361,10 +361,9 @@ function applyVariableOperation(
 }
 
 function getVariableOperationConfigKeys(operation: ReturnType<typeof normalizeVariableOperation>) {
-	// scope, valueType and itemType belong to the declaration, and the runner
-	// and simulator both read them from there. They stay in the exported config
-	// for now: removing them fails one e2e case that is not yet understood, and
-	// a package that omits them is refused by the schema until that is settled.
+	// scope, valueType and itemType are absent, not merely unused: they belong
+	// to the declaration, the runner and simulator both read them from there,
+	// and the node schema refuses a config that carries them.
 	const base = ["customName", "operation", "name"];
 	const operationKeys: Record<ReturnType<typeof normalizeVariableOperation>, string[]> = {
 		set: ["value"],
