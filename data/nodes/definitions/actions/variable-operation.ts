@@ -356,6 +356,10 @@ function applyVariableOperation(
 }
 
 function getVariableOperationConfigKeys(operation: ReturnType<typeof normalizeVariableOperation>) {
+	// scope, valueType and itemType belong to the declaration, and the runner
+	// reads both from there now. They stay in the exported config only until the
+	// simulator does the same: it still reads scope off the node to choose which
+	// store to write, so removing them here first breaks simulation.
 	const base = ["customName", "operation", "name", "scope"];
 	const operationKeys: Record<ReturnType<typeof normalizeVariableOperation>, string[]> = {
 		set: ["valueType", "itemType", "value"],
