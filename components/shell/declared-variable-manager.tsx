@@ -199,6 +199,7 @@ export function DeclaredVariableManager({ secrets, variables, onChange }: Declar
 								<SelectContent>
 									<SelectItem value="runtime">runtime</SelectItem>
 									<SelectItem value="persistent">persistent</SelectItem>
+									<SelectItem value="global">global</SelectItem>
 								</SelectContent>
 							</Select>
 						</label>

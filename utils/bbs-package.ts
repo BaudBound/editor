@@ -11,7 +11,7 @@ import {
 import { packageLimits } from "@/data/project/package-limits";
 import { targetRuntimes } from "@/data/project/runtimes";
 import { normalizeListItemType, validateTypedValue } from "@/data/project/typed-values";
-import { variableTypes } from "@/data/project/variables";
+import { variableScopes, variableTypes } from "@/data/project/variables";
 import type { ProjectIdentity } from "../data/projects/model";
 import {
 	type ActionType,
@@ -323,7 +323,7 @@ function toDeclaredVariables(manifest: Record<string, unknown>): DeclaredVariabl
 		if (
 			!variable ||
 			typeof variable.name !== "string" ||
-			(variable.scope !== "runtime" && variable.scope !== "persistent") ||
+			!variableScopes.includes(variable.scope as DeclaredVariable["scope"]) ||
 			typeof variable.type !== "string" ||
 			!variableTypes.includes(variable.type as DeclaredVariable["type"]) ||
 			!isJsonValue(variable.value)
@@ -335,7 +335,7 @@ function toDeclaredVariables(manifest: Record<string, unknown>): DeclaredVariabl
 			{
 				description: typeof variable.description === "string" ? variable.description : "",
 				name: variable.name,
-				scope: variable.scope,
+				scope: variable.scope as DeclaredVariable["scope"],
 				type: variable.type as DeclaredVariable["type"],
 				...(variable.type === "list" && typeof variable.item_type === "string"
 					? { itemType: variable.item_type as DeclaredVariable["itemType"] }

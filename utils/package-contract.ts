@@ -18,6 +18,7 @@ import {
 	getVariableOperationFixedType,
 	listItemTypes,
 	normalizeVariableOperation,
+	variableScopes,
 	variableTypes,
 } from "@/data/project/variables";
 import {
@@ -325,7 +326,7 @@ export function validateManifestContract(value: unknown) {
 				if (names.has(name)) errors.push(`manifest.json contains duplicate variable name "${name}".`);
 				if (secretNames.has(name)) errors.push(`manifest.json variable "${name}" conflicts with a secret declaration.`);
 				names.add(name);
-				if (variable.scope !== "runtime" && variable.scope !== "persistent") {
+				if (!variableScopes.includes(variable.scope as (typeof variableScopes)[number])) {
 					errors.push(`manifest.json variable "${name}" has invalid scope "${String(variable.scope)}".`);
 				}
 				if (!variableTypes.includes(type)) {

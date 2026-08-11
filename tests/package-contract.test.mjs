@@ -1701,7 +1701,14 @@ test("declared variables are typed package metadata and runner execution state",
 	);
 
 	assert.ok(manifestSchema.properties.variables, "manifest must declare default variables");
-	assert.deepEqual(manifestSchema.properties.variables.items.properties.scope.enum, ["runtime", "persistent"]);
+	// A declaration may name any of the three scopes a Variable Operation can.
+	// Global was storable but not declarable, which was a gap rather than a
+	// decision, and the two enums now agree.
+	assert.deepEqual(manifestSchema.properties.variables.items.properties.scope.enum, [
+		"runtime",
+		"persistent",
+		"global",
+	]);
 	assert.equal(stringDefaultSchema.properties.value.pattern, "\\S");
 	assert.match(declaredVariableSource, /Default value is required/);
 	assert.match(editorPage, /declaredVariables/);
