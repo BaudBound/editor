@@ -425,6 +425,7 @@ test("the simulator agrees with the shared datetime format fixtures", async () =
 
 test("the simulator agrees with the shared clear and reset fixtures", async () => {
 	const { getClearedSimulationValue } = await import("../data/nodes/definitions/actions/variable-operation.ts");
+	const { createEmptyTypedValue } = await import("../data/project/typed-values.ts");
 	const conformance = JSON.parse(
 		readFileSync(join(appRoot, "contracts", "variable-declaration-conformance.json"), "utf8"),
 	) as {
@@ -455,6 +456,17 @@ test("the simulator agrees with the shared clear and reset fixtures", async () =
 			continue;
 		}
 		assert.deepEqual(getClearedSimulationValue(type), testCase.clear, `${testCase.name}: clear empties for the type`);
+
+		// The value a new declaration starts at must be the same value clear
+		// returns it to. This went unchecked before, and the two had drifted: a
+		// colour started at "" and cleared to "#000000", and a datetime started
+		// at the current instant and cleared to the epoch — so a fresh
+		// declaration held a value its own clear could not reproduce.
+		assert.deepEqual(
+			createEmptyTypedValue(type, testCase.declared.itemType as never),
+			testCase.clear,
+			`${testCase.name}: a new declaration starts at the empty value for its type`,
+		);
 	}
 });
 

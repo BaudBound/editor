@@ -54,10 +54,9 @@ export function DeclaredVariableDialog({
 		() => validateDeclaredVariable(draft, variables, secrets, editingName ?? undefined),
 		[draft, editingName, secrets, variables],
 	);
-	const valueError =
-		draft.type === "string" && typeof draft.value === "string" && !draft.value.trim()
-			? "Default value is required."
-			: validateTypedValue(draft.type, draft.value, draft.itemType);
+	// An empty string is a legitimate starting value, and it is exactly what
+	// Clear writes. Refusing it here forced scripts to declare a sentinel.
+	const valueError = validateTypedValue(draft.type, draft.value, draft.itemType);
 	const setDraft = (update: (current: DeclaredVariable) => DeclaredVariable) => onDraftChange(update(draft));
 	const changeType = (type: VariableType) => {
 		setDraft((current) => ({

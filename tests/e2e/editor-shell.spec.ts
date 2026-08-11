@@ -2622,8 +2622,12 @@ test("exported package preserves editor metadata and imports back", async ({ pag
 	await page.getByRole("button", { name: "Manual" }).click();
 	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
-	await page.getByRole("textbox", { name: "Name" }).fill("counter");
+	// A declaration needs a name, so the untouched form cannot be saved. This
+	// used to assert the same thing after typing the name, when an empty string
+	// default was still refused — it is a legal starting value now, so the name
+	// is what the guard has left to catch.
 	await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+	await page.getByRole("textbox", { name: "Name" }).fill("counter");
 	await page.getByRole("combobox", { name: "Scope" }).click();
 	await page.getByRole("option", { name: "persistent" }).click();
 	await page.getByRole("combobox", { name: "Type" }).click();

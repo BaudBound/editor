@@ -111,11 +111,13 @@ test("datetime values use selectable timezones while retaining UTC storage", asy
 	assert.equal(formatTypedDatetimeForTemporalInput({ type: "datetime", value: "invalid" }, "datetime", "UTC"), null);
 	assert.equal(formatTypedDatetimeForTemporalInput({ type: "datetime", value: "2026-02-30T12:30:15Z" }, "date"), null);
 
-	const typedValueSource = read(join(appRoot, "data", "project", "typed-values.ts"));
-	assert.match(
-		typedValueSource,
-		/case "datetime":\s*return \{ type: "datetime", value: new Date\(\)\.toISOString\(\) \};/,
-	);
+	// A new datetime declaration used to start at the current instant, pinned
+	// here by matching the source text. It starts at the epoch now, so that the
+	// value a declaration begins at is the one its own Clear returns it to, and
+	// so that building the same declaration twice produces the same package.
+	// The rule is checked against the shared fixture for all ten types in
+	// type-vocabulary.test.mts, which is both broader and not tied to how the
+	// line happens to be written.
 });
 
 test("editor supports the complete If / Else condition operator set", async () => {
@@ -1705,7 +1707,6 @@ test("secret declarations are package metadata while simulation values remain se
 
 test("declared variables are typed package metadata and runner execution state", () => {
 	const manifestSchema = JSON.parse(read(join(schemasRoot, "manifest.schema.json")));
-	const declaredVariableSource = read(join(appRoot, "data", "project", "declared-variables.ts"));
 	const editorPage = read(join(appRoot, "app", "editor-page.tsx"));
 	const packageSource = read(join(appRoot, "utils", "bbs-package.ts"));
 	const simulationSource = read(join(appRoot, "utils", "simulation.ts"));
@@ -1722,8 +1723,17 @@ test("declared variables are typed package metadata and runner execution state",
 		"persistent",
 		"global",
 	]);
-	assert.equal(stringDefaultSchema.properties.value.pattern, "\\S");
-	assert.match(declaredVariableSource, /Default value is required/);
+	// A declared string may be empty. It used to need a non-whitespace
+	// character, which is why the sample script declared "none" and explained
+	// the sentinel in its description — while Clear writes "" at run time, a
+	// value the declaration itself could not hold. A hotkey still needs a real
+	// key, and a colour still needs its hex form.
+	assert.equal(stringDefaultSchema.properties.value.pattern, undefined);
+	assert.equal(
+		manifestSchema.properties.variables.items.oneOf.find((option) => option.properties.type.const === "hotkey")
+			.properties.value.pattern,
+		"\\S",
+	);
 	assert.match(editorPage, /declaredVariables/);
 	assert.match(packageSource, /variables:\s*params\.declaredVariables\.map/);
 	assert.match(simulationSource, /declaredVariables[\s\S]*variable\.scope === "persistent"/);
