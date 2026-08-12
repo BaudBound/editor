@@ -1,35 +1,23 @@
 import { ChevronDown } from "lucide-react";
 import { CopyTextButton } from "@/components/common/copy-text-button";
-import { datetimeFormatTokenGroups } from "@/data/project/datetime-format";
+import { durationFormatTokenGroups } from "@/data/project/duration-format";
 
-/**
- * The tokens a format pattern is built from, with what each one renders.
- *
- * A node-level reference rather than a field-level one, so it keeps its place
- * whichever operation row is being edited and however many of them format a
- * datetime. It reads rather than writes for the same reason: with two format
- * operations in one pipeline there is no row a button could append to without
- * guessing.
- */
-export function DatetimeTokenPanel() {
+/** A reference for the duration format operation in Text Transform. */
+export function DurationTokenPanel() {
 	return (
 		<details className="group rounded border border-baud-border bg-baud-soft">
 			<summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2">
-				<span className="text-xs font-bold uppercase tracking-[0.18em] text-baud-muted">Format Tokens</span>
+				<span className="text-xs font-bold uppercase tracking-[0.18em] text-baud-muted">Duration Format Tokens</span>
 				<ChevronDown size={14} className="text-baud-muted transition-transform group-open:rotate-180" />
 			</summary>
 			<div className="space-y-3 border-t border-baud-border p-3 text-sm leading-5 text-baud-muted">
 				<p>
 					Recognized letters are format tokens; punctuation and whitespace are kept as written, so{" "}
-					<span className="font-mono text-baud-text">yyyy-MM-dd HH:mm</span> gives{" "}
-					<span className="font-mono text-baud-text">2026-07-03 14:05</span>.
+					<span className="font-mono text-baud-text">D HH:mm:ss</span> gives{" "}
+					<span className="font-mono text-baud-text">1 01:01:01</span> for 90,061 seconds.
 				</p>
-				<p>
-					To keep letters as text, wrap them in single quotes:{" "}
-					<span className="font-mono text-baud-text">HH:mm 'on' EEEE</span> gives{" "}
-					<span className="font-mono text-baud-text">14:05 on Friday</span>. Two quotes in a row write one quote.
-				</p>
-				{datetimeFormatTokenGroups.map((group) => (
+				<p>Hours are the part remaining after whole days. To keep letters as text, wrap them in single quotes.</p>
+				{durationFormatTokenGroups.map((group) => (
 					<div key={group.label} className="border-b border-baud-border pb-2 last:border-b-0 last:pb-0">
 						<div className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-baud-muted">{group.label}</div>
 						{group.tokens.map((entry) => (

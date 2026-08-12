@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+	filterCompatibleVariables,
 	splitCast,
 	validateNumericComparisonInput,
 	validateVariableInput,
@@ -139,6 +140,43 @@ test("a numeric comparison accepts either numeric type", () => {
 	assert.match(validateNumericComparisonInput("{{counter|color}}", variables), /needs a number/);
 });
 
+test("a numeric expression field accepts integer and float variables", () => {
+	const variables = [
+		{ name: "seconds", type: "integer", readOnly: true },
+		{ name: "ratio", type: "float", readOnly: true },
+		{ name: "label", type: "string", readOnly: true },
+	] as const;
+	const contract = ["integer", "float"] as const;
+
+	assert.equal(validateVariableReferenceTypes("floor({{seconds}} / 3600)", variables, contract), "");
+	assert.equal(validateVariableReferenceTypes("{{ratio}} * 100", variables, contract), "");
+	assert.deepEqual(
+		filterCompatibleVariables(variables, contract).map((variable) => variable.name),
+		["seconds", "ratio"],
+	);
+
+	const wrong = validateVariableReferenceTypes("{{label}} / 3600", variables, contract);
+	assert.match(wrong, /accepts integer or float variables/);
+	assert.match(wrong, /\{\{label\|float\}\}/);
+});
+
+test("Calculate exposes the selected result type while automatic remains numeric", async () => {
+	const { getRuntimeDataOutputs, validateNodeConfig } = await import("../data/nodes/registry.ts");
+	const automatic = getRuntimeDataOutputs("action.calculate", { expression: "4 / 2", resultType: "automatic" });
+	const integer = getRuntimeDataOutputs("action.calculate", { expression: "floor(4 / 2)", resultType: "integer" });
+	const float = getRuntimeDataOutputs("action.calculate", { expression: "4 / 2", resultType: "float" });
+
+	assert.equal(automatic[0]?.type, "float", "automatic can produce either numeric kind at run time");
+	assert.equal(integer[0]?.type, "integer");
+	assert.equal(float[0]?.type, "float");
+	assert.ok(
+		validateNodeConfig("action.calculate", { expression: "1", resultType: "decimal" }).some((error) =>
+			/resultType/i.test(error),
+		),
+		"unsupported result types must be reported before export",
+	);
+});
+
 test("verification agrees with the inspector about numeric comparisons", () => {
 	// The inspector and the export verification validate conditions through
 	// different entry points. When only one of them was taught that a
@@ -205,6 +243,50 @@ test("a whole number can be declared as a float", async () => {
 	assert.deepEqual(settingErrors(300), []);
 	assert.deepEqual(settingErrors(300.5), []);
 	assert.notDeepEqual(settingErrors("300"), []);
+});
+
+test("Form Dialog number components carry their selected numeric type", async () => {
+	const { createFormDialogField, formDialogFieldRuntimeType, validateFormDialogFields } = await import(
+		"../data/nodes/form-dialog-fields.ts"
+	);
+	const floatField = createFormDialogField("number");
+	const integerField = {
+		...floatField,
+		key: "count",
+		label: "Count",
+		numberType: "integer" as const,
+		defaultValue: "2",
+	};
+
+	assert.equal(formDialogFieldRuntimeType(floatField), "float");
+	assert.equal(formDialogFieldRuntimeType(integerField), "integer");
+	assert.match(validateFormDialogFields([{ ...integerField, defaultValue: "2.5" }]).join("\n"), /whole signed integer/);
+});
+
+test("Form Dialog publishes display fields only for choice components", async () => {
+	const { createFormDialogChoice, createFormDialogField, deriveFormDialogDisplayFields } = await import(
+		"../data/nodes/form-dialog-fields.ts"
+	);
+	const dropdown = {
+		...createFormDialogField("dropdown"),
+		choices: [createFormDialogChoice("production", "Production")],
+		id: "environment",
+		key: "environment",
+		label: "Environment",
+	};
+	const multiChoice = {
+		...createFormDialogField("multi_choice"),
+		choices: [createFormDialogChoice("audit", "Audit log")],
+		id: "features",
+		key: "features",
+		label: "Features",
+	};
+	const text = { ...createFormDialogField("text"), id: "notes", key: "notes", label: "Notes" };
+
+	assert.deepEqual(deriveFormDialogDisplayFields([dropdown, multiChoice, text]), [
+		{ name: "environment", type: "string", description: "Environment" },
+		{ name: "features", type: "list", description: "Features" },
+	]);
 });
 
 test("a node cannot write a variable the manifest does not declare", async () => {
@@ -294,7 +376,8 @@ test("every system variable the picker offers is one the runner supplies", async
 	// a script reading one printed the braces in production. Anything the
 	// picker lists has to exist on the other side. The run-scoped fields are
 	// added by the runtime rather than this producer, and the live ones are
-	// read at reference time, so both are named where they are built.
+	// rewritten into the object at each node execution, so both are named
+	// where they are built.
 	const suppliedElsewhere = new Set(["run_id", "trigger_id", "trigger_type", "run_started_at", "datetime", "uptime"]);
 	for (const name of offered.filter((field) => !suppliedElsewhere.has(field))) {
 		assert.ok(producer.includes(`"${name}"`), `the runner must supply ${name}`);
@@ -393,6 +476,45 @@ test("the Format Text node renders a datetime from the input", async () => {
 	}
 });
 
+test("the Format Text node renders durations from integer and float inputs", async () => {
+	const { executeTextTransform } = await import("../data/nodes/definitions/actions/format-text.ts");
+	const resolveTemplate = (value: string): JsonValue => {
+		if (value === "{{seconds}}") return 90_061;
+		if (value === "{{fractional_seconds}}") return 1.2345;
+		return value;
+	};
+
+	const integer = await executeTextTransform({
+		config: {
+			input: "{{seconds}}",
+			operations: [
+				{
+					...createTextTransformOperationRow("format_duration"),
+					durationUnit: "seconds",
+					pattern: "D HH:mm:ss",
+				},
+			],
+		},
+		resolveTemplate,
+	});
+	assert.deepEqual(integer, { ok: true, output: { text: "1 01:01:01", items: [] } });
+
+	const float = await executeTextTransform({
+		config: {
+			input: "{{fractional_seconds}}",
+			operations: [
+				{
+					...createTextTransformOperationRow("format_duration"),
+					durationUnit: "seconds",
+					pattern: "ss.SSS",
+				},
+			],
+		},
+		resolveTemplate,
+	});
+	assert.deepEqual(float, { ok: true, output: { text: "01.235", items: [] } });
+});
+
 test("a text format operation survives export and matches the runner schema", async () => {
 	const { textTransformOperationOptions } = await import("../data/nodes/definitions/options.ts");
 	const { sanitizeNodeConfig, validateNodeConfig } = await import("../data/nodes/registry.ts");
@@ -416,6 +538,17 @@ test("a text format operation survives export and matches the runner schema", as
 	}) as { operations: { pattern?: string }[] };
 	assert.equal(exported.operations[0]?.pattern, "HH:mm:ss");
 
+	const exportedDuration = sanitizeNodeConfig("action.text.format", {
+		input: "{{seconds}}",
+		operations: [{ id: "op-duration", operation: "format_duration", durationUnit: "seconds", pattern: "HH:mm:ss" }],
+	}) as { operations: { durationUnit?: string; pattern?: string }[] };
+	assert.deepEqual(exportedDuration.operations[0], {
+		id: "op-duration",
+		operation: "format_duration",
+		durationUnit: "seconds",
+		pattern: "HH:mm:ss",
+	});
+
 	// And a missing pattern is caught before export rather than at run time.
 	const missing = validateNodeConfig("action.text.format", {
 		input: "{{@system.datetime}}",
@@ -424,6 +557,15 @@ test("a text format operation survives export and matches the runner schema", as
 	assert.ok(
 		missing.some((error) => /format pattern/i.test(error)),
 		`a missing datetime pattern must be reported, got ${JSON.stringify(missing)}`,
+	);
+
+	const invalidDurationUnit = validateNodeConfig("action.text.format", {
+		input: "{{seconds}}",
+		operations: [{ id: "op-duration", operation: "format_duration", durationUnit: "weeks", pattern: "HH:mm:ss" }],
+	});
+	assert.ok(
+		invalidDurationUnit.some((error) => /duration unit/i.test(error)),
+		`an invalid duration unit must be reported, got ${JSON.stringify(invalidDurationUnit)}`,
 	);
 });
 
@@ -454,6 +596,44 @@ test("the simulator agrees with the shared datetime format fixtures", async () =
 		}
 		assert.equal(problem, "", `${testCase.pattern} should be valid: ${testCase.reason}`);
 		assert.equal(formatDatetime(value, testCase.pattern), testCase.result, `${testCase.pattern}: ${testCase.reason}`);
+	}
+});
+
+test("the simulator agrees with the shared duration format fixtures", async () => {
+	const { durationFormatTokenGroups, formatDuration, validateDurationPattern } = await import(
+		"../data/project/duration-format.ts"
+	);
+	const { durationUnitOptions } = await import("../data/nodes/definitions/options.ts");
+	const conformance = JSON.parse(
+		readFileSync(join(appRoot, "contracts", "duration-format-conformance.json"), "utf8"),
+	) as {
+		cases: { amount: number; error?: boolean; pattern: string; reason: string; result?: string; unit: string }[];
+		tokens: string[];
+		units: string[];
+		version: number;
+	};
+	assert.equal(conformance.version, 1);
+	assert.deepEqual(conformance.units, ["milliseconds", "seconds", "minutes", "hours", "days"]);
+	assert.deepEqual(
+		durationUnitOptions.map((option) => option.value),
+		conformance.units,
+		"the unit picker, shared contract, and runner must expose the same units",
+	);
+	const ours = durationFormatTokenGroups.flatMap((group) => group.tokens.map((entry) => entry.token));
+	assert.deepEqual([...conformance.tokens].sort(), [...ours].sort());
+
+	for (const testCase of conformance.cases) {
+		const problem = validateDurationPattern(testCase.pattern);
+		if (testCase.error) {
+			assert.notEqual(problem, "", `${testCase.pattern} should be refused: ${testCase.reason}`);
+			continue;
+		}
+		assert.equal(problem, "", `${testCase.pattern} should be valid: ${testCase.reason}`);
+		assert.equal(
+			formatDuration(testCase.amount, testCase.unit, testCase.pattern),
+			testCase.result,
+			`${testCase.pattern}: ${testCase.reason}`,
+		);
 	}
 });
 

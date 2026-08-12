@@ -398,14 +398,18 @@ function createTextTransformOperationsSchema() {
 		items: {
 			type: "object",
 			additionalProperties: false,
-			// A datetime format is the one operation whose own field is required:
-			// the runner refuses an empty pattern, so a package carrying one would
-			// install and then fail mid-run.
+			// Date and duration formats each need their own complete configuration,
+			// otherwise a package would install and then fail partway through a run.
 			allOf: [
 				{
 					if: { required: ["operation"], properties: { operation: { const: "format_datetime" } } },
 					// biome-ignore lint/suspicious/noThenProperty: "then" is the JSON Schema keyword, not a thenable.
 					then: { required: ["pattern"] },
+				},
+				{
+					if: { required: ["operation"], properties: { operation: { const: "format_duration" } } },
+					// biome-ignore lint/suspicious/noThenProperty: "then" is the JSON Schema keyword, not a thenable.
+					then: { required: ["durationUnit", "pattern"] },
 				},
 			],
 			required: ["id", "operation"],
@@ -424,6 +428,7 @@ function createTextTransformOperationsSchema() {
 				replacement: { type: "string" },
 				delimiter: { type: "string" },
 				pattern: { type: "string", minLength: 1 },
+				durationUnit: { type: "string", enum: optionValues.get("durationUnitOptions") ?? [] },
 				start: {
 					anyOf: [
 						{ type: "integer", minimum: 0 },
@@ -548,7 +553,10 @@ function createFormDialogFieldsSchema() {
 			oneOf: [
 				input("text", textProperties, ["placeholder", "defaultValue"]),
 				input("multiline", textProperties, ["placeholder", "defaultValue"]),
-				input("number", textProperties, ["placeholder", "defaultValue"]),
+				input("number", { ...textProperties, numberType: { type: "string", enum: ["integer", "float"] } }, [
+					"placeholder",
+					"defaultValue",
+				]),
 				input("password", { placeholder: { type: "string", maxLength: 512 } }, ["placeholder"]),
 				input("checkbox", { defaultChecked: { type: "boolean" } }, ["defaultChecked"]),
 				input("single_choice", { choices: choiceSchema }, ["choices"]),

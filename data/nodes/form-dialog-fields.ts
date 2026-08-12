@@ -2,6 +2,7 @@ import { userIdentifierPattern } from "@/data/project/user-identifier";
 import type { JsonValue, RuntimeDataField, RuntimeDataType } from "@/lib/types";
 import { validateStaticColor } from "./color-match";
 import type { SelectOption } from "./definitions/options";
+import { runtimeIntegerContract, runtimeNumberContract, validateNumericConfigValue } from "./numeric-validation";
 
 export const FORM_DIALOG_MAX_FIELDS = 50;
 export const FORM_DIALOG_MAX_CHOICES = 100;
@@ -39,6 +40,12 @@ export const formDialogFieldTypes = [
 
 export type FormDialogFieldType = (typeof formDialogFieldTypes)[number];
 export type FormDialogImageFit = "contain" | "cover";
+export type FormDialogNumberType = "float" | "integer";
+
+export const formDialogNumberTypeOptions: SelectOption[] = [
+	{ label: "Integer", value: "integer" },
+	{ label: "Float", value: "float" },
+];
 
 export const formDialogFieldTypeOptions: SelectOption[] = [
 	{ label: "Text input", value: "text" },
@@ -83,6 +90,7 @@ export type FormDialogFieldRow = {
 	maximum: string;
 	minimum: string;
 	multiple: boolean;
+	numberType: FormDialogNumberType;
 	placeholder: string;
 	required: boolean;
 	step: string;
@@ -110,6 +118,7 @@ export function createFormDialogField(type: FormDialogFieldType = "text"): FormD
 		maximum: "100",
 		minimum: "0",
 		multiple: false,
+		numberType: "float",
 		placeholder: "",
 		required: !isPresentationFieldType(type),
 		step: "1",
@@ -155,6 +164,7 @@ export function getFormDialogFields(value: JsonValue | undefined): FormDialogFie
 				maximum: typeof entry.maximum === "string" ? entry.maximum : "100",
 				minimum: typeof entry.minimum === "string" ? entry.minimum : "0",
 				multiple: entry.multiple === true,
+				numberType: entry.numberType === "integer" ? "integer" : "float",
 				placeholder: typeof entry.placeholder === "string" ? entry.placeholder : "",
 				required: !isPresentationFieldType(type) && entry.required !== false,
 				step: typeof entry.step === "string" ? entry.step : "1",
@@ -190,6 +200,14 @@ export function sanitizeFormDialogFields(value: JsonValue | undefined): JsonValu
 			};
 		}
 		if (field.type === "password") return { ...input, placeholder: field.placeholder };
+		if (field.type === "number") {
+			return {
+				...input,
+				placeholder: field.placeholder,
+				defaultValue: field.defaultValue,
+				numberType: field.numberType,
+			};
+		}
 		if (field.type === "file") return { ...input, multiple: field.multiple };
 		if (field.type === "folder") return input;
 		if (field.type === "datetime") return { ...input, defaultValue: field.defaultValue, timezone: field.timezone };
@@ -219,6 +237,21 @@ export function deriveFormDialogValueFields(value: JsonValue | undefined): Runti
 				name: field.key.trim(),
 				type,
 				description: field.label.trim() || `${formDialogFieldTypeLabel(field.type)} result.`,
+			},
+		];
+	});
+}
+
+export function deriveFormDialogDisplayFields(value: JsonValue | undefined): RuntimeDataField[] {
+	const fields = getFormDialogFields(value);
+	return fields.flatMap((field) => {
+		if (!usesChoices(field.type) || validateFormDialogFieldKey(fields, field.id)) return [];
+		return [
+			{
+				name: field.key.trim(),
+				type: field.type === "multi_choice" ? "list" : "string",
+				description:
+					field.label.trim() || `Displayed ${field.type === "multi_choice" ? "choice labels" : "choice label"}.`,
 			},
 		];
 	});
@@ -262,6 +295,13 @@ export function validateFormDialogFields(value: JsonValue | undefined) {
 		if (field.type === "color" && !field.defaultValue.includes("{{")) {
 			const error = validateStaticColor(field.defaultValue, `${prefix} default color`);
 			if (error) errors.push(error);
+		}
+		if (field.type === "number" && field.defaultValue.trim() && !field.defaultValue.includes("{{")) {
+			const error = validateNumericConfigValue(
+				field.defaultValue,
+				field.numberType === "integer" ? runtimeIntegerContract : runtimeNumberContract,
+			);
+			if (error) errors.push(`${prefix} default value: ${error}`);
 		}
 		if (field.type === "slider") validateStaticSlider(errors, field, prefix);
 		if (
@@ -318,7 +358,8 @@ export function validateFormDialogChoiceDisplayValue(choices: readonly FormDialo
 }
 
 export function formDialogFieldRuntimeType(field: FormDialogFieldRow): RuntimeDataType | null {
-	if (field.type === "number" || field.type === "slider") return "float";
+	if (field.type === "number") return field.numberType;
+	if (field.type === "slider") return "float";
 	if (field.type === "checkbox") return "boolean";
 	if (field.type === "multi_choice" || (field.type === "file" && field.multiple)) return "list";
 	if (field.type === "file" || field.type === "folder") return "string";

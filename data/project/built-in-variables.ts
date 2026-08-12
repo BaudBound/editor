@@ -1,3 +1,4 @@
+import type { ProjectIdentity } from "@/data/projects/model";
 import type { ProjectSettings } from "@/lib/types";
 import { DEFAULT_MINIMUM_RUNNER_VERSION } from "@/lib/version";
 import type { EditorVariable } from "./variables";
@@ -35,8 +36,22 @@ type BuiltInVariableScope = "manifest" | "system";
 type BuiltInVariableValue =
 	| string
 	| number
+	| string[]
 	| { type: "datetime"; value: string }
 	| { type: "duration"; unit: string; value: number };
+
+/**
+ * What a `@manifest` field is resolved from.
+ *
+ * The id lives on the project identity rather than in the settings, so a
+ * resolver given only the settings cannot answer it. `id` used to return
+ * `settings.name` for exactly that reason, which meant `{{@manifest.id}}` read
+ * the script's name in the editor and its real id in a run.
+ */
+export type ManifestVariableSource = {
+	identity: ProjectIdentity;
+	settings: ProjectSettings;
+};
 type BuiltInVariableRuntimeEntry = BuiltInVariable &
 	EditorVariable<BuiltInVariableValue | undefined> & {
 		scope: BuiltInVariableScope;
@@ -48,18 +63,27 @@ export const MANIFEST_NAMESPACE = "@manifest";
 export const SYSTEM_NAMESPACE = "@system";
 export const SETTINGS_NAMESPACE = "@settings";
 
-const manifestValueResolvers: Record<string, (settings: ProjectSettings) => BuiltInVariableValue> = {
-	id: (settings: ProjectSettings) => settings.name,
-	name: (settings: ProjectSettings) => settings.name,
+const manifestValueResolvers: Record<string, (source: ManifestVariableSource) => BuiltInVariableValue> = {
+	id: ({ identity }) => identity.id,
+	name: ({ settings }) => settings.name,
 	// The script version the manifest declares. This used to report the
 	// manifest format version, which is a different fact and not one an author
 	// has any use for.
-	version: (settings: ProjectSettings) => settings.version,
-	author: (settings: ProjectSettings) => settings.author,
-	description: (settings: ProjectSettings) => settings.description,
-	website: (settings: ProjectSettings) => settings.website,
-	source: (settings: ProjectSettings) => settings.source,
-	minimum_runner_version: (settings: ProjectSettings) => settings.minimumRunnerVersion,
+	version: ({ settings }) => settings.version,
+	author: ({ settings }) => settings.author,
+	description: ({ settings }) => settings.description,
+	website: ({ settings }) => settings.website,
+	source: ({ settings }) => settings.source,
+	minimum_runner_version: ({ settings }) => settings.minimumRunnerVersion,
+	// The repository a script is published to is deliberately absent. It is
+	// distribution plumbing rather than something a script has any business
+	// branching on, and `source` already answers where the script came from.
+	// `package-contract` holds that decision.
+	//
+	// A datetime rather than the raw string, matching the runner, so the
+	// component paths and the format patterns read it like any other datetime.
+	created_at: ({ identity }) => ({ type: "datetime", value: identity.createdAt }),
+	tags: ({ settings }) => settings.tags,
 };
 
 function manifestField(
@@ -118,6 +142,13 @@ export const builtInVariableGroups: BuiltInVariableGroup[] = [
 				"Minimum runner version required by the package.",
 				DEFAULT_MINIMUM_RUNNER_VERSION,
 			),
+			manifestField(
+				"created_at",
+				"datetime",
+				"When the script was first created, carrying the offset it was created in.",
+				"2026-07-03T14:30:00+03:00",
+			),
+			manifestField("tags", "list", "Tags the script declares, in the order the author listed them.", "utility"),
 		],
 	},
 	{
@@ -160,15 +191,33 @@ export const builtInVariableGroups: BuiltInVariableGroup[] = [
 	},
 ];
 
-/** The fields read afresh for each node execution rather than once per run. */
-export const liveSystemFields = new Set(["datetime", "uptime"]);
+/**
+ * The `@system` fields that are readings rather than facts.
+ *
+ * Everything else in `@system` is fixed for a run and seeded once. These two
+ * move, and a run is not short — `delay`, `repeat`, `while` and `for_each` all
+ * exist — so they are rewritten into the object at every node execution. That
+ * is the boundary the runner draws in `refresh_live_system_fields`, and writing
+ * them into the object rather than answering per reference is what makes
+ * `{{@system}}` and `{{@system.$count}}` agree with a direct field reference.
+ */
+export function liveSystemFieldValues(now = new Date()) {
+	// A browser cannot see machine uptime, so this reports how long the editor
+	// page has been open rather than inventing a number.
+	const elapsed = typeof performance === "undefined" ? 0 : Math.trunc(performance.now());
+
+	return {
+		datetime: { type: "datetime", value: toLocalIsoString(now) },
+		uptime: { type: "duration", unit: "milliseconds", value: elapsed },
+	};
+}
 
 export const builtInVariableNames = new Set(
 	builtInVariableGroups.flatMap((group) => group.variables.map((variable) => variable.name)),
 );
 
-export function createBuiltInVariableRuntimeContext(projectSettings: ProjectSettings) {
-	const variables = getBuiltInVariableRuntimeEntries(projectSettings);
+export function createBuiltInVariableRuntimeContext(source: ManifestVariableSource) {
+	const variables = getBuiltInVariableRuntimeEntries(source);
 
 	return {
 		syntax: "{{@namespace.field}}",
@@ -185,14 +234,14 @@ export function createBuiltInVariableRuntimeContext(projectSettings: ProjectSett
 	};
 }
 
-export function getBuiltInVariableRuntimeEntries(projectSettings: ProjectSettings): BuiltInVariableRuntimeEntry[] {
+export function getBuiltInVariableRuntimeEntries(source: ManifestVariableSource): BuiltInVariableRuntimeEntry[] {
 	return builtInVariableGroups.flatMap((group) =>
 		group.variables.map((variable) => ({
 			...variable,
 			read_only: true,
 			scope: group.id,
 			source: "built_in",
-			value: resolveBuiltInVariableValue(group.id, variable.name, projectSettings),
+			value: resolveBuiltInVariableValue(group.id, variable.name, source),
 		})),
 	);
 }
@@ -200,13 +249,14 @@ export function getBuiltInVariableRuntimeEntries(projectSettings: ProjectSetting
 /**
  * The namespace objects a simulated run starts with.
  *
- * Only the fields that cannot change during a run are seeded here. The clock
- * and the uptime are resolved per node execution by the simulator, the same
- * boundary the runner uses, so a delay or a loop sees them move.
+ * `@system` is a plain object holding every field, the clock and the uptime
+ * included, so nothing has to special-case a reference into it. Those two are
+ * rewritten at each node execution by the simulator, the same boundary the
+ * runner uses, so a delay or a loop sees them move.
  */
-export function createSimulationBuiltInVariableValues(projectSettings: ProjectSettings, now = new Date()) {
+export function createSimulationBuiltInVariableValues(source: ManifestVariableSource, now = new Date()) {
 	const manifest = Object.fromEntries(
-		Object.entries(manifestValueResolvers).map(([name, resolver]) => [name, resolver(projectSettings)]),
+		Object.entries(manifestValueResolvers).map(([name, resolver]) => [name, resolver(source)]),
 	);
 
 	return {
@@ -226,30 +276,15 @@ export function createSimulationBuiltInVariableValues(projectSettings: ProjectSe
 			trigger_id: "",
 			trigger_type: "",
 			run_started_at: { type: "datetime", value: toLocalIsoString(now) },
+			...liveSystemFieldValues(now),
 		},
 	};
-}
-
-/** One live `@system` field, read at the moment a node execution asks for it. */
-export function readLiveSystemField(field: string, now = new Date()) {
-	if (field === "datetime") {
-		return { type: "datetime", value: toLocalIsoString(now) };
-	}
-
-	if (field === "uptime") {
-		// A browser cannot see machine uptime, so this reports how long the
-		// editor page has been open rather than inventing a number.
-		const elapsed = typeof performance === "undefined" ? 0 : Math.trunc(performance.now());
-		return { type: "duration", unit: "milliseconds", value: elapsed };
-	}
-
-	return undefined;
 }
 
 function resolveBuiltInVariableValue(
 	scope: BuiltInVariableScope,
 	name: string,
-	projectSettings: ProjectSettings,
+	source: ManifestVariableSource,
 ): BuiltInVariableValue | undefined {
 	if (scope === "system") {
 		return undefined;
@@ -261,7 +296,7 @@ function resolveBuiltInVariableValue(
 		throw new Error(`Manifest built-in variable ${name} is missing a value resolver.`);
 	}
 
-	return resolver(projectSettings);
+	return resolver(source);
 }
 
 function getSimulationCpuCount() {

@@ -24,6 +24,7 @@ export const deleteFileNode = defineNode({
 	icon: Trash2,
 	kind: "action",
 	label: "Delete File",
+	portPolicy: { kind: "fixed", inputs: ["input"], outputs: ["deleted", "not_found", "failed"] },
 	permission: { name: "file.delete.any", risk: "dangerous" },
 	permissionPathRules: [{ access: "delete", configKey: "path" }],
 	risk: "dangerous",

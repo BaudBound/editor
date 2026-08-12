@@ -30,6 +30,7 @@ export const fileWatchTriggerNode = defineNode({
 	icon: FileText,
 	kind: "trigger",
 	label: "File Watch",
+	portPolicy: { kind: "fixed", inputs: [], outputs: ["created", "modified", "deleted", "renamed"] },
 	permission: { name: "file.watch.limited", risk: "medium" },
 	permissionPathRules: [{ access: "watch", configKey: "path" }],
 	risk: "medium",

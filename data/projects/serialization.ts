@@ -147,6 +147,7 @@ export function hydrateProject(recordValue: unknown, assetValues: unknown[]): Ed
 			}),
 		};
 	});
+	const nodes = record.nodes.map(fromStoredNode);
 
 	return {
 		assets,
@@ -155,7 +156,7 @@ export function hydrateProject(recordValue: unknown, assetValues: unknown[]): Ed
 		edgeStyle: record.edgeStyle,
 		edges: record.edges.map(fromStoredEdge),
 		identity: { id: record.id, createdAt: record.createdAt },
-		nodes: record.nodes.map(fromStoredNode),
+		nodes,
 		revision: record.revision,
 		schemaVersion: editorProjectSchemaVersion,
 		secretDeclarations: record.secretDeclarations,

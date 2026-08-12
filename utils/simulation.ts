@@ -7,14 +7,14 @@ import { numericContractApplies, validateNumericConfigValue } from "@/data/nodes
 import { fallibleActionTypes, getNodeDefinition } from "@/data/nodes/registry";
 import {
 	createSimulationBuiltInVariableValues,
-	liveSystemFields,
-	readLiveSystemField,
+	liveSystemFieldValues,
 	SETTINGS_NAMESPACE,
 	SYSTEM_NAMESPACE,
 } from "@/data/project/built-in-variables";
 import { componentFieldValue } from "@/data/project/derived-parts";
 import { createSimulationScriptSettingValues } from "@/data/project/script-settings";
 import type {
+	ActionType,
 	JsonValue,
 	LogEntry,
 	ScriptNodeData,
@@ -46,6 +46,7 @@ export type {
 const MAX_SIMULATION_MESSAGE_LENGTH = 4000;
 const MAX_VARIABLE_SNAPSHOT_ENTRIES = 600;
 const MAX_VARIABLE_SNAPSHOT_STRING_LENGTH = 4000;
+const REALTIME_UI_YIELD_BUDGET_MS = 8;
 
 /**
  * Raised when a simulated request is rejected before it leaves the browser.
@@ -135,6 +136,7 @@ export async function createSimulationRun({
 	edges,
 	globalVariables = {},
 	httpSimulation,
+	identity,
 	nodes,
 	onStep,
 	overrides,
@@ -154,13 +156,13 @@ export async function createSimulationRun({
 		failed: false,
 		globalVariables: structuredClone(globalVariables),
 		halted: false,
+		lastYieldAt: performance.now(),
 		declaredVariables: Object.fromEntries(
 			declaredVariables.map((variable) => [
 				variable.name,
 				{ scope: variable.scope, type: variable.type, itemType: variable.itemType, value: variable.value },
 			]),
 		),
-		liveReadAt: null,
 		httpSimulation: {
 			authorizedOrigins: new Set(httpSimulation.authorizedOrigins),
 			mode: httpSimulation.mode,
@@ -178,7 +180,7 @@ export async function createSimulationRun({
 			...structuredClone(persistentVariables),
 		},
 		runtimeVariables: {
-			...createSimulationBuiltInVariableValues(projectSettings),
+			...createSimulationBuiltInVariableValues({ identity, settings: projectSettings }),
 			[SETTINGS_NAMESPACE]: createSimulationScriptSettingValues(scriptSettings),
 			...Object.fromEntries(
 				declaredVariables
@@ -338,9 +340,9 @@ async function executeNodeFrame(
 	}
 
 	// One clock reading per node execution: every reference inside this node
-	// agrees, and the next node reads again. Cleared on the way in rather than
+	// agrees, and the next node reads again. Written on the way in rather than
 	// out, so a node that throws cannot leave a stale reading behind.
-	context.liveReadAt = null;
+	refreshLiveSystemFields(context);
 
 	const node = context.nodesById.get(nodeId);
 	if (!node) {
@@ -392,7 +394,7 @@ async function executeResolvedNodeFrame(
 	}
 
 	const failed = result.failed;
-	const outcome = failed ? "failed" : "success";
+	let outcome = failed ? "failed" : "success";
 	if (Object.keys(result.outputData).length > 0) {
 		context.nodeOutputs[node.id] = result.outputData;
 	}
@@ -423,6 +425,8 @@ async function executeResolvedNodeFrame(
 	for (const trace of afterExecuteTraces) {
 		await pushStep(context, trace);
 	}
+
+	if (!failed) outcome = selectSimulationOutcome(node, context, outcome);
 
 	const outputLogs =
 		getNodeDefinition(node.data.actionType)?.simulation?.outputLogs?.({
@@ -506,6 +510,7 @@ async function processRepeatFrame(
 		frames.push({ kind: "follow", sourceNodeId: node.id, handle: "done" });
 		return;
 	}
+	context.nodeOutputs[node.id] = { index: Number(frame.index), count: Number(frame.count) };
 
 	await pushStep(context, {
 		level: "info",
@@ -600,6 +605,7 @@ async function processWhileFrame(
 		frames.push({ kind: "follow", sourceNodeId: node.id, handle: "done" });
 		return;
 	}
+	context.nodeOutputs[node.id] = { index: frame.index };
 
 	await pushStep(context, {
 		level: "info",
@@ -629,7 +635,13 @@ async function processForEachFrame(
 	}
 
 	const item = frame.items[frame.index];
-	context.nodeOutputs[node.id] = { item, index: frame.index };
+	context.nodeOutputs[node.id] = {
+		item,
+		index: frame.index,
+		count: frame.items.length,
+		is_first: frame.index === 0,
+		is_last: frame.index === frame.items.length - 1,
+	};
 
 	await pushStep(context, {
 		level: "info",
@@ -659,14 +671,15 @@ async function enqueueFollowFrames(
 		return;
 	}
 
+	const selectedHandle = handle;
 	const outgoingEdges = (context.edgesBySource.get(node.id) ?? [])
-		.filter((edge) => edge.sourceHandle === handle)
+		.filter((edge) => edge.sourceHandle === selectedHandle)
 		.sort((left, right) => (getEdgeExecutionOrder(left) ?? 0) - (getEdgeExecutionOrder(right) ?? 0));
 
 	if (outgoingEdges.length === 0) {
 		await pushStep(context, {
 			level: "info",
-			message: `[Simulation] No connection from ${node.data.label} (${node.id}) output "${handle}". Branch ended.`,
+			message: `[Simulation] No connection from ${node.data.label} (${node.id}) output "${selectedHandle}". Branch ended.`,
 		});
 		return;
 	}
@@ -677,17 +690,13 @@ async function enqueueFollowFrames(
 			kind: "edge",
 			sourceNodeId: node.id,
 			targetNodeId: edge.target,
-			handle,
+			handle: selectedHandle,
 			stopAtNodeId,
 		});
 	}
 }
 
-async function determineOutputHandle(
-	node: Node<ScriptNodeData>,
-	context: SimulationContext,
-	outcome: "success" | "failed",
-) {
+async function determineOutputHandle(node: Node<ScriptNodeData>, context: SimulationContext, outcome: string) {
 	if (node.data.actionType === "control.color_match" && outcome === "failed") {
 		return "";
 	}
@@ -698,6 +707,11 @@ async function determineOutputHandle(
 			message: `[Simulation] ${node.data.label} (${node.id}) was forced to fail, but it has no failed output. Branch stopped.`,
 		});
 		return "";
+	}
+
+	if (node.data.actionType === "trigger.file_watch") {
+		const event = context.nodeOutputs[node.id]?.event;
+		return typeof event === "string" && node.data.outputs.some((output) => output.id === event) ? event : "";
 	}
 
 	if (node.data.kind === "trigger") {
@@ -726,11 +740,50 @@ async function determineOutputHandle(
 		return await evaluateSwitchNode(node, context);
 	}
 
+	if (node.data.outputs.some((output) => output.id === outcome)) return outcome;
+
 	if (fallibleActionTypes.has(node.data.actionType)) {
 		return outcome;
 	}
 
 	return "out";
+}
+
+function selectSimulationOutcome(node: Node<ScriptNodeData>, context: SimulationContext, fallback: string) {
+	const output = context.nodeOutputs[node.id] ?? {};
+	const button = output.button;
+	if (node.data.actionType === "action.form_dialog" && typeof button === "string") {
+		return button === "ok"
+			? "submitted"
+			: button === "cancel"
+				? "cancelled"
+				: button === "timeout"
+					? "timed_out"
+					: fallback;
+	}
+	if (node.data.actionType === "action.message_box" && typeof button === "string") {
+		return button === "timeout" ? "timed_out" : button;
+	}
+	if (node.data.actionType === "action.process.run" || node.data.actionType === "action.shell") {
+		return output.success === true ? "exited_zero" : "exited_nonzero";
+	}
+	if (node.data.actionType === "action.process.status") return output.running === true ? "running" : "not_running";
+	if (node.data.actionType === "action.http") {
+		const status = output.status_code;
+		if (typeof status === "number" && status >= 200 && status < 300) return "ok";
+		if (typeof status === "number" && status >= 400 && status < 500) return "client_error";
+		if (typeof status === "number" && status >= 500 && status < 600) return "server_error";
+		return "unexpected_status";
+	}
+	const selectedByAction: Partial<Record<ActionType, string>> = {
+		"action.file.read": "read",
+		"action.file.delete": "deleted",
+		"action.window.focus": "focused",
+		"action.process.kill": "killed",
+		"action.websocket.write": "sent",
+		"action.serial.write": "sent",
+	};
+	return selectedByAction[node.data.actionType] ?? fallback;
 }
 
 async function evaluateIfNode(node: Node<ScriptNodeData>, context: SimulationContext) {
@@ -1342,11 +1395,6 @@ function tryGetReferenceValue(expression: string, context: SimulationContext): J
 }
 
 function resolveReferencePath(reference: string, context: SimulationContext): JsonValue | undefined {
-	const live = resolveLiveSystemReference(reference, context);
-	if (live !== undefined) {
-		return live;
-	}
-
 	if (reference in context.runtimeVariables) {
 		return context.runtimeVariables[reference];
 	}
@@ -1400,29 +1448,22 @@ function getRuntimeVariableReference(reference: string, variables: Record<string
 }
 
 /**
- * Resolves a reference into a live `@system` field, or undefined if it is not
- * one. The clock and the uptime move during a run, so they are read when a
- * reference asks rather than seeded once, and the reading is held for the rest
- * of the node execution that asked for it.
+ * Rewrites the `@system` fields that are readings rather than facts.
+ *
+ * Called once at the top of every node execution, which is the boundary that
+ * makes two references inside one field agree while still letting a loop or a
+ * delay see the clock move. The runner does the same in
+ * `refresh_live_system_fields`; keeping these in the object rather than
+ * answering them per reference is what makes `{{@system}}` and
+ * `{{@system.$count}}` report the same fields a direct reference resolves.
  */
-function resolveLiveSystemReference(reference: string, context: SimulationContext): JsonValue | undefined {
-	const prefix = `${SYSTEM_NAMESPACE}.`;
-	if (!reference.startsWith(prefix)) {
-		return undefined;
+function refreshLiveSystemFields(context: SimulationContext) {
+	const system = context.runtimeVariables[SYSTEM_NAMESPACE];
+	if (!system || typeof system !== "object" || Array.isArray(system)) {
+		return;
 	}
 
-	const [field, ...rest] = reference.slice(prefix.length).split(".");
-	if (!liveSystemFields.has(field)) {
-		return undefined;
-	}
-
-	context.liveReadAt ??= new Date();
-	const value = readLiveSystemField(field, context.liveReadAt) as JsonValue | undefined;
-	if (value === undefined || rest.length === 0) {
-		return value;
-	}
-
-	return getPathValue(value, `.${rest.join(".")}`);
+	Object.assign(system, liveSystemFieldValues());
 }
 
 /**
@@ -1708,7 +1749,7 @@ async function emitStep(context: SimulationContext, step: SimulationStep) {
 	}
 
 	const results = (await context.onStep(step)) ?? [];
-	await yieldSimulationTask(context.signal);
+	await yieldForRealtimeUi(context);
 
 	if (context.signal?.aborted) {
 		return results;
@@ -1716,6 +1757,20 @@ async function emitStep(context: SimulationContext, step: SimulationStep) {
 
 	await sleepSimulationStep(context.stepDelayMs, context.signal);
 	return results;
+}
+
+async function yieldForRealtimeUi(context: SimulationContext) {
+	if (context.stepDelayMs > 0 || context.signal?.aborted) {
+		return;
+	}
+
+	const now = performance.now();
+	if (now - context.lastYieldAt < REALTIME_UI_YIELD_BUDGET_MS) {
+		return;
+	}
+
+	context.lastYieldAt = now;
+	await yieldSimulationTask(context.signal);
 }
 
 export function yieldSimulationTask(signal: AbortSignal | undefined) {

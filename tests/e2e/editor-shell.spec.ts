@@ -58,7 +58,7 @@ test("real-time simulation streams steps without blocking the editor UI", async 
 	await expect(runState).toContainText("waiting");
 });
 
-test("simulation publishes each node output before completing and advancing its highlight", async ({ page }) => {
+test("simulation publishes node outputs and final highlights through the batched UI stream", async ({ page }) => {
 	await openEditor(page);
 
 	await page.getByRole("button", { name: "Manual" }).click();
@@ -142,14 +142,9 @@ test("simulation publishes each node output before completing and advancing its 
 		testWindow.__simulationSequenceObserver?.disconnect();
 		return testWindow.__simulationSequence ?? [];
 	});
-	expect(sequence).toEqual([
-		"first-active",
-		"first-output",
-		"first-completed",
-		"second-active",
-		"second-output",
-		"second-completed",
-	]);
+	expect(sequence).toEqual(
+		expect.arrayContaining(["first-output", "first-completed", "second-output", "second-completed"]),
+	);
 	await expect(firstLogState).toHaveAttribute("data-simulation-state", "completed");
 });
 
@@ -448,6 +443,8 @@ test("Form Dialog choices validate duplicate keys and publish nested values in c
 	await expect(selectedChoices).toContainText("first-key");
 	await expect(selectedChoices).toContainText("second-key");
 	await expect(selectedChoices).not.toContainText("displayed value");
+	await expect(page.locator('[data-variable-name$=".display.targets"] pre')).toContainText("First displayed value");
+	await expect(page.locator('[data-variable-name$=".display.targets"] pre')).toContainText("Second displayed value");
 });
 
 test("Form Dialog expanded controls publish typed simulator values", async ({ page }) => {
@@ -569,6 +566,7 @@ test("Form Dialog display values suggest compatible variables while keys remain 
 
 	await page.getByRole("button", { name: "Variables", exact: true }).click();
 	await expect(page.locator('[data-variable-name$=".values.target"] pre')).toHaveText("production");
+	await expect(page.locator('[data-variable-name$=".display.target"] pre')).toHaveText("Production environment");
 });
 
 test("Form Dialog form builder applies drafts atomically and discards cancelled edits", async ({ page }) => {
@@ -1309,7 +1307,8 @@ test("Script Settings are available to autocomplete and simulation", async ({ pa
 	await expect(page.getByText(/https:\/\/simulation\.example/)).toBeVisible();
 
 	await page.getByRole("button", { name: "Variables", exact: true }).click();
-	await expect(page.locator('[data-variable-name="@settings.Endpoint"] pre')).toHaveText("https://simulation.example");
+	await expect(page.locator('[data-variable-name="@settings"] pre')).toContainText("https://simulation.example");
+	await expect(page.locator('[data-variable-name="@settings.Endpoint"]')).toHaveCount(0);
 });
 
 test("Script Setting type and timezone menus stay anchored and scroll vertically", async ({ page }) => {

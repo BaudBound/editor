@@ -141,7 +141,10 @@ export async function buildBbsPackage(params: {
 			}),
 		),
 	});
-	const programJson = toProgramJson(params.nodes, params.edges, params.projectSettings);
+	const programJson = toProgramJson(params.nodes, params.edges, {
+		identity: params.identity,
+		settings: params.projectSettings,
+	});
 	const editorJson = toEditorJson(params.nodes, params.comments, params.edgeStyle);
 	const permissionsJson = {
 		declared_permissions: permissions.map((permission) => permission.name),
@@ -302,9 +305,27 @@ async function importVerifiedPackageArchive(
 	};
 }
 
+/**
+ * A script id, which is a UUID and nothing else.
+ *
+ * The id owns the script's stored variables and secrets and decides whether an
+ * install updates an existing script or creates one, so two scripts sharing an
+ * id means the second inherits the first's state. A UUID makes that collision
+ * effectively impossible; a readable slug makes it likely, which is why import
+ * refuses one rather than adopting it as the project's identity forever.
+ *
+ * The same shape `repository.schema.json` already requires of `script_id`,
+ * which is this id under another name, down to the version and variant nibbles.
+ */
+const PROJECT_ID_PATTERN = /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[1-8][0-9A-Fa-f]{3}-[89ABab][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$/;
+
 function toProjectIdentity(manifest: Record<string, unknown>): ProjectIdentity {
 	if (typeof manifest.id !== "string" || typeof manifest.created_at !== "string") {
 		throw new Error("manifest.json does not define a valid project identity.");
+	}
+
+	if (!PROJECT_ID_PATTERN.test(manifest.id)) {
+		throw new Error(`manifest.json id ${JSON.stringify(manifest.id)} is not a UUID, so it cannot identify a script.`);
 	}
 
 	return {

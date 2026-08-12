@@ -19,6 +19,7 @@ import {
 	FORM_DIALOG_MAX_KEY_CHARS,
 	type FormDialogChoiceRow,
 	type FormDialogFieldRow,
+	formDialogNumberTypeOptions,
 	isPresentationFieldType,
 	usesAccentColor,
 	usesChoices,
@@ -28,7 +29,7 @@ import {
 	validateFormDialogChoiceKey,
 	validateFormDialogFieldKey,
 } from "@/data/nodes/form-dialog-fields";
-import { runtimeNumberContract } from "@/data/nodes/numeric-validation";
+import { runtimeIntegerContract, runtimeNumberContract } from "@/data/nodes/numeric-validation";
 import { createTimeZoneOptions, initialTimeZoneOptions } from "@/data/project/datetime";
 import { type ActiveReorderDragState, useReorderController } from "@/hooks/use-reorder-controller";
 import type { EditorAsset } from "@/lib/types";
@@ -173,6 +174,17 @@ export function FormDialogFieldSettings({
 				</>
 			)}
 
+			{field.type === "number" && (
+				<LabeledControl label="Number type">
+					<OptionCombobox
+						ariaLabel={`Component ${index} number type`}
+						options={formDialogNumberTypeOptions}
+						value={field.numberType}
+						onChange={(numberType) => onChange({ numberType: numberType as FormDialogFieldRow["numberType"] })}
+					/>
+				</LabeledControl>
+			)}
+
 			{usesPlaceholder(field.type) && (
 				<VariableTextField
 					error={validateFormDialogTextVariables(field.placeholder, variables)}
@@ -210,9 +222,9 @@ export function FormDialogFieldSettings({
 					<NumericField
 						allowVariables
 						ariaLabel={`Component ${index} default value`}
-						contract={runtimeNumberContract}
+						contract={field.numberType === "integer" ? runtimeIntegerContract : runtimeNumberContract}
 						required={false}
-						validationError={validateFormDialogNumericValue(field.defaultValue, variables)}
+						validationError={validateFormDialogNumericValue(field.defaultValue, variables, field.numberType)}
 						value={field.defaultValue}
 						variables={variables}
 						onChange={(defaultValue) => onChange({ defaultValue })}

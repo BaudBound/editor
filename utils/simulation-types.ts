@@ -1,4 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
+import type { ProjectIdentity } from "@/data/projects/model";
 import type {
 	DeclaredVariable,
 	EditorAsset,
@@ -21,6 +22,13 @@ export type SimulationRunOptions = {
 		step: SimulationStep,
 	) => Promise<SimulationSideEffectResult[] | undefined> | SimulationSideEffectResult[] | undefined;
 	overrides: SimulationOverride[];
+	/**
+	 * The project's identity, which `@manifest.id` is resolved from.
+	 *
+	 * The id is not part of the settings, so a simulation given only those
+	 * could not answer it and reported the script's name instead.
+	 */
+	identity: ProjectIdentity;
 	projectSettings: ProjectSettings;
 	scriptSettings?: ScriptSetting[];
 	declaredVariables?: DeclaredVariable[];
@@ -95,9 +103,19 @@ export type SimulationFormDialogField =
 			description: string;
 			key: string;
 			label: string;
+			numberType: "float" | "integer";
 			placeholder: string;
 			required: boolean;
-			type: "multiline" | "number" | "text";
+			type: "number";
+	  }
+	| {
+			defaultValue: string;
+			description: string;
+			key: string;
+			label: string;
+			placeholder: string;
+			required: boolean;
+			type: "multiline" | "text";
 	  }
 	| {
 			defaultValue: string;
@@ -178,6 +196,7 @@ export type SimulationSideEffectResult = {
 } & (
 	| { type: "message_box" }
 	| {
+			display?: Record<string, JsonValue>;
 			submitted: boolean;
 			type: "form_dialog";
 			values: Record<string, JsonValue>;
@@ -200,19 +219,12 @@ export type SimulationContext = {
 	 * the same store and the same type the runner does.
 	 */
 	declaredVariables: Record<string, { scope: string; type: string; itemType?: string; value: JsonValue }>;
-	/**
-	 * When the live @system fields were last read.
-	 *
-	 * Cleared at the start of every node execution, so two references in one
-	 * node agree while a loop or a delay still sees the clock move. The runner
-	 * draws the same boundary.
-	 */
-	liveReadAt: Date | null;
 	assetsByPackagePath: Map<string, EditorAsset>;
 	edgesBySource: Map<string, Edge[]>;
 	failed: boolean;
 	halted: boolean;
 	globalVariables: Record<string, JsonValue>;
+	lastYieldAt: number;
 	nodeOutputs: Record<string, Record<string, JsonValue>>;
 	httpSimulation: {
 		authorizedOrigins: ReadonlySet<string>;

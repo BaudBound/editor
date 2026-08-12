@@ -32,6 +32,20 @@ export const repeatNode = defineNode({
 	label: "Repeat",
 	portPolicy: { kind: "fixed", inputs: ["input"], outputs: ["done", "repeat"] },
 	risk: "low",
+	runtimeOutputs: [
+		{
+			name: "index",
+			type: "integer",
+			description: "Zero-based index for the active repeat pass.",
+			example: "n-mr3zyt6f-6.index",
+		},
+		{
+			name: "count",
+			type: "integer",
+			description: "Configured number of repeat passes.",
+			example: "n-mr3zyt6f-6.count",
+		},
+	],
 	validateConfig: (config) => [staticPositiveNumberConfig(config, "count", "repeat count")].filter(Boolean),
 	validateGraph: ({ context, node }) => validateLoopBodyDoesNotReturn(node.id, context.edges, "repeat"),
 });

@@ -7,7 +7,7 @@ import {
 	getRunnerTriggerType,
 	sanitizeNodeConfig,
 } from "@/data/nodes/registry";
-import { createBuiltInVariableRuntimeContext } from "@/data/project/built-in-variables";
+import { createBuiltInVariableRuntimeContext, type ManifestVariableSource } from "@/data/project/built-in-variables";
 import { createNodeOutputVariables } from "@/data/project/variables";
 import type {
 	ActionType,
@@ -18,7 +18,6 @@ import type {
 	ExportSummary,
 	LogEntry,
 	PermissionSummary,
-	ProjectSettings,
 	RiskLevel,
 	ScriptNodeData,
 	SecretDeclaration,
@@ -166,10 +165,10 @@ export function createConsoleLogs(
 	return logs;
 }
 
-export function toProgramJson(nodes: Node<ScriptNodeData>[], edges: Edge[], projectSettings: ProjectSettings) {
+export function toProgramJson(nodes: Node<ScriptNodeData>[], edges: Edge[], source: ManifestVariableSource) {
 	const triggers = nodes.filter((node) => node.data.kind === "trigger").map(toTriggerJson);
 	const steps = nodes.filter((node) => node.data.kind !== "trigger").map(toStepJson);
-	const builtInVariableContext = createBuiltInVariableRuntimeContext(projectSettings);
+	const builtInVariableContext = createBuiltInVariableRuntimeContext(source);
 	const nodeOutputVariables = createNodeOutputVariables(nodes);
 
 	if (triggers.length === 0) {

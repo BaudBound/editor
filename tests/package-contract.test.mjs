@@ -548,8 +548,37 @@ test("generated runner port contract covers every editor node", () => {
 	assert.deepEqual(contract.nodes["action.http"], {
 		kind: "fixed",
 		inputs: ["input"],
-		outputs: ["success", "failed"],
+		outputs: ["ok", "client_error", "server_error", "unexpected_status", "failed"],
 	});
+	assert.deepEqual(contract.nodes["action.message_box"], {
+		kind: "fixed",
+		inputs: ["input"],
+		outputs: ["ok", "cancel", "confirm", "yes", "no", "timed_out", "failed"],
+	});
+	assert.deepEqual(contract.nodes["action.form_dialog"], {
+		kind: "fixed",
+		inputs: ["input"],
+		outputs: ["submitted", "cancelled", "timed_out", "failed"],
+	});
+	const selectedOutputs = {
+		"action.process.run": ["exited_zero", "exited_nonzero", "timed_out", "failed"],
+		"action.shell": ["exited_zero", "exited_nonzero", "timed_out", "failed"],
+		"action.process.status": ["running", "not_running", "failed"],
+		"action.file.read": ["read", "not_found", "failed"],
+		"action.file.delete": ["deleted", "not_found", "failed"],
+		"action.window.focus": ["focused", "not_found", "failed"],
+		"action.process.kill": ["killed", "not_found", "failed"],
+		"action.websocket.write": ["sent", "connection_closed", "failed"],
+		"action.serial.write": ["sent", "device_unavailable", "failed"],
+		"trigger.file_watch": ["created", "modified", "deleted", "renamed"],
+	};
+	for (const [actionType, outputs] of Object.entries(selectedOutputs)) {
+		assert.deepEqual(
+			contract.nodes[actionType].outputs,
+			outputs,
+			`${actionType} outputs must remain in the runner contract`,
+		);
+	}
 	assert.deepEqual(contract.nodes["control.switch"], {
 		kind: "switch_cases",
 		config_key: "cases",
@@ -917,22 +946,25 @@ test("variable-capable editor inputs declare and enforce type contracts", () => 
 	const validationSource = read(join(appRoot, "data", "nodes", "config-field-validation.ts"));
 	const registrySource = read(join(appRoot, "data", "nodes", "registry.ts"));
 	const verificationSource = read(join(appRoot, "utils", "verification.ts"));
+	const calculateSource = read(join(appRoot, "data", "nodes", "definitions", "actions", "calculate.ts"));
 
 	for (const declaration of definitions.matchAll(/usesVariables:\s*true/g)) {
 		assert.match(
 			definitions.slice(declaration.index, declaration.index + 160),
-			/variableTypes:\s*"[a-z_]+"/,
+			/variableTypes:\s*(?:"[a-z_]+"|\[[\s\S]*?\])/,
 			"every variable-capable node field must declare its accepted variable contract",
 		);
 	}
+	assert.match(extractConfigField(calculateSource, "expression"), /variableTypes:\s*\[\s*"integer",\s*"float"\s*\]/);
 	assert.match(variableInputSource, /variableTypes:\s*VariableInputContract;/);
 	assert.match(variableInputSource, /filterCompatibleVariables\(variables, variableTypes\)/);
 	assert.match(variableInputSource, /data-variable-status=\{displayStatus\}/);
 	assert.match(variableInputSource, /displayStatus === "type-mismatch" && "bg-cyan-400\/20 text-cyan-300"/);
-	// Matching is exact now that every deleted type has been folded into the
-	// shape it always was. There is no longer a compatibleTypes lookup table.
+	// Matching is exact unless a field explicitly lists multiple accepted
+	// types. There is no longer a compatibleTypes lookup table.
 	assert.doesNotMatch(validationSource, /compatibleTypes/);
-	assert.match(validationSource, /contract === "any" \|\| type === contract/);
+	assert.match(validationSource, /isVariableTypeList\(contract\) \? contract\.includes\(type\) : type === contract/);
+	assert.match(validationSource, /function isVariableTypeList\(contract: VariableInputContract\)/);
 	assert.match(
 		validationSource,
 		/contract !== "any" && getVariableReferenceStatus\(reference, variables\) === "possible"/,
@@ -1033,22 +1065,23 @@ test("simulator does not retain streamed step history or use recursive traversal
 	assert.match(simulationSource, /processSimulationFrames/);
 	assert.match(
 		simulationSource,
-		/const results = \(await context\.onStep\(step\)\) \?\? \[\];\s*await yieldSimulationTask/,
+		/const results = \(await context\.onStep\(step\)\) \?\? \[\];\s*await yieldForRealtimeUi/,
 	);
 	assert.match(simulationSource, /await pushNodeState\(context, node\.id, "active"\)/);
 	assert.match(
 		simulationSource,
 		/finally\s*\{\s*if \(!context\.signal\?\.aborted\)\s*\{\s*await pushNodeState\(context, node\.id, "completed"\)/,
 	);
-	assert.match(editorSource, /flushSync\(\(\) => \{/);
-	assert.match(editorSource, /nodeState\?\.status === "active"/);
-	assert.match(editorSource, /nodeState\?\.status === "completed"/);
+	assert.match(editorSource, /requestAnimationFrame/);
+	assert.doesNotMatch(editorSource, /flushSync/);
+	assert.match(editorSource, /nodeState\.status === "active"/);
+	assert.match(editorSource, /nodeState\.status === "completed"/);
 	assert.doesNotMatch(editorSource, /nextNodeIds\.add\(traversedEdge\.target\)/);
-	assert.doesNotMatch(simulationSource, /SIMULATION_YIELD_INTERVAL|streamedSteps/);
+	assert.match(simulationSource, /REALTIME_UI_YIELD_BUDGET_MS/);
 	assert.ok(
-		editorSource.indexOf("setSimulationVariables(step.variables)") <
+		editorSource.indexOf("queueSimulationStep(step, runId)") <
 			editorSource.indexOf("executeSimulationSideEffects(step.sideEffects"),
-		"simulation state must be published before browser side effects execute",
+		"simulation state must be queued before browser side effects execute",
 	);
 	assert.equal(/async function followHandle|async function executeNode\(/.test(simulationSource), false);
 	assert.equal(/switch\s*\(\s*node\.data\.actionType\s*\)/.test(simulationSource), false);

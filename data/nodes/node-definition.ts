@@ -57,7 +57,7 @@ type NodeConfigFieldBase = {
 	visibleWhen?: ConfigVisibilityCondition;
 };
 
-export type VariableInputContract = VariableType | "any";
+export type VariableInputContract = VariableType | readonly VariableType[] | "any";
 
 type NodeConfigVariableSupport =
 	| { usesVariables: true; variableTypes: VariableInputContract }
@@ -179,6 +179,7 @@ export type NodeDefinition = {
 	permission?: PermissionSummary;
 	permissionPathRules?: readonly NodePermissionPathRule[];
 	portPolicy?: NodePortPolicy;
+	derivePorts?: (config: Record<string, JsonValue>) => NodePorts;
 	deriveCapabilities?: (config: Record<string, JsonValue>, declaredScope?: string) => CapabilitySummary["name"][];
 	/**
 	 * `declaredScope` is the scope of the variable a Variable Operation names,

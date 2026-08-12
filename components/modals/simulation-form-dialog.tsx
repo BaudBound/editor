@@ -15,7 +15,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { runtimeNumberContract, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
+import {
+	runtimeIntegerContract,
+	runtimeNumberContract,
+	validateNumericConfigValue,
+} from "@/data/nodes/numeric-validation";
 import { datetimeInTimeZoneToIso } from "@/data/project/datetime";
 import type { EditorAsset, JsonValue } from "@/lib/types";
 import type { SimulationSideEffect, SimulationSideEffectResult } from "@/utils/simulation";
@@ -65,7 +69,14 @@ export function SimulationFormDialog({
 	const submit = (event?: FormEvent) => {
 		event?.preventDefault();
 		if (validationErrors.size > 0) return;
-		finish({ button: "ok", submitted: true, values: normalizeSubmittedValues(dialog.fields, values) });
+		const submittedValues = normalizeSubmittedValues(dialog.fields, values);
+		const display = normalizeChoiceDisplayValues(dialog.fields, submittedValues);
+		finish({
+			button: "ok",
+			submitted: true,
+			values: submittedValues,
+			...(Object.keys(display).length > 0 ? { display } : {}),
+		});
 	};
 	const updateValue = (key: string, value: JsonValue) => setValues((current) => ({ ...current, [key]: value }));
 	const initialFocusIndex = firstInputIndex(dialog.fields);
@@ -319,21 +330,17 @@ function SimulationFormField({
 				? value.filter((item): item is string => typeof item === "string")
 				: [];
 		return (
-			<fieldset
-				aria-describedby={field.description ? descriptionId : undefined}
-				aria-invalid={!!error || undefined}
-				className="grid min-w-0 gap-2"
-			>
-				<legend className="text-sm font-medium text-baud-text" id={`${inputId}-label`}>
+			<div className="grid min-w-0 gap-2">
+				<span className="text-sm font-medium text-baud-text" id={`${inputId}-label`}>
 					{field.label}
 					{field.required && (
 						<span aria-hidden="true" className="ml-1 text-baud-red">
 							*
 						</span>
 					)}
-				</legend>
+				</span>
 				{description}
-				<div className="grid max-h-72 gap-2 overflow-x-hidden overflow-y-auto pr-1">
+				<div className="grid max-h-72 gap-2 overflow-x-hidden overflow-y-auto px-px py-1 pr-2">
 					{field.choices.map((choice, choiceIndex) => {
 						const checked = field.type === "multi_choice" ? selected.includes(choice.key) : value === choice.key;
 						return (
@@ -343,6 +350,8 @@ function SimulationFormField({
 							>
 								<span className="relative grid size-4 shrink-0 place-items-center">
 									<input
+										aria-describedby={describedBy}
+										aria-invalid={!!error || undefined}
 										checked={checked}
 										className="peer col-start-1 row-start-1 size-4 cursor-pointer appearance-none rounded-full border border-baud-muted outline-none checked:border-baud-red checked:bg-baud-red"
 										id={`${inputId}-choice-${choiceIndex}`}
@@ -368,7 +377,7 @@ function SimulationFormField({
 					})}
 				</div>
 				<SimulationFieldError id={errorId} message={error} />
-			</fieldset>
+			</div>
 		);
 	}
 	if (field.type === "file" || field.type === "folder") {
@@ -490,7 +499,7 @@ function SimulationFormField({
 					<NumericField
 						ariaDescribedBy={field.description ? descriptionId : undefined}
 						ariaLabel={field.label}
-						contract={runtimeNumberContract}
+						contract={field.numberType === "integer" ? runtimeIntegerContract : runtimeNumberContract}
 						controlClassName="h-9 rounded-md bg-baud-bg"
 						id={inputId}
 						placeholder={"placeholder" in field ? field.placeholder : ""}
@@ -602,8 +611,17 @@ function validateValues(fields: SimulationFormDialogField[], values: Record<stri
 		if (field.type === "number") {
 			const text = typeof value === "number" || typeof value === "string" ? String(value).trim() : "";
 			if (field.required && !text) errors.set(field.key, "A number is required.");
-			else if (text && validateNumericConfigValue(text, runtimeNumberContract))
-				errors.set(field.key, "Enter a supported finite number.");
+			else if (
+				text &&
+				validateNumericConfigValue(
+					text,
+					field.numberType === "integer" ? runtimeIntegerContract : runtimeNumberContract,
+				)
+			)
+				errors.set(
+					field.key,
+					field.numberType === "integer" ? "Enter a whole safe integer." : "Enter a supported finite number.",
+				);
 			continue;
 		}
 		if (field.type === "slider") {
@@ -665,6 +683,28 @@ function normalizeSubmittedValues(fields: SimulationFormDialogField[], values: R
 		normalized[field.key] = value ?? "";
 	}
 	return normalized;
+}
+
+function normalizeChoiceDisplayValues(fields: SimulationFormDialogField[], values: Record<string, JsonValue>) {
+	const display: Record<string, JsonValue> = {};
+	for (const field of fields) {
+		if (field.type !== "single_choice" && field.type !== "dropdown" && field.type !== "multi_choice") continue;
+		const selected = values[field.key];
+		if (field.type === "multi_choice") {
+			const keys = Array.isArray(selected)
+				? selected.filter((value): value is string => typeof value === "string")
+				: [];
+			display[field.key] = keys.flatMap((key) => {
+				const choice = field.choices.find((candidate) => candidate.key === key);
+				return choice ? [choice.displayValue] : [];
+			});
+			continue;
+		}
+		if (typeof selected !== "string" || !selected) continue;
+		const choice = field.choices.find((candidate) => candidate.key === selected);
+		if (choice) display[field.key] = choice.displayValue;
+	}
+	return display;
 }
 
 function firstInputIndex(fields: SimulationFormDialogField[]) {

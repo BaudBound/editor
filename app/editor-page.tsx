@@ -10,7 +10,6 @@ import {
 } from "@xyflow/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { flushSync } from "react-dom";
 import {
 	areCommentNodeDataEqual,
 	createCommentFlowNode,
@@ -103,7 +102,7 @@ import {
 	reorderEdgeExecutionGroup,
 } from "@/utils/editor-graph";
 import { truncateLogEntry, truncateSimulationTrace } from "@/utils/editor-log";
-import { createVariablePanelEntries } from "@/utils/editor-variables";
+import { createEditorVariableRegistry, createVariablePanelEntries } from "@/utils/editor-variables";
 import {
 	createSimulationRun,
 	type SimulationSideEffect,
@@ -212,6 +211,11 @@ type SimulationLifecycle = {
 	runId: number;
 };
 
+type QueuedSimulationStep = {
+	runId: number;
+	step: SimulationStep;
+};
+
 const MAX_OUTPUT_LOG_ENTRIES = 800;
 const MAX_SIMULATION_LOG_ENTRIES = 800;
 const paletteItemByActionType: ReadonlyMap<string, PaletteItem> = new Map(
@@ -233,6 +237,8 @@ export function EditorPage({
 		authorizedHttpOrigins: new Set(),
 		runId: 0,
 	});
+	const queuedSimulationStepsRef = useRef<QueuedSimulationStep[]>([]);
+	const simulationUpdateFrameRef = useRef<number | null>(null);
 	const simulationMessageBoxResolveRef = useRef<((button: string) => void) | null>(null);
 	const simulationFormDialogResolveRef = useRef<
 		((result: SimulationFormDialogResult | "aborted" | "replaced") => void) | null
@@ -360,17 +366,45 @@ export function EditorPage({
 		[scriptNodes, secretDeclarations, declaredVariables],
 	);
 	const riskLevel = useMemo(() => calculateRiskLevel(permissions), [permissions]);
-	const variableEntries = useMemo(
+	const variableRegistry = useMemo(
 		() =>
-			createVariablePanelEntries(
-				projectSettings,
+			createEditorVariableRegistry(
+				{ identity: persistedProject.identity, settings: projectSettings },
 				scriptNodes,
 				simulationVariables,
 				secretDeclarations,
 				declaredVariables,
 				scriptSettings,
 			),
-		[projectSettings, scriptNodes, simulationVariables, secretDeclarations, declaredVariables, scriptSettings],
+		[
+			persistedProject.identity,
+			projectSettings,
+			scriptNodes,
+			simulationVariables,
+			secretDeclarations,
+			declaredVariables,
+			scriptSettings,
+		],
+	);
+	const variableEntries = useMemo(
+		() =>
+			createVariablePanelEntries(
+				{ identity: persistedProject.identity, settings: projectSettings },
+				scriptNodes,
+				simulationVariables,
+				secretDeclarations,
+				declaredVariables,
+				scriptSettings,
+			),
+		[
+			persistedProject.identity,
+			projectSettings,
+			scriptNodes,
+			simulationVariables,
+			secretDeclarations,
+			declaredVariables,
+			scriptSettings,
+		],
 	);
 	const exportSummary = useMemo(
 		() =>
@@ -398,7 +432,7 @@ export function EditorPage({
 				permissions,
 				declaredVariables,
 				secretDeclarations,
-				variables: variableEntries,
+				variables: variableRegistry,
 				scriptName: projectSettings.name,
 				targetRuntimes: projectSettings.targetRuntimes,
 			}),
@@ -411,7 +445,7 @@ export function EditorPage({
 			projectSettings.name,
 			projectSettings.targetRuntimes,
 			secretDeclarations,
-			variableEntries,
+			variableRegistry,
 		],
 	);
 	const verificationSignature = useMemo(
@@ -488,6 +522,94 @@ export function EditorPage({
 		);
 	}, []);
 
+	const flushQueuedSimulationSteps = useCallback(() => {
+		const currentRunId = simulationLifecycleRef.current.runId;
+		const queuedSteps = queuedSimulationStepsRef.current;
+		queuedSimulationStepsRef.current = [];
+		const steps = queuedSteps
+			.filter((queuedStep) => queuedStep.runId === currentRunId)
+			.map((queuedStep) => queuedStep.step);
+		if (steps.length === 0) {
+			return;
+		}
+
+		const outputLogs = steps.flatMap((step) => step.outputLogs);
+		if (outputLogs.length > 0) {
+			appendOutputLogs(outputLogs);
+		}
+
+		const traces = steps.flatMap((step) => step.traces);
+		if (traces.length > 0) {
+			appendSimulationLogs(traces);
+		}
+
+		const traversedEdgeIds = steps.flatMap((step) => step.traversedEdgeIds);
+		if (traversedEdgeIds.length > 0) {
+			setSimulationEdgeIds((currentEdgeIds) => {
+				const nextEdgeIds = new Set(currentEdgeIds);
+				for (const edgeId of traversedEdgeIds) {
+					nextEdgeIds.add(edgeId);
+				}
+				return nextEdgeIds;
+			});
+		}
+
+		const nodeStates = steps.flatMap((step) => (step.nodeState ? [step.nodeState] : []));
+		if (nodeStates.length > 0) {
+			setActiveSimulationNodeId((currentNodeId) => {
+				let nextNodeId = currentNodeId;
+				for (const nodeState of nodeStates) {
+					if (nodeState.status === "active") {
+						nextNodeId = nodeState.nodeId;
+					} else if (nextNodeId === nodeState.nodeId) {
+						nextNodeId = null;
+					}
+				}
+				return nextNodeId;
+			});
+
+			const completedNodeIds = nodeStates
+				.filter((nodeState) => nodeState.status === "completed")
+				.map((nodeState) => nodeState.nodeId);
+			if (completedNodeIds.length > 0) {
+				setSimulationNodeIds((currentNodeIds) => {
+					const nextNodeIds = new Set(currentNodeIds);
+					for (const nodeId of completedNodeIds) {
+						nextNodeIds.add(nodeId);
+					}
+					return nextNodeIds;
+				});
+			}
+		}
+
+		setSimulationVariables(steps[steps.length - 1]?.variables ?? []);
+	}, [appendOutputLogs, appendSimulationLogs]);
+
+	const queueSimulationStep = useCallback(
+		(step: SimulationStep, runId: number) => {
+			queuedSimulationStepsRef.current.push({ runId, step });
+			if (simulationUpdateFrameRef.current !== null) {
+				return;
+			}
+
+			simulationUpdateFrameRef.current = window.requestAnimationFrame(() => {
+				simulationUpdateFrameRef.current = null;
+				flushQueuedSimulationSteps();
+			});
+		},
+		[flushQueuedSimulationSteps],
+	);
+
+	useEffect(
+		() => () => {
+			if (simulationUpdateFrameRef.current !== null) {
+				window.cancelAnimationFrame(simulationUpdateFrameRef.current);
+			}
+			queuedSimulationStepsRef.current = [];
+		},
+		[],
+	);
+
 	const abortSimulationLifecycle = useCallback((reason: string) => {
 		const lifecycle = simulationLifecycleRef.current;
 		lifecycle.abortController?.abort(reason);
@@ -495,6 +617,11 @@ export function EditorPage({
 		lifecycle.active = false;
 		lifecycle.authorizedHttpOrigins = new Set();
 		lifecycle.runId += 1;
+		queuedSimulationStepsRef.current = [];
+		if (simulationUpdateFrameRef.current !== null) {
+			window.cancelAnimationFrame(simulationUpdateFrameRef.current);
+			simulationUpdateFrameRef.current = null;
+		}
 		simulationNetworkAuthorizationResolveRef.current?.(false);
 		simulationNetworkAuthorizationResolveRef.current = null;
 		setSimulationNetworkAuthorizationOrigins([]);
@@ -753,35 +880,7 @@ export function EditorPage({
 				return [];
 			}
 
-			const nodeState = step.nodeState;
-			flushSync(() => {
-				if (step.outputLogs.length > 0) {
-					appendOutputLogs(step.outputLogs);
-				}
-				if (step.traces.length > 0) {
-					appendSimulationLogs(step.traces);
-				}
-				if (step.traversedEdgeIds.length > 0) {
-					setSimulationEdgeIds((currentEdgeIds) => {
-						const nextEdgeIds = new Set(currentEdgeIds);
-						for (const edgeId of step.traversedEdgeIds) {
-							nextEdgeIds.add(edgeId);
-						}
-						return nextEdgeIds;
-					});
-				}
-				if (nodeState?.status === "active") {
-					setActiveSimulationNodeId(nodeState.nodeId);
-				} else if (nodeState?.status === "completed") {
-					setActiveSimulationNodeId((currentNodeId) => (currentNodeId === nodeState.nodeId ? null : currentNodeId));
-					setSimulationNodeIds((currentNodeIds) => {
-						const nextNodeIds = new Set(currentNodeIds);
-						nextNodeIds.add(nodeState.nodeId);
-						return nextNodeIds;
-					});
-				}
-				setSimulationVariables(step.variables);
-			});
+			queueSimulationStep(step, runId);
 
 			if (step.sideEffects.length === 0) {
 				return [];
@@ -797,11 +896,11 @@ export function EditorPage({
 				showFormDialog: showSimulationFormDialog,
 			});
 			if (sideEffectResult.traces.length > 0 && simulationLifecycleRef.current.runId === runId && !signal.aborted) {
-				flushSync(() => appendSimulationLogs(sideEffectResult.traces));
+				appendSimulationLogs(sideEffectResult.traces);
 			}
 			return sideEffectResult.results;
 		},
-		[appendOutputLogs, appendSimulationLogs, assets, showSimulationMessageBox, showSimulationFormDialog],
+		[appendSimulationLogs, assets, queueSimulationStep, showSimulationMessageBox, showSimulationFormDialog],
 	);
 
 	const runSimulationTrigger = useCallback(
@@ -842,6 +941,7 @@ export function EditorPage({
 					nodes: scriptNodes,
 					edges,
 					overrides: simulationOverrides,
+					identity: persistedProject.identity,
 					projectSettings,
 					declaredVariables,
 					scriptSettings,
@@ -862,6 +962,7 @@ export function EditorPage({
 					return;
 				}
 
+				flushQueuedSimulationSteps();
 				simulationGlobalVariablesRef.current = run.globalVariables;
 				simulationPersistentVariablesRef.current = run.persistentVariables;
 				setSimulationVariables(run.finalVariables);
@@ -880,6 +981,7 @@ export function EditorPage({
 			assets,
 			completeSimulationLifecycle,
 			edges,
+			flushQueuedSimulationSteps,
 			handleSimulationStep,
 			projectSettings,
 			declaredVariables,
@@ -1819,7 +1921,7 @@ export function EditorPage({
 					simulationSettings={simulationSettings}
 					simulationStatus={simulationStatus}
 					simulationTriggerInputDrafts={simulationTriggerInputDrafts}
-					variables={variableEntries}
+					variables={variableRegistry}
 					declaredVariables={declaredVariables}
 					onDeclareVariable={handleDeclareFromNode}
 					width={sizes.right}

@@ -11,6 +11,7 @@ import { ColorConfigInput } from "@/components/inspector/color-config-input";
 import { FormDialogBuilder } from "@/components/inspector/form-dialog-builder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupButton } from "@/components/ui/input-group";
 import { OptionCombobox } from "@/components/ui/option-combobox";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,6 +26,7 @@ import {
 import { validateTextTransformField } from "@/data/nodes/definitions/actions/format-text";
 import {
 	combinatorOptions,
+	durationUnitOptions,
 	ifElseComparisonOperatorOptions,
 	isBetweenConditionOperator,
 	isNumericConditionOperator,
@@ -99,6 +101,7 @@ import { PanelCollapseButton } from "../shell/panel-collapse-button";
 import { RiskBadge } from "../shell/risk-badge";
 import { SimulatorPanel } from "../simulation/simulator-panel";
 import { DatetimeTokenPanel } from "./datetime-token-panel";
+import { DurationTokenPanel } from "./duration-token-panel";
 import { EdgeOrderPanel } from "./edge-order-panel";
 import { KeyCaptureInput } from "./key-capture-input";
 import { RuntimeDataPanel } from "./runtime-data-panel";
@@ -456,6 +459,7 @@ function PropertiesPanel({
 			</section>
 
 			{formatsADatetime(selectedNode) && <DatetimeTokenPanel />}
+			{formatsADuration(selectedNode) && <DurationTokenPanel />}
 
 			<RuntimeDataPanel selectedNode={selectedNode} />
 
@@ -1095,6 +1099,26 @@ function TextTransformConfigPanel({
 									onChange={onChange}
 								/>
 							)}
+							{operation === "format_duration" && (
+								<>
+									<ComboboxField
+										label="Input unit"
+										value={row.durationUnit}
+										options={durationUnitOptions}
+										onChange={(durationUnit) =>
+											updateTextTransformOperation(operations, row.id, { durationUnit }, onChange)
+										}
+									/>
+									<TextTransformRowInput
+										label="Pattern"
+										field="pattern"
+										row={row}
+										rows={operations}
+										variableCompletions={variableCompletions}
+										onChange={onChange}
+									/>
+								</>
+							)}
 							{(operation === "split" || operation === "join") && (
 								<TextTransformRowInput
 									label="Delimiter"
@@ -1269,10 +1293,8 @@ function VariableOperationConfigPanel({
 			return fixedType ? variable.type === fixedType : true;
 		})
 		.map((variable) => ({
-			// The description is what tells two similarly named variables apart,
-			// so it belongs where the choice is made.
 			description: variable.description || undefined,
-			label: `${variable.name} (${variable.scope} ${variable.type})`,
+			label: variable.name,
 			value: variable.name,
 		}));
 	// The mirror of the rule above: with a hotkey selected, Clear is not on
@@ -1403,15 +1425,17 @@ function VariableOperationConfigPanel({
 				placeholder="Select a variable"
 				hasError={!!nameValidationMessage}
 				trailing={
-					<button
+					<InputGroupButton
 						type="button"
-						className="shrink-0 rounded border border-baud-border px-2 py-1 text-xs text-baud-muted transition-colors hover:border-baud-red hover:text-baud-text"
+						variant="ghost"
+						size="icon-sm"
+						className="h-full rounded-none border-0 border-l border-baud-border text-baud-muted hover:bg-baud-line hover:text-baud-text"
 						aria-label="Declare a variable in Settings"
 						title="Declare a variable in Settings"
 						onClick={onDeclareVariable}
 					>
-						Declare
-					</button>
+						<Plus />
+					</InputGroupButton>
 				}
 				onChange={handleNameChange}
 			/>
@@ -2144,7 +2168,11 @@ function ComboboxField({
 		<OptionCombobox
 			ariaDescribedBy={ariaDescribedBy ?? (error ? errorId : undefined)}
 			ariaLabel={ariaLabel ?? label}
-			className={triggerClassName ?? "w-full"}
+			className={
+				trailing
+					? "h-full rounded-none border-0 bg-transparent shadow-none hover:border-0 focus-visible:border-0 focus-visible:shadow-none"
+					: (triggerClassName ?? "w-full")
+			}
 			disabled={disabled}
 			emptyMessage={emptyMessage}
 			hasError={hasError || !!error}
@@ -2156,10 +2184,10 @@ function ComboboxField({
 	);
 
 	const row = trailing ? (
-		<div className="flex items-center gap-2">
+		<InputGroup className="[&>div]:min-w-0 [&>div]:flex-1">
 			{combobox}
 			{trailing}
-		</div>
+		</InputGroup>
 	) : (
 		combobox
 	);
@@ -2308,6 +2336,10 @@ function getTextTransformHelp(operation: string) {
 
 	if (operation === "format_datetime") {
 		return "Render a datetime as text with a pattern such as yyyy-MM-dd HH:mm.";
+	}
+
+	if (operation === "format_duration") {
+		return "Render an elapsed number with a pattern such as HH:mm:ss or D HH:mm:ss.";
 	}
 
 	if (operation === "replace") {
@@ -2540,5 +2572,12 @@ function formatsADatetime(selectedNode: Node<ScriptNodeData>) {
 	if (selectedNode.data.actionType !== "action.text.format") return false;
 	return getTextTransformOperationRows(selectedNode.data.config.operations).some(
 		(row) => row.operation === "format_datetime",
+	);
+}
+
+function formatsADuration(selectedNode: Node<ScriptNodeData>) {
+	if (selectedNode.data.actionType !== "action.text.format") return false;
+	return getTextTransformOperationRows(selectedNode.data.config.operations).some(
+		(row) => row.operation === "format_duration",
 	);
 }

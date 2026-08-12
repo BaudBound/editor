@@ -15,6 +15,14 @@ export const whileNode = defineNode({
 	label: "While",
 	portPolicy: { kind: "fixed", inputs: ["input"], outputs: ["done", "loop"] },
 	risk: "low",
+	runtimeOutputs: [
+		{
+			name: "index",
+			type: "integer",
+			description: "Zero-based index for the active while-loop pass.",
+			example: "n-mr3zyt6f-7.index",
+		},
+	],
 	validateConfig: (config) => validateConditionRowsConfig(config, "while", true),
 	validateVariables: validateConditionVariableInputs,
 	validateGraph: ({ context, node }) => validateLoopBodyDoesNotReturn(node.id, context.edges, "loop"),

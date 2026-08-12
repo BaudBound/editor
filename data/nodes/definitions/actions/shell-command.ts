@@ -40,6 +40,11 @@ export const shellCommandNode = defineNode({
 	icon: Terminal,
 	kind: "action",
 	label: "Shell Command",
+	portPolicy: {
+		kind: "fixed",
+		inputs: ["input"],
+		outputs: ["exited_zero", "exited_nonzero", "timed_out", "failed"],
+	},
 	permission: { name: "process.shell", risk: "dangerous" },
 	risk: "dangerous",
 	runtimeOutputs: fallible([

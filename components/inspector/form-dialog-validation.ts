@@ -146,7 +146,7 @@ function pushNumericIssue(
 	field: FormDialogFieldRow,
 	variables: readonly VariableCompletion[],
 ) {
-	const error = validateFormDialogNumericValue(field.defaultValue, variables);
+	const error = validateFormDialogNumericValue(field.defaultValue, variables, field.numberType);
 	if (error) issues.push({ fieldId: field.id, message: `Default value: ${lowercaseFirst(error)}` });
 }
 
