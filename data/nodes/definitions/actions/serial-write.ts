@@ -14,6 +14,7 @@ export const serialWriteNode = defineNode({
 	icon: Usb,
 	kind: "action",
 	label: "Serial Write",
+	portPolicy: { kind: "fixed", inputs: ["input"], outputs: ["sent", "device_unavailable", "failed"] },
 	permission: { name: "serial.write", risk: "medium" },
 	risk: "medium",
 	runnerType: "serial_write",

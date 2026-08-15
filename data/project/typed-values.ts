@@ -16,12 +16,26 @@ import type { JsonValue } from "@/lib/types";
 
 export type TypedValueType = VariableType;
 
+/**
+ * The empty value for a type, matching what the runner's `clear` writes.
+ *
+ * The two must agree: this pre-fills a declaration, and `clear` returns a
+ * variable to the same place. They did not agree before — a colour was ""
+ * here and "#000000" there, and a datetime was the current instant here and
+ * the epoch there, so a declaration started at a value its own `clear` could
+ * never produce. The shared fixture is the authority for every case.
+ *
+ * A hotkey is the exception the fixture records as null: every valid hotkey
+ * names a real key, so there is no empty one. "" is returned as a starting
+ * point for the form, which then refuses it until a key is set.
+ */
 export function createEmptyTypedValue(type: TypedValueType, itemType?: ListItemType): JsonValue {
 	switch (type) {
 		case "string":
 		case "hotkey":
-		case "color":
 			return "";
+		case "color":
+			return "#000000";
 		case "integer":
 		case "float":
 			return 0;
@@ -32,7 +46,7 @@ export function createEmptyTypedValue(type: TypedValueType, itemType?: ListItemT
 		case "list":
 			return [];
 		case "datetime":
-			return { type: "datetime", value: new Date().toISOString() };
+			return { type: "datetime", value: "1970-01-01T00:00:00.000Z" };
 		case "duration":
 			return { type: "duration", unit: "seconds", value: 0 };
 		default:

@@ -210,11 +210,11 @@ export type ScriptSetting = {
 	type: ScriptSettingType;
 };
 
-export type DefaultVariable = {
+export type DeclaredVariable = {
 	description: string;
 	itemType?: import("@/data/project/variables").ListItemType;
 	name: string;
-	scope: "runtime" | "persistent";
+	scope: import("@/data/project/variables").VariableScope;
 	type: import("@/data/project/variables").VariableType;
 	value: JsonValue;
 };

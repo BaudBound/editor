@@ -1,5 +1,5 @@
 import type { Edge, Node, XYPosition } from "@xyflow/react";
-import type { DefaultVariable, EditorAsset, ProjectSettings, ScriptNodeData, SecretDeclaration } from "@/lib/types";
+import type { DeclaredVariable, EditorAsset, ProjectSettings, ScriptNodeData, SecretDeclaration } from "@/lib/types";
 import { createGraphElementId } from "./graph-element-id";
 
 const SCRIPT_NODE_WIDTH = 256;
@@ -296,12 +296,12 @@ export function createEditorVerificationSignature(
 	edges: Edge[],
 	assets: EditorAsset[],
 	secretDeclarations: SecretDeclaration[] = [],
-	defaultVariables: DefaultVariable[] = [],
+	declaredVariables: DeclaredVariable[] = [],
 ) {
 	return JSON.stringify({
 		projectSettings,
 		secretDeclarations,
-		defaultVariables,
+		declaredVariables,
 		assets: assets.map((asset) => ({
 			id: asset.id,
 			kind: asset.kind,

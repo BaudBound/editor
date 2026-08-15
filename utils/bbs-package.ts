@@ -11,12 +11,12 @@ import {
 import { packageLimits } from "@/data/project/package-limits";
 import { targetRuntimes } from "@/data/project/runtimes";
 import { normalizeListItemType, validateTypedValue } from "@/data/project/typed-values";
-import { variableTypes } from "@/data/project/variables";
+import { variableScopes, variableTypes } from "@/data/project/variables";
 import type { ProjectIdentity } from "../data/projects/model";
 import {
 	type ActionType,
 	type AssetKind,
-	type DefaultVariable,
+	type DeclaredVariable,
 	type EditorAsset,
 	type EditorComment,
 	type JsonValue,
@@ -44,7 +44,7 @@ import {
 export type ImportedBbsPackage = {
 	assets: EditorAsset[];
 	comments: EditorComment[];
-	defaultVariables: DefaultVariable[];
+	declaredVariables: DeclaredVariable[];
 	edgeStyle: EditorEdgeStyle;
 	edges: Edge[];
 	projectSettings: ProjectSettings;
@@ -84,11 +84,11 @@ export async function buildBbsPackage(params: {
 	comments: EditorComment[];
 	edgeStyle: EditorEdgeStyle;
 	secretDeclarations: SecretDeclaration[];
-	defaultVariables: DefaultVariable[];
+	declaredVariables: DeclaredVariable[];
 	scriptSettings: ScriptSetting[];
 }) {
-	const permissions = calculatePermissions(params.nodes, params.secretDeclarations, params.defaultVariables);
-	const capabilities = calculateCapabilities(params.nodes, params.secretDeclarations, params.defaultVariables);
+	const permissions = calculatePermissions(params.nodes, params.secretDeclarations, params.declaredVariables);
+	const capabilities = calculateCapabilities(params.nodes, params.secretDeclarations, params.declaredVariables);
 	const assetManifest = params.assets.map(toAssetManifestEntry);
 	const now = new Date().toISOString();
 	const zip = new JSZip();
@@ -122,7 +122,7 @@ export async function buildBbsPackage(params: {
 			description: secret.description,
 			required: secret.required,
 		})),
-		variables: params.defaultVariables.map((variable) => ({
+		variables: params.declaredVariables.map((variable) => ({
 			name: variable.name,
 			scope: variable.scope,
 			type: variable.type,
@@ -141,7 +141,10 @@ export async function buildBbsPackage(params: {
 			}),
 		),
 	});
-	const programJson = toProgramJson(params.nodes, params.edges, params.projectSettings);
+	const programJson = toProgramJson(params.nodes, params.edges, {
+		identity: params.identity,
+		settings: params.projectSettings,
+	});
 	const editorJson = toEditorJson(params.nodes, params.comments, params.edgeStyle);
 	const permissionsJson = {
 		declared_permissions: permissions.map((permission) => permission.name),
@@ -285,13 +288,13 @@ async function importVerifiedPackageArchive(
 	const comments = toEditorComments(editorMetadata);
 	const edgeStyle = toEditorEdgeStyle(editorMetadata);
 	const secretDeclarations = toSecretDeclarations(manifest);
-	const defaultVariables = toDefaultVariables(manifest);
+	const declaredVariables = toDeclaredVariables(manifest);
 	const scriptSettings = toScriptSettings(manifest);
 
 	return {
 		assets,
 		comments,
-		defaultVariables,
+		declaredVariables,
 		edgeStyle,
 		edges,
 		nodes,
@@ -302,9 +305,27 @@ async function importVerifiedPackageArchive(
 	};
 }
 
+/**
+ * A script id, which is a UUID and nothing else.
+ *
+ * The id owns the script's stored variables and secrets and decides whether an
+ * install updates an existing script or creates one, so two scripts sharing an
+ * id means the second inherits the first's state. A UUID makes that collision
+ * effectively impossible; a readable slug makes it likely, which is why import
+ * refuses one rather than adopting it as the project's identity forever.
+ *
+ * The same shape `repository.schema.json` already requires of `script_id`,
+ * which is this id under another name, down to the version and variant nibbles.
+ */
+const PROJECT_ID_PATTERN = /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[1-8][0-9A-Fa-f]{3}-[89ABab][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$/;
+
 function toProjectIdentity(manifest: Record<string, unknown>): ProjectIdentity {
 	if (typeof manifest.id !== "string" || typeof manifest.created_at !== "string") {
 		throw new Error("manifest.json does not define a valid project identity.");
+	}
+
+	if (!PROJECT_ID_PATTERN.test(manifest.id)) {
+		throw new Error(`manifest.json id ${JSON.stringify(manifest.id)} is not a UUID, so it cannot identify a script.`);
 	}
 
 	return {
@@ -313,7 +334,7 @@ function toProjectIdentity(manifest: Record<string, unknown>): ProjectIdentity {
 	};
 }
 
-function toDefaultVariables(manifest: Record<string, unknown>): DefaultVariable[] {
+function toDeclaredVariables(manifest: Record<string, unknown>): DeclaredVariable[] {
 	if (!Array.isArray(manifest.variables)) {
 		return [];
 	}
@@ -323,9 +344,9 @@ function toDefaultVariables(manifest: Record<string, unknown>): DefaultVariable[
 		if (
 			!variable ||
 			typeof variable.name !== "string" ||
-			(variable.scope !== "runtime" && variable.scope !== "persistent") ||
+			!variableScopes.includes(variable.scope as DeclaredVariable["scope"]) ||
 			typeof variable.type !== "string" ||
-			!variableTypes.includes(variable.type as DefaultVariable["type"]) ||
+			!variableTypes.includes(variable.type as DeclaredVariable["type"]) ||
 			!isJsonValue(variable.value)
 		) {
 			return [];
@@ -335,10 +356,10 @@ function toDefaultVariables(manifest: Record<string, unknown>): DefaultVariable[
 			{
 				description: typeof variable.description === "string" ? variable.description : "",
 				name: variable.name,
-				scope: variable.scope,
-				type: variable.type as DefaultVariable["type"],
+				scope: variable.scope as DeclaredVariable["scope"],
+				type: variable.type as DeclaredVariable["type"],
 				...(variable.type === "list" && typeof variable.item_type === "string"
-					? { itemType: variable.item_type as DefaultVariable["itemType"] }
+					? { itemType: variable.item_type as DeclaredVariable["itemType"] }
 					: {}),
 				value: variable.value,
 			},

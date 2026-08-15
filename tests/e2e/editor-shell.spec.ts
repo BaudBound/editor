@@ -36,7 +36,12 @@ test("real-time simulation streams steps without blocking the editor UI", async 
 	await page.getByRole("button", { name: "Manual" }).click();
 	await page.getByRole("textbox", { name: "Search blocks" }).fill("Repeat");
 	await page.getByRole("button", { name: /^Repeat low/ }).click();
-	await page.getByRole("textbox", { name: "Repeat count" }).fill("40");
+	const repeatCount = page.getByRole("textbox", { name: "Repeat count" });
+	// Real time adds no pause of its own, so any loop that can finish is over
+	// before the editor can be driven at all. This one cannot finish inside a
+	// test, which is what makes the checks below observations of a run that is
+	// still in flight rather than a race against one that has already ended.
+	await repeatCount.fill("1000000");
 
 	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
 	const repeatNode = page.locator(".react-flow__node").filter({ hasText: "Repeat" });
@@ -53,12 +58,32 @@ test("real-time simulation streams steps without blocking the editor UI", async 
 	await expect(page.getByRole("textbox", { name: "Search variables" })).toBeVisible();
 	await page.getByRole("button", { name: "Simulation", exact: true }).click();
 	await expect(page.getByText(/Simulation completed\./)).toHaveCount(0);
+
+	// Steps reached the panel while the run was still going, and kept arriving
+	// while it was being driven: the run streams rather than holding the thread
+	// and publishing everything once it ends.
+	const streamedIteration = async () => {
+		const lines = await page.getByText(/Repeat .* iteration \d+ of 1000000\./).allTextContents();
+		return Math.max(0, ...lines.map((line) => Number(/iteration (\d+) of/.exec(line)?.[1] ?? 0)));
+	};
+	const streamedSoFar = await streamedIteration();
+	expect(streamedSoFar).toBeGreaterThan(0);
+	await expect.poll(streamedIteration).toBeGreaterThan(streamedSoFar);
+
+	await page.getByRole("button", { name: "Stop simulation" }).click();
+	await expect(runState).toContainText("stopped");
+
+	// The same loop, bounded, reports every one of its iterations and completes.
+	await page.getByRole("button", { name: "Properties" }).click();
+	await repeatCount.fill("40");
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
 	await expect(page.getByText(/Repeat .* iteration 40 of 40\./)).toBeVisible();
 	await expect(page.getByText(/Simulation completed\./)).toBeVisible();
 	await expect(runState).toContainText("waiting");
 });
 
-test("simulation publishes each node output before completing and advancing its highlight", async ({ page }) => {
+test("simulation publishes node outputs and final highlights through the batched UI stream", async ({ page }) => {
 	await openEditor(page);
 
 	await page.getByRole("button", { name: "Manual" }).click();
@@ -142,14 +167,9 @@ test("simulation publishes each node output before completing and advancing its 
 		testWindow.__simulationSequenceObserver?.disconnect();
 		return testWindow.__simulationSequence ?? [];
 	});
-	expect(sequence).toEqual([
-		"first-active",
-		"first-output",
-		"first-completed",
-		"second-active",
-		"second-output",
-		"second-completed",
-	]);
+	expect(sequence).toEqual(
+		expect.arrayContaining(["first-output", "first-completed", "second-output", "second-completed"]),
+	);
 	await expect(firstLogState).toHaveAttribute("data-simulation-state", "completed");
 });
 
@@ -448,6 +468,8 @@ test("Form Dialog choices validate duplicate keys and publish nested values in c
 	await expect(selectedChoices).toContainText("first-key");
 	await expect(selectedChoices).toContainText("second-key");
 	await expect(selectedChoices).not.toContainText("displayed value");
+	await expect(page.locator('[data-variable-name$=".display.targets"] pre')).toContainText("First displayed value");
+	await expect(page.locator('[data-variable-name$=".display.targets"] pre')).toContainText("Second displayed value");
 });
 
 test("Form Dialog expanded controls publish typed simulator values", async ({ page }) => {
@@ -569,6 +591,7 @@ test("Form Dialog display values suggest compatible variables while keys remain 
 
 	await page.getByRole("button", { name: "Variables", exact: true }).click();
 	await expect(page.locator('[data-variable-name$=".values.target"] pre')).toHaveText("production");
+	await expect(page.locator('[data-variable-name$=".display.target"] pre')).toHaveText("Production environment");
 });
 
 test("Form Dialog form builder applies drafts atomically and discards cancelled edits", async ({ page }) => {
@@ -811,7 +834,7 @@ test("node finder searches configuration and focuses the selected node", async (
 test("Schedule triggers can start and stop their simulator timer", async ({ page }) => {
 	await openEditor(page);
 
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("interval");
@@ -1074,10 +1097,10 @@ test("If / Else unary conditions hide the target field", async ({ page }) => {
 	await expect(page.getByRole("textbox", { name: "Target" })).toHaveCount(0);
 });
 
-test("text transform accepts a default variable with inactive optional numeric fields", async ({ page }) => {
+test("text transform accepts a declared variable with inactive optional numeric fields", async ({ page }) => {
 	await openEditor(page);
 
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("test");
@@ -1111,7 +1134,7 @@ test("text transform accepts a default variable with inactive optional numeric f
 test("variable operation completes writable variable names without template braces", async ({ page }) => {
 	await openEditor(page);
 
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("preferred_status");
@@ -1121,12 +1144,153 @@ test("variable operation completes writable variable names without template brac
 
 	await page.getByRole("button", { name: "Data & Variables" }).click();
 	await page.getByRole("button", { name: "Variable Operation" }).click();
-	const nameInput = page.getByRole("combobox", { name: "Variable name" });
-	await nameInput.fill("preferred");
-	await page.getByRole("option", { name: /preferred_status/ }).click();
+	// Picking a declared variable stores the bare name. It used to be typed
+	// into an autocomplete that could leave the {{...}} reference form behind,
+	// which is not a name the runner could match.
+	await selectVariableToWrite(page, "preferred_status");
 
-	await expect(nameInput).toHaveValue("preferred_status");
-	await expect(nameInput).not.toHaveValue("{{preferred_status}}");
+	const nameInput = page.getByRole("button", { name: "Variable name", exact: true });
+	await expect(nameInput).toHaveText(/preferred_status/);
+	await expect(nameInput).not.toHaveText(/{{preferred_status}}/);
+});
+
+test("the variable picker offers only what the operation can write, and can declare one", async ({ page }) => {
+	await openEditor(page);
+
+	await openProjectSettingsTab(page, "Variables");
+	await page.getByRole("button", { name: "Add variable" }).click();
+	let variableDialog = page.getByRole("dialog");
+	await variableDialog.getByRole("textbox", { name: "Name" }).fill("label");
+	await variableDialog.getByRole("textbox", { name: "Default value" }).fill("ready");
+	await variableDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("button", { name: "Add variable" }).click();
+	variableDialog = page.getByRole("dialog");
+	await variableDialog.getByRole("textbox", { name: "Name" }).fill("tally");
+	await variableDialog.getByRole("combobox", { name: "Type" }).click();
+	await page.getByRole("option", { name: "integer" }).click();
+	await variableDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
+	await page.getByRole("button", { name: "Data & Variables" }).click();
+	await page.getByRole("button", { name: "Variable Operation" }).click();
+
+	// Set accepts any type, so both are on offer.
+	await page.getByRole("button", { name: "Variable name", exact: true }).click();
+	await expect(page.getByRole("option", { name: /^label \(/ })).toBeVisible();
+	await expect(page.getByRole("option", { name: /^tally \(/ })).toBeVisible();
+	await page.keyboard.press("Escape");
+
+	// Increment only works on a number, so the string is not offered at all
+	// rather than offered and then rejected.
+	await page.getByRole("button", { name: "Operation", exact: true }).click();
+	await page.getByRole("option", { name: "Increment" }).click();
+	await page.getByRole("button", { name: "Variable name", exact: true }).click();
+	await expect(page.getByRole("option", { name: /^tally \(/ })).toBeVisible();
+	await expect(page.getByRole("option", { name: /^label \(/ })).toHaveCount(0);
+	await page.keyboard.press("Escape");
+
+	// Declaring from the node opens the same form Settings uses, prefilled with
+	// the type the operation implies, and selects the result on the node. The
+	// round trip through Settings is what this control exists to remove.
+	await page.getByRole("button", { name: "Declare a variable" }).click();
+	const declareDialog = page.getByRole("dialog");
+	await expect(declareDialog.getByRole("combobox", { name: "Type" })).toHaveText(/integer/);
+	await declareDialog.getByRole("textbox", { name: "Name" }).fill("streak");
+	await declareDialog.getByRole("button", { name: "Save" }).click();
+
+	await expect(page.getByRole("button", { name: "Variable name", exact: true })).toHaveText(/streak/);
+});
+
+test("Is null or missing warns that a declared variable always has a value", async ({ page }) => {
+	await openEditor(page);
+
+	await openProjectSettingsTab(page, "Variables");
+	await page.getByRole("button", { name: "Add variable" }).click();
+	const variableDialog = page.getByRole("dialog");
+	await variableDialog.getByRole("textbox", { name: "Name" }).fill("status");
+	await variableDialog.getByRole("textbox", { name: "Default value" }).fill("ready");
+	await variableDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
+	await page.getByRole("button", { name: "If / Else" }).click();
+	await page.getByRole("button", { name: "Expression" }).click();
+	await page.getByRole("option", { name: "Is null or missing" }).click();
+
+	// A node output can still be missing, so the note is tied to the reference
+	// actually naming a declared variable rather than to the operator alone.
+	await expect(page.getByText(/always has a value and this is never true/)).toHaveCount(0);
+
+	await page.getByRole("textbox", { name: "Value", exact: true }).fill("{{status}}");
+	await expect(page.getByText(/"status" is declared, so it always has a value/)).toBeVisible();
+});
+
+test("renaming a declared variable rewrites both its writer and its readers", async ({ page }) => {
+	await openEditor(page);
+
+	await openProjectSettingsTab(page, "Variables");
+	await page.getByRole("button", { name: "Add variable" }).click();
+	let variableDialog = page.getByRole("dialog");
+	await variableDialog.getByRole("textbox", { name: "Name" }).fill("stock");
+	await variableDialog.getByRole("textbox", { name: "Default value" }).fill("none");
+	await variableDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
+	// One node writes it, another reads it. A rename that fixed only one would
+	// leave the other pointing at a name nothing declares.
+	await page.getByRole("button", { name: "Data & Variables" }).click();
+	await page.getByRole("button", { name: "Variable Operation" }).click();
+	await selectVariableToWrite(page, "stock");
+
+	await page.getByRole("button", { name: "Output & Timing" }).click();
+	await page.getByRole("button", { name: /^Log/ }).click();
+	await page.getByRole("textbox", { name: "Message" }).fill("stock is {{stock}}");
+
+	await openProjectSettingsTab(page, "Variables");
+	await page.getByRole("button", { name: "Edit stock" }).click();
+	variableDialog = page.getByRole("dialog");
+	await variableDialog.getByRole("textbox", { name: "Name" }).fill("inventory");
+	await variableDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("button", { name: "Save Settings" }).click();
+
+	// The reader's reference followed the rename.
+	const logNode = page.locator(".react-flow__node").filter({ hasText: "Log" }).first();
+	await logNode.click();
+	await expect(page.getByRole("textbox", { name: "Message" })).toHaveValue("stock is {{inventory}}");
+
+	// And so did the writer's target, which is a name rather than a reference.
+	// The two nodes are dropped at overlapping positions, so selecting the one
+	// underneath goes through the event rather than a real click.
+	const variableNode = page.locator(".react-flow__node").filter({ hasText: "Variable Operation" }).first();
+	await variableNode.dispatchEvent("click", { bubbles: true });
+	await expect(page.getByRole("button", { name: "Variable name", exact: true })).toHaveText(/inventory/);
+});
+
+test("a variable declared from the node runs in the simulator", async ({ page }) => {
+	await openEditor(page);
+
+	await page.getByRole("button", { name: "Manual" }).click();
+	await page.getByRole("button", { name: "Data & Variables" }).click();
+	await page.getByRole("button", { name: "Variable Operation" }).click();
+	await page.getByRole("button", { name: "Operation", exact: true }).click();
+	await page.getByRole("option", { name: "Increment" }).click();
+
+	// Declare it from the node rather than through Settings, then run it. This
+	// is the whole path the control exists for.
+	await page.getByRole("button", { name: "Declare a variable" }).click();
+	const declareDialog = page.getByRole("dialog");
+	await declareDialog.getByRole("textbox", { name: "Name" }).fill("streak");
+	await declareDialog.getByRole("button", { name: "Save" }).click();
+	await page.getByRole("textbox", { name: "Amount" }).fill("2");
+
+	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
+	const variableNode = page.locator(".react-flow__node").filter({ hasText: "Variable Operation" });
+	await manualNode.locator(".react-flow__handle.source").first().dispatchEvent("click", { bubbles: true });
+	await variableNode.locator(".react-flow__handle.target").first().dispatchEvent("click", { bubbles: true });
+
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
+	await page.getByRole("button", { name: "Variables", exact: true }).click();
+	await expect(page.locator('[data-variable-name="streak"] pre')).toHaveText("2");
 });
 
 test("Script Settings are available to autocomplete and simulation", async ({ page }) => {
@@ -1168,7 +1332,8 @@ test("Script Settings are available to autocomplete and simulation", async ({ pa
 	await expect(page.getByText(/https:\/\/simulation\.example/)).toBeVisible();
 
 	await page.getByRole("button", { name: "Variables", exact: true }).click();
-	await expect(page.locator('[data-variable-name="@settings.Endpoint"] pre')).toHaveText("https://simulation.example");
+	await expect(page.locator('[data-variable-name="@settings"] pre')).toContainText("https://simulation.example");
+	await expect(page.locator('[data-variable-name="@settings.Endpoint"]')).toHaveCount(0);
 });
 
 test("Script Setting type and timezone menus stay anchored and scroll vertically", async ({ page }) => {
@@ -1219,9 +1384,9 @@ test("Script Setting type and timezone menus stay anchored and scroll vertically
 	expect(menuBoundsAfterScroll?.y).toBe(menuBoundsBeforeScroll.y);
 });
 
-test("Default Variables and Script Settings display typed values without internal JSON wrappers", async ({ page }) => {
+test("Variables and Script Settings display typed values without internal JSON wrappers", async ({ page }) => {
 	await openEditor(page);
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	let valueDialog = page.getByRole("dialog");
 	await valueDialog.getByRole("textbox", { name: "Name" }).fill("Timeout");
@@ -1383,7 +1548,7 @@ test("hotkey and color Script Settings use dedicated controls and color variable
 test("renaming defaults and secrets updates every node reference", async ({ page }) => {
 	await openEditor(page);
 
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	let variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("inventory");
@@ -1402,7 +1567,7 @@ test("renaming defaults and secrets updates every node reference", async ({ page
 
 	await page.getByRole("button", { name: "Data & Variables" }).click();
 	await page.getByRole("button", { name: "Variable Operation" }).click();
-	await page.getByRole("combobox", { name: "Variable name" }).fill("inventory");
+	await selectVariableToWrite(page, "inventory");
 	const variableNode = page.locator(".react-flow__node").filter({ hasText: "Variable Operation" });
 
 	await page.getByRole("button", { name: "Output & Timing" }).click();
@@ -1412,7 +1577,7 @@ test("renaming defaults and secrets updates every node reference", async ({ page
 		.fill("{{inventory}} {{inventory.items[0]}} {{api_token}} {{api_token.value}} {{inventory_backup}}");
 	const logNode = page.locator(".react-flow__node").filter({ hasText: "Log" });
 
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Edit inventory" }).click();
 	variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("stock");
@@ -1472,10 +1637,8 @@ test("variable editors do not insert example values", async ({ page }) => {
 	await expect(page.getByRole("textbox", { name: "Value" })).toHaveValue("");
 	await expect(page.getByText(/^Example:/)).toHaveCount(0);
 
-	await page.getByRole("button", { name: "Variable type" }).click();
-	await page.getByRole("option", { name: "integer" }).click();
-	await expect(page.getByRole("textbox", { name: "Value" })).toHaveValue("");
-
+	// The node has no Variable type control any more; the declaration carries
+	// the type. Changing the operation is what changes the value editor here.
 	await page.getByRole("button", { name: "Operation", exact: true }).click();
 	await page.getByRole("option", { name: "Increment" }).click();
 	await expect(page.getByRole("textbox", { name: "Amount" })).toHaveValue("");
@@ -1485,7 +1648,7 @@ test("variable editors do not insert example values", async ({ page }) => {
 	await expect(page.getByRole("textbox", { name: "Object field path" })).toHaveValue("");
 	await expect(page.getByRole("textbox", { name: "Field value" })).toHaveValue("");
 
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("combobox", { name: "Type" }).click();
@@ -1498,7 +1661,7 @@ test("variable editors do not insert example values", async ({ page }) => {
 test("persistent variable simulation carries changes into the next run", async ({ page }) => {
 	await openEditor(page);
 
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("counter");
@@ -1515,21 +1678,15 @@ test("persistent variable simulation carries changes into the next run", async (
 	await page.getByRole("button", { name: "Variable Operation" }).click();
 	await page.getByRole("button", { name: "Operation", exact: true }).click();
 	await page.getByRole("option", { name: "Increment" }).click();
-	await page.getByRole("combobox", { name: "Variable name" }).fill("counter");
+	await selectVariableToWrite(page, "counter");
 	await page.getByRole("textbox", { name: "Amount" }).fill("1");
 
-	// counter is declared persistent, so the node takes the scope from that
-	// declaration instead of asking for it a second time.
-	const nodeScope = page.getByRole("button", { name: "Scope", exact: true });
-	await expect(nodeScope).toBeDisabled();
-	await expect(nodeScope).toContainText("persistent");
-	// Disabled has to be visible, not only refused on click.
-	const lockedStyle = await nodeScope.evaluate((element) => {
-		const style = getComputedStyle(element);
-		return { cursor: style.cursor, opacity: Number(style.opacity) };
-	});
-	expect(lockedStyle.cursor).toBe("not-allowed");
-	expect(lockedStyle.opacity).toBeLessThan(1);
+	// counter is declared persistent, and the node has no Scope control at all
+	// now. It used to show one, locked to the declaration; not offering it is
+	// the stronger version of the same idea, since there is nothing to read as
+	// a second answer.
+	await expect(page.getByRole("button", { name: "Scope", exact: true })).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Variable type", exact: true })).toHaveCount(0);
 
 	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
 	const variableNode = page.locator(".react-flow__node").filter({ hasText: "Variable Operation" });
@@ -1565,7 +1722,7 @@ test("persistent variable simulation carries changes into the next run", async (
 test("numeric fields autocomplete number variables and suspend literal stepping", async ({ page }) => {
 	await openEditor(page);
 
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("distance");
@@ -2360,16 +2517,21 @@ test("control click keeps multiple nodes selected and opens the clicked node pro
 	if (!paneBox) {
 		throw new Error("React Flow pane is not visible.");
 	}
-	const addNode = async (name: string, x: number) => {
-		await page.mouse.click(x, paneBox.y + paneBox.height / 2, { button: "right" });
+	const addNode = async (name: string, x: number, y: number) => {
+		await page.mouse.click(x, y, { button: "right" });
 		const browser = page.getByRole("dialog", { name: "Add node" });
 		await browser.getByRole("textbox", { name: "Search nodes" }).fill(name);
 		await browser.getByRole("button", { name: new RegExp(name) }).click();
 	};
 
-	await addNode("Log", paneBox.x + 180);
-	await addNode("HTTP Request", paneBox.x + paneBox.width / 2);
-	await addNode("Delay", paneBox.x + paneBox.width - 180);
+	// A node names every outcome it can reach now, so three of them no longer
+	// fit across one row of the pane: the first would cover the point the
+	// second is added at, and the right click would land on that node rather
+	// than on empty canvas. They are staggered instead, which is what keeps
+	// each of the three separately clickable below.
+	await addNode("Log", paneBox.x + 140, paneBox.y + 82);
+	await addNode("HTTP Request", paneBox.x + paneBox.width - 140, paneBox.y + 82);
+	await addNode("Delay", paneBox.x + 140, paneBox.y + paneBox.height - 110);
 
 	const logNode = page.locator(".react-flow__node").filter({ hasText: "Log" }).first();
 	const httpNode = page.locator(".react-flow__node").filter({ hasText: "HTTP Request" }).first();
@@ -2487,10 +2649,14 @@ test("exported package preserves editor metadata and imports back", async ({ pag
 	await openEditor(page);
 
 	await page.getByRole("button", { name: "Manual" }).click();
-	await openProjectSettingsTab(page, "Default Variables");
+	await openProjectSettingsTab(page, "Variables");
 	await page.getByRole("button", { name: "Add variable" }).click();
-	await page.getByRole("textbox", { name: "Name" }).fill("counter");
+	// A declaration needs a name, so the untouched form cannot be saved. This
+	// used to assert the same thing after typing the name, when an empty string
+	// default was still refused — it is a legal starting value now, so the name
+	// is what the guard has left to catch.
 	await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+	await page.getByRole("textbox", { name: "Name" }).fill("counter");
 	await page.getByRole("combobox", { name: "Scope" }).click();
 	await page.getByRole("option", { name: "persistent" }).click();
 	await page.getByRole("combobox", { name: "Type" }).click();
@@ -2649,7 +2815,15 @@ async function openEditor(page: Page) {
 	await expect(page.getByRole("button", { name: "Open asset editor" })).toBeVisible();
 }
 
-async function openProjectSettingsTab(page: Page, tab: "Default Variables" | "Secrets" | "Script Settings") {
+// The Variable Operation node picks its target from the declared variables
+// rather than accepting a typed name, so a test that writes a variable has to
+// declare it first and then select it here.
+async function selectVariableToWrite(page: Page, name: string) {
+	await page.getByRole("button", { name: "Variable name", exact: true }).click();
+	await page.getByRole("option", { name: new RegExp(`^${name} \\(`) }).click();
+}
+
+async function openProjectSettingsTab(page: Page, tab: "Variables" | "Secrets" | "Script Settings") {
 	await page.getByRole("button", { name: "Open project settings" }).click();
 	await page.getByRole("tab", { name: tab }).click();
 }

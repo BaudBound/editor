@@ -24,6 +24,7 @@ export const readFileNode = defineNode({
 	icon: FileInput,
 	kind: "action",
 	label: "Read File",
+	portPolicy: { kind: "fixed", inputs: ["input"], outputs: ["read", "not_found", "failed"] },
 	permission: { name: "file.read", risk: "medium" },
 	permissionPathRules: [{ access: "read", configKey: "path" }],
 	risk: "medium",

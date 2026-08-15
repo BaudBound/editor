@@ -47,7 +47,7 @@ export const variableOperations = [
 	"remove_object_field",
 	"merge_object",
 	"clear",
-	"delete",
+	"reset",
 ] as const;
 
 export type VariableOperation = (typeof variableOperations)[number];
@@ -168,12 +168,12 @@ export const variableOperationDefinitions: Record<
 	clear: {
 		label: "Clear",
 		valueLabel: "Clear value",
-		description: "Reset an existing variable to the empty value derived from its current type.",
+		description: "Empty the variable: an empty string, zero, false, or an empty list or object for its type.",
 	},
-	delete: {
-		label: "Delete variable",
-		valueLabel: "Delete value",
-		description: "Remove the variable completely instead of keeping an empty value.",
+	reset: {
+		label: "Reset",
+		valueLabel: "Reset value",
+		description: "Put the variable back to the default value its declaration gives it.",
 	},
 };
 
@@ -204,7 +204,7 @@ export function validateVariableOperationValue(
 	fieldValueType?: VariableType,
 	fieldItemType?: ListItemType,
 ) {
-	if (operation === "clear" || operation === "delete" || operation === "toggle_boolean") {
+	if (operation === "clear" || operation === "reset" || operation === "toggle_boolean") {
 		return "";
 	}
 
@@ -561,7 +561,7 @@ export function createConfiguredVariableDefinitions(nodes: Node<ScriptNodeData>[
 		}
 
 		const operation = normalizeVariableOperation(configString(node.data.config.operation));
-		if (operation === "clear" || operation === "delete") {
+		if (operation === "clear" || operation === "reset") {
 			continue;
 		}
 

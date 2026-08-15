@@ -1,11 +1,12 @@
 import { TextCursorInput } from "lucide-react";
 import { formatDatetime, validateDatetimePattern } from "@/data/project/datetime-format";
+import { formatDuration, validateDurationPattern } from "@/data/project/duration-format";
 import type { VariableReferenceCandidate } from "@/data/project/variables";
 import type { JsonValue } from "@/lib/types";
 import { runSafeRegex, validateSafeRegexPattern } from "@/utils/safe-regex";
 import { validateVariableInput } from "../../config-field-validation";
 import { defineNode, withFailureErrorOutput } from "../../node-definition";
-import { textTransformOperationOptions } from "../options";
+import { durationUnitOptions, textTransformOperationOptions } from "../options";
 import {
 	createTextTransformOperationRow,
 	getTextTransformOperationRows,
@@ -152,6 +153,21 @@ async function executeOperation(
 		}
 		return { ok: true, value: formatted };
 	}
+	if (operation === "format_duration") {
+		// Like datetime formatting, this needs the value itself rather than its
+		// text form so integer and float references remain numeric in the pipeline.
+		const pattern = resolveToString(row.pattern, resolveTemplate);
+		const problem = validateDurationPattern(pattern);
+		if (problem) return { error: problem, ok: false };
+		const formatted = formatDuration(current, row.durationUnit, pattern);
+		if (formatted === undefined) {
+			return {
+				error: "Format duration requires a finite non-negative number from the input or the previous operation.",
+				ok: false,
+			};
+		}
+		return { ok: true, value: formatted };
+	}
 	if (operation === "join") {
 		if (!Array.isArray(current)) {
 			return { error: "Join requires a list from the input or the previous operation.", ok: false };
@@ -272,6 +288,12 @@ export function validateTextTransformField(
 		// the regex pattern above.
 		return validateDatetimePattern(value);
 	}
+	if (field === "pattern" && operation === "format_duration") {
+		return validateDurationPattern(value);
+	}
+	if (field === "durationUnit" && operation === "format_duration") {
+		return durationUnitOptions.some((option) => option.value === value) ? "" : "Choose a duration unit.";
+	}
 	if (field === "delimiter" && (operation === "split" || operation === "join") && !value) {
 		return "Delimiter is required.";
 	}
@@ -315,6 +337,8 @@ function sanitizeOperation(row: TextTransformOperationRow) {
 		result.targetLength = row.targetLength;
 		result.pad = row.pad;
 	}
+	if (operation === "format_datetime" || operation === "format_duration") result.pattern = row.pattern;
+	if (operation === "format_duration") result.durationUnit = row.durationUnit;
 	return result;
 }
 
@@ -342,6 +366,8 @@ const textTransformValidatedFields = [
 	"length",
 	"targetLength",
 	"pad",
+	"pattern",
+	"durationUnit",
 ] as const satisfies readonly (keyof Omit<TextTransformOperationRow, "id" | "operation">)[];
 
 function parseNonNegativeInteger(value: string, label: string) {

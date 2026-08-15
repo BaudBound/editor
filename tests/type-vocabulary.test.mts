@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+	filterCompatibleVariables,
 	splitCast,
 	validateNumericComparisonInput,
 	validateVariableInput,
@@ -11,7 +12,7 @@ import {
 } from "../data/nodes/config-field-validation.ts";
 import { createTextTransformOperationRow } from "../data/nodes/definitions/rows.ts";
 import { validateConditionVariableInputs } from "../data/nodes/definitions/shared.ts";
-import { variableTypes } from "../data/project/variables.ts";
+import { type VariableType, variableTypes } from "../data/project/variables.ts";
 import type { JsonValue } from "../lib/types.ts";
 import { castSimulatedValue, validateSimulatedValue } from "../utils/value-cast.ts";
 
@@ -139,6 +140,43 @@ test("a numeric comparison accepts either numeric type", () => {
 	assert.match(validateNumericComparisonInput("{{counter|color}}", variables), /needs a number/);
 });
 
+test("a numeric expression field accepts integer and float variables", () => {
+	const variables = [
+		{ name: "seconds", type: "integer", readOnly: true },
+		{ name: "ratio", type: "float", readOnly: true },
+		{ name: "label", type: "string", readOnly: true },
+	] as const;
+	const contract = ["integer", "float"] as const;
+
+	assert.equal(validateVariableReferenceTypes("floor({{seconds}} / 3600)", variables, contract), "");
+	assert.equal(validateVariableReferenceTypes("{{ratio}} * 100", variables, contract), "");
+	assert.deepEqual(
+		filterCompatibleVariables(variables, contract).map((variable) => variable.name),
+		["seconds", "ratio"],
+	);
+
+	const wrong = validateVariableReferenceTypes("{{label}} / 3600", variables, contract);
+	assert.match(wrong, /accepts integer or float variables/);
+	assert.match(wrong, /\{\{label\|float\}\}/);
+});
+
+test("Calculate exposes the selected result type while automatic remains numeric", async () => {
+	const { getRuntimeDataOutputs, validateNodeConfig } = await import("../data/nodes/registry.ts");
+	const automatic = getRuntimeDataOutputs("action.calculate", { expression: "4 / 2", resultType: "automatic" });
+	const integer = getRuntimeDataOutputs("action.calculate", { expression: "floor(4 / 2)", resultType: "integer" });
+	const float = getRuntimeDataOutputs("action.calculate", { expression: "4 / 2", resultType: "float" });
+
+	assert.equal(automatic[0]?.type, "float", "automatic can produce either numeric kind at run time");
+	assert.equal(integer[0]?.type, "integer");
+	assert.equal(float[0]?.type, "float");
+	assert.ok(
+		validateNodeConfig("action.calculate", { expression: "1", resultType: "decimal" }).some((error) =>
+			/resultType/i.test(error),
+		),
+		"unsupported result types must be reported before export",
+	);
+});
+
 test("verification agrees with the inspector about numeric comparisons", () => {
 	// The inspector and the export verification validate conditions through
 	// different entry points. When only one of them was taught that a
@@ -207,17 +245,62 @@ test("a whole number can be declared as a float", async () => {
 	assert.notDeepEqual(settingErrors("300"), []);
 });
 
-test("a declared variable settles the operation's scope and type", async () => {
+test("Form Dialog number components carry their selected numeric type", async () => {
+	const { createFormDialogField, formDialogFieldRuntimeType, validateFormDialogFields } = await import(
+		"../data/nodes/form-dialog-fields.ts"
+	);
+	const floatField = createFormDialogField("number");
+	const integerField = {
+		...floatField,
+		key: "count",
+		label: "Count",
+		numberType: "integer" as const,
+		defaultValue: "2",
+	};
+
+	assert.equal(formDialogFieldRuntimeType(floatField), "float");
+	assert.equal(formDialogFieldRuntimeType(integerField), "integer");
+	assert.match(validateFormDialogFields([{ ...integerField, defaultValue: "2.5" }]).join("\n"), /whole signed integer/);
+});
+
+test("Form Dialog publishes display fields only for choice components", async () => {
+	const { createFormDialogChoice, createFormDialogField, deriveFormDialogDisplayFields } = await import(
+		"../data/nodes/form-dialog-fields.ts"
+	);
+	const dropdown = {
+		...createFormDialogField("dropdown"),
+		choices: [createFormDialogChoice("production", "Production")],
+		id: "environment",
+		key: "environment",
+		label: "Environment",
+	};
+	const multiChoice = {
+		...createFormDialogField("multi_choice"),
+		choices: [createFormDialogChoice("audit", "Audit log")],
+		id: "features",
+		key: "features",
+		label: "Features",
+	};
+	const text = { ...createFormDialogField("text"), id: "notes", key: "notes", label: "Notes" };
+
+	assert.deepEqual(deriveFormDialogDisplayFields([dropdown, multiChoice, text]), [
+		{ name: "environment", type: "string", description: "Environment" },
+		{ name: "features", type: "list", description: "Features" },
+	]);
+});
+
+test("a node cannot write a variable the manifest does not declare", async () => {
 	const { validatePackageJsonContracts } = await import("../utils/package-contract.ts");
 
-	// The inspector derives scope and type from the declaration and writes them
-	// back into the config, so the combination the package check rejects can no
-	// longer be produced by editing the node. This pins the rule being relied
-	// on: a mismatch is an error, and the derived values are what satisfies it.
-	const contract = (variableScope: string, operationScope: string, operationType: string) =>
+	// This used to check a node's scope and type against the declaration's.
+	// They cannot disagree now: a node carries neither, it names a declared
+	// variable and the declaration settles both. What is left to catch is a
+	// node naming a variable that was never declared, which the runner refuses
+	// to start, so an import that accepted one would only defer the failure.
+	const contract = (declaredName: string, writtenName: string) =>
 		validatePackageJsonContracts({
 			"manifest.json": {
-				variables: [{ name: "counter", scope: variableScope, type: "integer", value: 5, description: "" }],
+				variables: [{ name: declaredName, scope: "persistent", type: "integer", value: 5, description: "" }],
 			},
 			"program.json": {
 				entry: {
@@ -226,25 +309,22 @@ test("a declared variable settles the operation's scope and type", async () => {
 							{
 								id: "n-1",
 								action_type: "runtime.set_variable",
-								config: {
-									name: "counter",
-									operation: "set",
-									scope: operationScope,
-									valueType: operationType,
-									value: "9",
-								},
+								config: { name: writtenName, operation: "set", value: "9" },
 							},
 						],
 					},
 				},
 			},
-		} as never).filter((error) => error.includes("counter"));
+		} as never).filter((error) => error.includes(writtenName));
 
-	// What the inspector now produces for a declared persistent integer.
-	assert.deepEqual(contract("persistent", "persistent", "integer"), []);
-	// What it used to be possible to type by hand.
-	assert.notDeepEqual(contract("persistent", "runtime", "integer"), []);
-	assert.notDeepEqual(contract("persistent", "persistent", "string"), []);
+	assert.deepEqual(contract("counter", "counter"), []);
+
+	const undeclared = contract("counter", "tally");
+	assert.equal(undeclared.length, 1);
+	assert.match(undeclared[0] ?? "", /does not declare/);
+	// The message names the node as well as the variable, because a package
+	// with many writes is otherwise a hunt.
+	assert.match(undeclared[0] ?? "", /n-1/);
 });
 
 test("a trigger's overlap mode falls back to queue", async () => {
@@ -296,7 +376,8 @@ test("every system variable the picker offers is one the runner supplies", async
 	// a script reading one printed the braces in production. Anything the
 	// picker lists has to exist on the other side. The run-scoped fields are
 	// added by the runtime rather than this producer, and the live ones are
-	// read at reference time, so both are named where they are built.
+	// rewritten into the object at each node execution, so both are named
+	// where they are built.
 	const suppliedElsewhere = new Set(["run_id", "trigger_id", "trigger_type", "run_started_at", "datetime", "uptime"]);
 	for (const name of offered.filter((field) => !suppliedElsewhere.has(field))) {
 		assert.ok(producer.includes(`"${name}"`), `the runner must supply ${name}`);
@@ -395,6 +476,99 @@ test("the Format Text node renders a datetime from the input", async () => {
 	}
 });
 
+test("the Format Text node renders durations from integer and float inputs", async () => {
+	const { executeTextTransform } = await import("../data/nodes/definitions/actions/format-text.ts");
+	const resolveTemplate = (value: string): JsonValue => {
+		if (value === "{{seconds}}") return 90_061;
+		if (value === "{{fractional_seconds}}") return 1.2345;
+		return value;
+	};
+
+	const integer = await executeTextTransform({
+		config: {
+			input: "{{seconds}}",
+			operations: [
+				{
+					...createTextTransformOperationRow("format_duration"),
+					durationUnit: "seconds",
+					pattern: "D HH:mm:ss",
+				},
+			],
+		},
+		resolveTemplate,
+	});
+	assert.deepEqual(integer, { ok: true, output: { text: "1 01:01:01", items: [] } });
+
+	const float = await executeTextTransform({
+		config: {
+			input: "{{fractional_seconds}}",
+			operations: [
+				{
+					...createTextTransformOperationRow("format_duration"),
+					durationUnit: "seconds",
+					pattern: "ss.SSS",
+				},
+			],
+		},
+		resolveTemplate,
+	});
+	assert.deepEqual(float, { ok: true, output: { text: "01.235", items: [] } });
+});
+
+test("a text format operation survives export and matches the runner schema", async () => {
+	const { textTransformOperationOptions } = await import("../data/nodes/definitions/options.ts");
+	const { sanitizeNodeConfig, validateNodeConfig } = await import("../data/nodes/registry.ts");
+	const schema = JSON.parse(
+		readFileSync(join(appRoot, "contracts", "nodes", "action-text-format.schema.json"), "utf8"),
+	) as {
+		$defs: { config: { properties: { operations: { items: { properties: { operation: { enum: string[] } } } } } } };
+	};
+	const accepted = schema.$defs.config.properties.operations.items.properties.operation.enum;
+
+	// Every operation the editor offers has to be one the runner will accept.
+	// format_datetime was offered for a while without being listed here, so a
+	// script using it exported cleanly and was then refused at install.
+	assert.deepEqual(textTransformOperationOptions.map((option) => option.value).toSorted(), [...accepted].toSorted());
+
+	// Export keeps the pattern. It used to be dropped, so the operation reached
+	// the package carrying only its id and name.
+	const exported = sanitizeNodeConfig("action.text.format", {
+		input: "{{@system.datetime}}",
+		operations: [{ id: "op-1", operation: "format_datetime", pattern: "HH:mm:ss" }],
+	}) as { operations: { pattern?: string }[] };
+	assert.equal(exported.operations[0]?.pattern, "HH:mm:ss");
+
+	const exportedDuration = sanitizeNodeConfig("action.text.format", {
+		input: "{{seconds}}",
+		operations: [{ id: "op-duration", operation: "format_duration", durationUnit: "seconds", pattern: "HH:mm:ss" }],
+	}) as { operations: { durationUnit?: string; pattern?: string }[] };
+	assert.deepEqual(exportedDuration.operations[0], {
+		id: "op-duration",
+		operation: "format_duration",
+		durationUnit: "seconds",
+		pattern: "HH:mm:ss",
+	});
+
+	// And a missing pattern is caught before export rather than at run time.
+	const missing = validateNodeConfig("action.text.format", {
+		input: "{{@system.datetime}}",
+		operations: [{ id: "op-1", operation: "format_datetime", pattern: "" }],
+	});
+	assert.ok(
+		missing.some((error) => /format pattern/i.test(error)),
+		`a missing datetime pattern must be reported, got ${JSON.stringify(missing)}`,
+	);
+
+	const invalidDurationUnit = validateNodeConfig("action.text.format", {
+		input: "{{seconds}}",
+		operations: [{ id: "op-duration", operation: "format_duration", durationUnit: "weeks", pattern: "HH:mm:ss" }],
+	});
+	assert.ok(
+		invalidDurationUnit.some((error) => /duration unit/i.test(error)),
+		`an invalid duration unit must be reported, got ${JSON.stringify(invalidDurationUnit)}`,
+	);
+});
+
 test("the simulator agrees with the shared datetime format fixtures", async () => {
 	const { datetimeFormatTokenGroups, formatDatetime, validateDatetimePattern } = await import(
 		"../data/project/datetime-format.ts"
@@ -422,6 +596,91 @@ test("the simulator agrees with the shared datetime format fixtures", async () =
 		}
 		assert.equal(problem, "", `${testCase.pattern} should be valid: ${testCase.reason}`);
 		assert.equal(formatDatetime(value, testCase.pattern), testCase.result, `${testCase.pattern}: ${testCase.reason}`);
+	}
+});
+
+test("the simulator agrees with the shared duration format fixtures", async () => {
+	const { durationFormatTokenGroups, formatDuration, validateDurationPattern } = await import(
+		"../data/project/duration-format.ts"
+	);
+	const { durationUnitOptions } = await import("../data/nodes/definitions/options.ts");
+	const conformance = JSON.parse(
+		readFileSync(join(appRoot, "contracts", "duration-format-conformance.json"), "utf8"),
+	) as {
+		cases: { amount: number; error?: boolean; pattern: string; reason: string; result?: string; unit: string }[];
+		tokens: string[];
+		units: string[];
+		version: number;
+	};
+	assert.equal(conformance.version, 1);
+	assert.deepEqual(conformance.units, ["milliseconds", "seconds", "minutes", "hours", "days"]);
+	assert.deepEqual(
+		durationUnitOptions.map((option) => option.value),
+		conformance.units,
+		"the unit picker, shared contract, and runner must expose the same units",
+	);
+	const ours = durationFormatTokenGroups.flatMap((group) => group.tokens.map((entry) => entry.token));
+	assert.deepEqual([...conformance.tokens].sort(), [...ours].sort());
+
+	for (const testCase of conformance.cases) {
+		const problem = validateDurationPattern(testCase.pattern);
+		if (testCase.error) {
+			assert.notEqual(problem, "", `${testCase.pattern} should be refused: ${testCase.reason}`);
+			continue;
+		}
+		assert.equal(problem, "", `${testCase.pattern} should be valid: ${testCase.reason}`);
+		assert.equal(
+			formatDuration(testCase.amount, testCase.unit, testCase.pattern),
+			testCase.result,
+			`${testCase.pattern}: ${testCase.reason}`,
+		);
+	}
+});
+
+test("the simulator agrees with the shared clear and reset fixtures", async () => {
+	const { getClearedSimulationValue } = await import("../data/nodes/definitions/actions/variable-operation.ts");
+	const { createEmptyTypedValue } = await import("../data/project/typed-values.ts");
+	const conformance = JSON.parse(
+		readFileSync(join(appRoot, "contracts", "variable-declaration-conformance.json"), "utf8"),
+	) as {
+		cases: {
+			clearAndReset: {
+				clear: JsonValue | null;
+				declared: { itemType?: string; type: string; value: JsonValue };
+				name: string;
+				reset: JsonValue;
+				stored: JsonValue;
+			}[];
+		};
+		version: number;
+	};
+	assert.equal(conformance.version, 1);
+
+	for (const testCase of conformance.cases.clearAndReset) {
+		// Reset writes the declared value verbatim, so the fixture's reset is
+		// the declaration's own value. Stating both in the fixture is what lets
+		// the runner check the same thing without knowing this rule.
+		assert.deepEqual(testCase.reset, testCase.declared.value, `${testCase.name}: reset is the declared value`);
+
+		const type = testCase.declared.type as VariableType;
+		if (testCase.clear === null) {
+			// A hotkey has no empty value. The editor keeps Clear off the menu
+			// for one rather than offering an operation with no answer.
+			assert.equal(type, "hotkey", `only a hotkey may refuse clear, not ${testCase.name}`);
+			continue;
+		}
+		assert.deepEqual(getClearedSimulationValue(type), testCase.clear, `${testCase.name}: clear empties for the type`);
+
+		// The value a new declaration starts at must be the same value clear
+		// returns it to. This went unchecked before, and the two had drifted: a
+		// colour started at "" and cleared to "#000000", and a datetime started
+		// at the current instant and cleared to the epoch — so a fresh
+		// declaration held a value its own clear could not reproduce.
+		assert.deepEqual(
+			createEmptyTypedValue(type, testCase.declared.itemType as never),
+			testCase.clear,
+			`${testCase.name}: a new declaration starts at the empty value for its type`,
+		);
 	}
 });
 

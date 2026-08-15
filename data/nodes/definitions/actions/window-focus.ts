@@ -35,6 +35,7 @@ export const windowFocusNode = defineNode({
 	icon: AppWindow,
 	kind: "action",
 	label: "Window Focus",
+	portPolicy: { kind: "fixed", inputs: ["input"], outputs: ["focused", "not_found", "failed"] },
 	permission: { name: "window.focus", risk: "high" },
 	risk: "high",
 	supportedTargetRuntimes: ["Windows Desktop"],

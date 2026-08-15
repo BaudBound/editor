@@ -5,6 +5,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 export type ComboboxOption = {
+	/** Optional second line, for telling similarly named options apart. */
+	description?: string;
 	label: string;
 	value: string;
 };
@@ -161,9 +163,13 @@ export function OptionCombobox({
 										"relative flex min-h-8 w-full cursor-pointer items-center rounded-md py-0 pr-8 pl-2 text-left text-sm leading-none outline-none select-none",
 										highlighted && "bg-baud-soft text-baud-text",
 										selected ? "text-baud-text" : "text-baud-muted",
+										option.description && "flex-col items-start justify-center gap-0.5 py-1.5",
 									)}
 								>
-									<span className="flex min-h-8 min-w-0 items-center truncate">{option.label}</span>
+									<span className="flex min-w-0 max-w-full items-center truncate">{option.label}</span>
+									{option.description && (
+										<span className="min-w-0 max-w-full truncate text-xs text-baud-muted">{option.description}</span>
+									)}
 									{selected && (
 										<span className="absolute right-2 flex size-4 items-center justify-center text-baud-red">
 											<CheckIcon className="size-4" />

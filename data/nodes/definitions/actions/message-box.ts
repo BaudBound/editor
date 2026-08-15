@@ -65,6 +65,19 @@ export const messageBoxNode = defineNode({
 	icon: MessageSquareWarning,
 	kind: "action",
 	label: "Message Dialog",
+	portPolicy: {
+		kind: "fixed",
+		inputs: ["input"],
+		outputs: ["ok", "cancel", "confirm", "yes", "no", "timed_out", "failed"],
+	},
+	derivePorts: (config) => ({
+		inputs: [{ id: "input", label: "input" }],
+		outputs: [
+			...getMessageBoxPortButtons(configString(config, "buttons")).map((id) => ({ id, label: id })),
+			...(configString(config, "timeoutSeconds").trim() ? [{ id: "timed_out", label: "timed_out" }] : []),
+			{ id: "failed", label: "failed" },
+		],
+	}),
 	permission: { name: "messageBox.show", risk: "medium" },
 	risk: "medium",
 	runtimeOutputs: [
@@ -189,6 +202,14 @@ function getMessageBoxButtons(value: string) {
 			return ["ok"];
 		default:
 			throw new Error(`Message Dialog received an unsupported button set: ${JSON.stringify(value)}.`);
+	}
+}
+
+function getMessageBoxPortButtons(value: string) {
+	try {
+		return getMessageBoxButtons(value || "ok");
+	} catch {
+		return ["ok"];
 	}
 }
 

@@ -35,6 +35,7 @@ export const processStatusNode = defineNode({
 	icon: BadgeInfo,
 	kind: "action",
 	label: "Process Status",
+	portPolicy: { kind: "fixed", inputs: ["input"], outputs: ["running", "not_running", "failed"] },
 	permission: { name: "process.query", risk: "medium" },
 	risk: "medium",
 	runtimeOutputs: fallible(processStatusRuntimeOutputs()),

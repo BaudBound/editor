@@ -13,7 +13,7 @@ import { variableTypes } from "@/data/project/variables";
 import {
 	type ActionType,
 	type AssetKind,
-	type DefaultVariable,
+	type DeclaredVariable,
 	type EditorAsset,
 	type EditorComment,
 	type JsonValue,
@@ -33,7 +33,7 @@ export type StoredProjectRecord = {
 	assets: StoredAssetMetadata[];
 	comments: EditorComment[];
 	createdAt: string;
-	defaultVariables: DefaultVariable[];
+	declaredVariables: DeclaredVariable[];
 	edgeStyle: EditorEdgeStyle;
 	edges: StoredEdge[];
 	id: string;
@@ -89,7 +89,7 @@ export function toStoredProject(project: EditorProject): StoredProjectRecord {
 		assets: project.assets.map(toStoredAssetMetadata),
 		comments: project.comments.map(cloneEditorComment),
 		createdAt: project.identity.createdAt,
-		defaultVariables: structuredClone(project.defaultVariables),
+		declaredVariables: structuredClone(project.declaredVariables),
 		edgeStyle: project.edgeStyle,
 		edges: project.edges.map(toStoredEdge),
 		id: project.identity.id,
@@ -147,15 +147,16 @@ export function hydrateProject(recordValue: unknown, assetValues: unknown[]): Ed
 			}),
 		};
 	});
+	const nodes = record.nodes.map(fromStoredNode);
 
 	return {
 		assets,
 		comments: record.comments,
-		defaultVariables: record.defaultVariables,
+		declaredVariables: record.declaredVariables,
 		edgeStyle: record.edgeStyle,
 		edges: record.edges.map(fromStoredEdge),
 		identity: { id: record.id, createdAt: record.createdAt },
-		nodes: record.nodes.map(fromStoredNode),
+		nodes,
 		revision: record.revision,
 		schemaVersion: editorProjectSchemaVersion,
 		secretDeclarations: record.secretDeclarations,
@@ -185,7 +186,7 @@ export function projectContentSignature(project: EditorProject) {
 	return JSON.stringify({
 		assets: stored.assets,
 		comments: stored.comments,
-		defaultVariables: stored.defaultVariables,
+		declaredVariables: stored.declaredVariables,
 		edgeStyle: stored.edgeStyle,
 		edges: stored.edges,
 		nodes: stored.nodes,
@@ -297,14 +298,14 @@ function requireStoredProjectRecord(value: unknown): StoredProjectRecord {
 		!Array.isArray(value.assets) ||
 		!Array.isArray(value.secretDeclarations) ||
 		!Array.isArray(value.scriptSettings) ||
-		!Array.isArray(value.defaultVariables) ||
+		!Array.isArray(value.declaredVariables) ||
 		!value.nodes.every(isStoredNode) ||
 		!value.edges.every(isStoredEdge) ||
 		!value.comments.every(isEditorComment) ||
 		!value.assets.every(isStoredAssetMetadata) ||
 		!value.secretDeclarations.every(isSecretDeclaration) ||
 		!value.scriptSettings.every(isScriptSetting) ||
-		!value.defaultVariables.every(isDefaultVariable) ||
+		!value.declaredVariables.every(isDeclaredVariable) ||
 		typeof value.edgeStyle !== "string" ||
 		!isEditorEdgeStyle(value.edgeStyle)
 	) {
@@ -362,9 +363,9 @@ function migrateStoredProjectRecord(value: unknown): unknown {
 		nodes: Array.isArray(value.nodes) ? value.nodes.map(migrateStoredNode) : value.nodes,
 		schemaVersion: editorProjectSchemaVersion,
 		scriptSettings: Array.isArray(value.scriptSettings) ? value.scriptSettings.map(migrateStoredTypedDeclaration) : [],
-		defaultVariables: Array.isArray(value.defaultVariables)
-			? value.defaultVariables.map(migrateStoredTypedDeclaration)
-			: value.defaultVariables,
+		declaredVariables: Array.isArray(value.declaredVariables)
+			? value.declaredVariables.map(migrateStoredTypedDeclaration)
+			: value.declaredVariables,
 		secretDeclarations: Array.isArray(value.secretDeclarations)
 			? value.secretDeclarations.map((declaration) =>
 					isRecord(declaration) ? { ...declaration, type: "string" } : declaration,
@@ -590,7 +591,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function isDefaultVariable(value: unknown): value is DefaultVariable {
+export function isDeclaredVariable(value: unknown): value is DeclaredVariable {
 	const type = isRecord(value) && typeof value.type === "string" ? value.type : "";
 	const itemType = isRecord(value) ? normalizeListItemType(value.itemType) : undefined;
 	return (
@@ -598,10 +599,10 @@ export function isDefaultVariable(value: unknown): value is DefaultVariable {
 		typeof value.name === "string" &&
 		typeof value.description === "string" &&
 		(value.scope === "runtime" || value.scope === "persistent") &&
-		variableTypes.includes(type as DefaultVariable["type"]) &&
+		variableTypes.includes(type as DeclaredVariable["type"]) &&
 		(type === "list" ? !!itemType : value.itemType === undefined) &&
 		isJsonValue(value.value) &&
-		validateTypedValue(type as DefaultVariable["type"], value.value, itemType) === null
+		validateTypedValue(type as DeclaredVariable["type"], value.value, itemType) === null
 	);
 }
 

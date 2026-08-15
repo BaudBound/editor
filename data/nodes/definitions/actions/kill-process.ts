@@ -35,6 +35,7 @@ export const killProcessNode = defineNode({
 	icon: Skull,
 	kind: "action",
 	label: "Kill Process",
+	portPolicy: { kind: "fixed", inputs: ["input"], outputs: ["killed", "not_found", "failed"] },
 	permission: { name: "process.kill", risk: "high" },
 	risk: "high",
 	runtimeOutputs: fallible([

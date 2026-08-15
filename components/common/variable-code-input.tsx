@@ -452,7 +452,7 @@ function renderHighlightedValue(value: string, variables: VariableCompletion[], 
 				data-variable-token={normalizedName}
 				data-variable-status={displayStatus}
 				className={cn(
-					"rounded-sm px-0.5 font-semibold",
+					"rounded-sm",
 					displayStatus === "known" && "bg-emerald-400/20 text-emerald-300",
 					displayStatus === "possible" && "bg-amber-400/20 text-amber-300",
 					displayStatus === "type-mismatch" && "bg-cyan-400/20 text-cyan-300",

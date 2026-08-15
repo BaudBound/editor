@@ -110,10 +110,11 @@ export function filterCompatibleVariables<TVariable extends VariableReferenceCan
 	return variables.filter((variable) => isVariableTypeCompatible(variable.type, contract));
 }
 
-// Matching is exact. There is no subtyping, so a color is not usable where a
-// string is required. Moving between types is done with an explicit cast.
+// Matching is exact unless a field explicitly lists multiple accepted types.
+// There is no subtyping, so a color is not usable where a string is required.
+// Moving between types is done with an explicit cast.
 export function isVariableTypeCompatible(type: VariableReferenceCandidate["type"], contract: VariableInputContract) {
-	return contract === "any" || type === contract;
+	return contract === "any" || (isVariableTypeList(contract) ? contract.includes(type) : type === contract);
 }
 
 /**
@@ -173,13 +174,13 @@ export function validateVariableReferenceTypes(
 
 		const variable = variables.find((candidate) => candidate.name === reference);
 		if (variable && !isVariableTypeCompatible(variable.type, contract)) {
-			return `Variable "${reference}" has type ${variable.type}; this field accepts ${formatVariableInputContract(contract)} variables. Add a cast such as {{${reference}|${contract}}} to convert it.`;
+			return `Variable "${reference}" has type ${variable.type}; this field accepts ${formatVariableInputContract(contract)} variables. Add a cast such as {{${reference}|${castSuggestionTarget(contract)}}} to convert it.`;
 		}
 		if (!variable && contract !== "any" && getVariableReferenceStatus(reference, variables) === "possible") {
 			// Reading into an object or a list gives a value whose type nothing
 			// can know before the script runs, so a cast is the only way to say
 			// what it holds. Name it here: this is otherwise a dead end.
-			return `Variable "${reference}" has a type that is only known when the script runs; this field accepts ${formatVariableInputContract(contract)} variables. Add a cast such as {{${reference}|${contract}}} to declare what it holds.`;
+			return `Variable "${reference}" has a type that is only known when the script runs; this field accepts ${formatVariableInputContract(contract)} variables. Add a cast such as {{${reference}|${castSuggestionTarget(contract)}}} to declare what it holds.`;
 		}
 	}
 
@@ -260,7 +261,31 @@ function isFullTemplateReference(value: string) {
 }
 
 export function formatVariableInputContract(contract: VariableInputContract) {
-	return contract.replace("-", " ");
+	if (contract === "any") {
+		return contract;
+	}
+	if (isVariableTypeList(contract)) {
+		return contract.map(formatVariableType).join(" or ");
+	}
+	return formatVariableType(contract);
+}
+
+function castSuggestionTarget(contract: VariableInputContract) {
+	if (contract === "any") {
+		return "string";
+	}
+	if (isVariableTypeList(contract)) {
+		return contract.includes("float") ? "float" : (contract[0] ?? "string");
+	}
+	return contract;
+}
+
+function isVariableTypeList(contract: VariableInputContract): contract is readonly VariableType[] {
+	return Array.isArray(contract);
+}
+
+function formatVariableType(type: VariableType) {
+	return type.replace("-", " ");
 }
 
 function sentence(value: string) {

@@ -52,6 +52,11 @@ export const runProcessNode = defineNode({
 	icon: Code,
 	kind: "action",
 	label: "Run Process",
+	portPolicy: {
+		kind: "fixed",
+		inputs: ["input"],
+		outputs: ["exited_zero", "exited_nonzero", "timed_out", "failed"],
+	},
 	permission: { name: "process.run", risk: "dangerous" },
 	risk: "dangerous",
 	runtimeOutputs: fallible([

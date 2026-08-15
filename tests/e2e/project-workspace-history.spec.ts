@@ -112,7 +112,7 @@ test("history restores project settings, variables, secrets, comments, and edge 
 	await expect(page.getByText("Windows Desktop, Linux Desktop", { exact: true })).toBeVisible();
 
 	await page.getByRole("button", { name: "Open project settings" }).click();
-	await page.getByRole("tab", { name: "Default Variables" }).click();
+	await page.getByRole("tab", { name: "Variables" }).click();
 	await page.getByRole("button", { name: "Add variable" }).click();
 	const variableDialog = page.getByRole("dialog");
 	await variableDialog.getByRole("textbox", { name: "Name" }).fill("history_value");
@@ -137,7 +137,7 @@ test("history restores project settings, variables, secrets, comments, and edge 
 	await expect(page.locator('[data-variable-name="history_secret"]')).toBeVisible();
 
 	await page.getByRole("button", { name: "Open project settings" }).click();
-	await page.getByRole("tab", { name: "Default Variables" }).click();
+	await page.getByRole("tab", { name: "Variables" }).click();
 	await page.getByRole("button", { name: "Delete history_value" }).click();
 	await page.getByRole("tab", { name: "Secrets" }).click();
 	await page.getByRole("button", { name: "Delete history_secret" }).click();
@@ -251,7 +251,7 @@ test("history restores dynamic switch rows and their edited values", async ({ pa
 	const switchNode = page.locator(".react-flow__node").filter({ hasText: "Switch" }).first();
 	const cases = page.getByRole("list", { name: "Switch cases" }).locator("li");
 	await expect(cases).toHaveCount(1);
-	await expect(switchNode).toContainText("default");
+	await expect(switchNode).toContainText("Default");
 
 	await page.getByRole("button", { name: "Add switch case" }).click();
 	await expect(cases).toHaveCount(2);
@@ -403,9 +403,17 @@ test("one multi-node drag is restored as one history transaction", async ({ page
 		x: Math.min(initialLogBox.x, initialHttpBox.x) - 12,
 		y: Math.min(initialLogBox.y, initialHttpBox.y) - 12,
 	};
+	// A node is taller than the pane once it names every outcome it can reach,
+	// so the box that encloses both nodes reaches past the bottom of the pane.
+	// Dragging there makes React Flow auto-pan the canvas, which moves every
+	// node on screen and makes the drag measured below meaningless. Partial
+	// selection is enough to catch both nodes, so the box stops inside the pane.
 	const selectionEnd = {
 		x: Math.max(initialLogBox.x + initialLogBox.width, initialHttpBox.x + initialHttpBox.width) + 12,
-		y: Math.max(initialLogBox.y + initialLogBox.height, initialHttpBox.y + initialHttpBox.height) + 12,
+		y: Math.min(
+			Math.max(initialLogBox.y + initialLogBox.height, initialHttpBox.y + initialHttpBox.height) + 12,
+			paneBox.y + paneBox.height - 48,
+		),
 	};
 	await page.keyboard.down("Control");
 	await page.mouse.move(selectionStart.x, selectionStart.y);

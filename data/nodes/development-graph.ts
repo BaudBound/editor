@@ -15,8 +15,8 @@ export function createDevelopmentEditorNodes(center?: XYPosition): Node<ScriptNo
 
 	const paletteItems = getFlatPaletteItems();
 	const columns = 5;
-	const columnGap = 300;
-	const rowGap = 200;
+	const columnGap = 480;
+	const rowGap = 300;
 	const totalRows = Math.ceil(paletteItems.length / columns);
 	const gridWidth = (Math.min(columns, paletteItems.length) - 1) * columnGap;
 	const gridHeight = Math.max(0, totalRows - 1) * rowGap;

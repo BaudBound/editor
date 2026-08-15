@@ -6,6 +6,7 @@ import type { SimulationFormDialogField, SimulationSideEffect } from "@/utils/si
 import { colorValueToHex } from "../../color-match";
 import { validateVariableInput } from "../../config-field-validation";
 import {
+	deriveFormDialogDisplayFields,
 	deriveFormDialogValueFields,
 	FORM_DIALOG_MAX_CHOICE_CHARS,
 	FORM_DIALOG_MAX_DEFAULT_CHARS,
@@ -23,7 +24,7 @@ import {
 	validateFormDialogFields,
 } from "../../form-dialog-fields";
 import { defineNode } from "../../node-definition";
-import { runtimeNumberContract, validateNumericConfigValue } from "../../numeric-validation";
+import { runtimeIntegerContract, runtimeNumberContract, validateNumericConfigValue } from "../../numeric-validation";
 import { desktopDialogSizeOptions } from "../options";
 import { fallible } from "../runtime-outputs";
 import { configString, requiredConfig } from "../validators";
@@ -90,17 +91,29 @@ export const formDialogNode = defineNode({
 		fields: [],
 		timeoutSeconds: "",
 	}),
-	deriveRuntimeOutputs: (config) =>
-		fallible([
+	deriveRuntimeOutputs: (config) => {
+		const displayFields = deriveFormDialogDisplayFields(config.fields);
+		return fallible([
 			{
 				name: "values",
 				type: "object",
 				description: "Submitted form values keyed by the configured component keys.",
 				fields: deriveFormDialogValueFields(config.fields),
 			},
+			...(displayFields.length > 0
+				? [
+						{
+							name: "display",
+							type: "object" as const,
+							description: "Displayed labels for submitted choice components, keyed by configured component keys.",
+							fields: displayFields,
+						},
+					]
+				: []),
 			{ name: "submitted", type: "boolean", description: "Whether the user submitted the form." },
 			{ name: "button", type: "string", description: "Dialog result: ok, cancel, or timeout." },
-		]),
+		]);
+	},
 	description: "Show a typed form in a separate desktop window and return the submitted values.",
 	desktopOnly: true,
 	fallible: true,
@@ -108,6 +121,7 @@ export const formDialogNode = defineNode({
 	icon: MessageSquareText,
 	kind: "action",
 	label: "Form Dialog",
+	portPolicy: { kind: "fixed", inputs: ["input"], outputs: ["submitted", "cancelled", "timed_out", "failed"] },
 	permission: { name: "formDialog.show", risk: "medium" },
 	risk: "medium",
 	runnerType: "form_dialog",
@@ -155,8 +169,10 @@ export const formDialogNode = defineNode({
 		afterExecute: ({ context, node, sideEffectResults }) => {
 			const result = sideEffectResults.find((entry) => entry.type === "form_dialog" && entry.nodeId === node.id);
 			if (!result || result.type !== "form_dialog") return [];
+			const hasChoiceFields = getFormDialogFields(node.data.config.fields).some((field) => usesChoices(field.type));
 			context.nodeOutputs[node.id] = {
 				values: result.values,
+				...(result.display ? { display: result.display } : hasChoiceFields ? { display: {} } : {}),
 				submitted: result.submitted,
 				button: result.button,
 			};
@@ -384,13 +400,18 @@ function resolveSimulationFields(
 			const numberText = typeof defaultValue === "number" ? String(defaultValue) : defaultValue;
 			if (
 				typeof numberText !== "string" ||
-				(numberText.trim() && validateNumericConfigValue(numberText, runtimeNumberContract))
+				(numberText.trim() &&
+					validateNumericConfigValue(
+						numberText,
+						field.numberType === "integer" ? runtimeIntegerContract : runtimeNumberContract,
+					))
 			) {
-				return `${prefix} default value must resolve to a supported finite number.`;
+				return `${prefix} default value must resolve to a supported ${field.numberType}.`;
 			}
 			resolved.push({
 				...common,
 				defaultValue: numberText.trim() ? Number(numberText) : "",
+				numberType: field.numberType,
 				placeholder,
 				type: "number",
 			});
@@ -448,7 +469,7 @@ function validateFormDialogVariableInputs(
 				inputs.push([`choice ${choiceIndex + 1} displayed value`, choice.displayValue, "string"]);
 			}
 		}
-		if (field.type === "number") inputs.push(["default value", field.defaultValue, "float"]);
+		if (field.type === "number") inputs.push(["default value", field.defaultValue, field.numberType]);
 		else if (field.type === "color") inputs.push(["default color", field.defaultValue, "color"]);
 		else if (field.type === "date" || field.type === "time" || field.type === "datetime") {
 			inputs.push(["default value", field.defaultValue, "datetime"]);

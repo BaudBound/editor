@@ -461,31 +461,55 @@ export function getNodeConfigFields(actionType: ActionType) {
 
 export function getNodePorts(actionType: ActionType, config?: Record<string, JsonValue>) {
 	const definition = getNodeDefinition(actionType);
+	if (definition?.derivePorts) {
+		return formatNodePorts(definition.derivePorts(config ?? {}));
+	}
 	if (definition?.portPolicy?.kind === "fixed") {
-		return {
+		return formatNodePorts({
 			inputs: definition.portPolicy.inputs.map((id) => ({ id, label: id })),
 			outputs: definition.portPolicy.outputs.map((id) => ({ id, label: id })),
-		};
+		});
 	}
 	if (definition?.portPolicy?.kind === "switch-cases") {
-		return {
+		return formatNodePorts({
 			inputs: [defaultInputPort],
 			outputs: createSwitchOutputPorts(
 				getSwitchCaseRowsFromValue(config?.[definition.portPolicy.configKey]),
 				definition.portPolicy.defaultOutput,
 			),
-		};
+		});
 	}
 
 	if (actionType.startsWith("trigger.")) {
-		return { inputs: [], outputs: [triggerOutputPort] };
+		return formatNodePorts({ inputs: [], outputs: [triggerOutputPort] });
 	}
 
 	if (definition?.fallible) {
-		return { inputs: [defaultInputPort], outputs: [...fallibleActionOutputs] };
+		return formatNodePorts({ inputs: [defaultInputPort], outputs: [...fallibleActionOutputs] });
 	}
 
-	return { inputs: [defaultInputPort], outputs: [defaultOutputPort] };
+	return formatNodePorts({ inputs: [defaultInputPort], outputs: [defaultOutputPort] });
+}
+
+function formatNodePorts(ports: { inputs: { id: string; label: string }[]; outputs: { id: string; label: string }[] }) {
+	return {
+		inputs: ports.inputs.map(formatNodePort),
+		outputs: ports.outputs.map(formatNodePort),
+	};
+}
+
+function formatNodePort(port: { id: string; label: string }) {
+	return { ...port, label: formatPortLabel(port.label || port.id) };
+}
+
+function formatPortLabel(value: string) {
+	const conciseLabels: Record<string, string> = {
+		connection_closed: "Closed",
+		device_unavailable: "Unavailable",
+	};
+	if (conciseLabels[value]) return conciseLabels[value];
+
+	return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 export function getRuntimeDataOutputs(actionType: ActionType, config: Record<string, JsonValue> = {}) {
@@ -505,23 +529,31 @@ export function getRuntimeDataOutputs(actionType: ActionType, config: Record<str
 	return definition.fallible ? [failureErrorOutput] : [];
 }
 
-export function getNodeCapabilities(actionType: ActionType, config: Record<string, JsonValue> = {}) {
+export function getNodeCapabilities(
+	actionType: ActionType,
+	config: Record<string, JsonValue> = {},
+	declaredScope?: string,
+) {
 	const definition = getNodeDefinition(actionType);
-	return definition?.deriveCapabilities?.(config) ?? definition?.capabilities ?? [];
+	return definition?.deriveCapabilities?.(config, declaredScope) ?? definition?.capabilities ?? [];
 }
 
 export function getNodePermission(actionType: ActionType) {
 	return getNodeDefinition(actionType)?.permission;
 }
 
-export function getNodePermissions(actionType: ActionType, config: Record<string, JsonValue> = {}) {
+export function getNodePermissions(
+	actionType: ActionType,
+	config: Record<string, JsonValue> = {},
+	declaredScope?: string,
+) {
 	const definition = getNodeDefinition(actionType);
 	if (!definition) {
 		return [];
 	}
 
 	if (definition.derivePermissions) {
-		return definition.derivePermissions(config);
+		return definition.derivePermissions(config, declaredScope);
 	}
 
 	const pathRules = definition.permissionPathRules ?? [];

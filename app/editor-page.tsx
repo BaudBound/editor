@@ -10,7 +10,6 @@ import {
 } from "@xyflow/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { flushSync } from "react-dom";
 import {
 	areCommentNodeDataEqual,
 	createCommentFlowNode,
@@ -30,7 +29,7 @@ import { AssetEditorModal } from "@/components/modals/asset-editor-modal";
 import { ExportWizardModal } from "@/components/modals/export-wizard-modal";
 import { HelpModal } from "@/components/modals/help-modal";
 import { NodeFinderModal } from "@/components/modals/node-finder-modal";
-import { ProjectSettingsModal } from "@/components/modals/project-settings-modal";
+import { ProjectSettingsModal, type ProjectSettingsTab } from "@/components/modals/project-settings-modal";
 import { SimulationFormDialog } from "@/components/modals/simulation-form-dialog";
 import { SimulationMessageBoxDialog } from "@/components/modals/simulation-message-box-dialog";
 import { SimulationNetworkAuthorizationDialog } from "@/components/modals/simulation-network-authorization-dialog";
@@ -39,6 +38,7 @@ import { VerificationModal } from "@/components/modals/verification-modal";
 import { SaveRecoveryDialog } from "@/components/projects/save-recovery-dialog";
 import { UnsavedChangesDialog } from "@/components/projects/unsaved-changes-dialog";
 import { BlockLibrary } from "@/components/shell/block-library";
+import { DeclaredVariableDialog } from "@/components/shell/declared-variable-dialog";
 import { type BottomPanelTab, OutputConsole } from "@/components/shell/output-console";
 import { ResizeHandle } from "@/components/shell/resize-handle";
 import { StatusBar } from "@/components/shell/status-bar";
@@ -51,6 +51,8 @@ import { createDevelopmentEditorNodes, isDevelopmentGraphEnabled } from "@/data/
 import { createNodeFromPaletteItem, getFlatPaletteItems, getRuntimeDataOutputs } from "@/data/nodes/registry";
 import { getScriptSettingSimulationProblems } from "@/data/project/script-settings";
 import { createSimulationSecretValues, getSecretSimulationProblems } from "@/data/project/secrets";
+import { createEmptyTypedValue } from "@/data/project/typed-values";
+import { getVariableOperationFixedType, normalizeVariableOperation } from "@/data/project/variables";
 import { getProjectHistoryCoalesceKey } from "@/data/projects/history";
 import type { EditorProject } from "@/data/projects/model";
 import { projectContentSignature } from "@/data/projects/serialization";
@@ -60,7 +62,7 @@ import { useEditorShortcuts } from "@/hooks/use-editor-shortcuts";
 import { useProjectSaveLifecycle } from "@/hooks/use-project-save-lifecycle";
 import type {
 	CommentNodeData,
-	DefaultVariable,
+	DeclaredVariable,
 	EditorAsset,
 	InspectorTab,
 	JsonValue,
@@ -100,7 +102,7 @@ import {
 	reorderEdgeExecutionGroup,
 } from "@/utils/editor-graph";
 import { truncateLogEntry, truncateSimulationTrace } from "@/utils/editor-log";
-import { createVariablePanelEntries } from "@/utils/editor-variables";
+import { createEditorVariableRegistry, createVariablePanelEntries } from "@/utils/editor-variables";
 import {
 	createSimulationRun,
 	type SimulationSideEffect,
@@ -209,6 +211,11 @@ type SimulationLifecycle = {
 	runId: number;
 };
 
+type QueuedSimulationStep = {
+	runId: number;
+	step: SimulationStep;
+};
+
 const MAX_OUTPUT_LOG_ENTRIES = 800;
 const MAX_SIMULATION_LOG_ENTRIES = 800;
 const paletteItemByActionType: ReadonlyMap<string, PaletteItem> = new Map(
@@ -230,6 +237,8 @@ export function EditorPage({
 		authorizedHttpOrigins: new Set(),
 		runId: 0,
 	});
+	const queuedSimulationStepsRef = useRef<QueuedSimulationStep[]>([]);
+	const simulationUpdateFrameRef = useRef<number | null>(null);
 	const simulationMessageBoxResolveRef = useRef<((button: string) => void) | null>(null);
 	const simulationFormDialogResolveRef = useRef<
 		((result: SimulationFormDialogResult | "aborted" | "replaced") => void) | null
@@ -237,7 +246,7 @@ export function EditorPage({
 	const simulationNetworkAuthorizationResolveRef = useRef<((authorized: boolean) => void) | null>(null);
 	const simulationPersistentVariablesRef = useRef<Record<string, JsonValue>>(
 		Object.fromEntries(
-			initialProject.defaultVariables
+			initialProject.declaredVariables
 				.filter((variable) => variable.scope === "persistent")
 				.map((variable) => [variable.name, structuredClone(variable.value)]),
 		),
@@ -277,6 +286,15 @@ export function EditorPage({
 		title: "",
 	});
 	const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
+	// Which tab Settings opens on. The Variable Operation node sends the user
+	// here to declare a variable, and landing on General would make them find
+	// the tab themselves.
+	const [projectSettingsTab, setProjectSettingsTab] = useState<ProjectSettingsTab>("general");
+	// A declaration started from a Variable Operation node. It opens the same
+	// dialog Settings uses, prefilled with the type the operation implies, and
+	// selects the new variable on the node when it saves — so declaring one
+	// does not cost a trip through Settings and back.
+	const [nodeDeclaration, setNodeDeclaration] = useState<{ draft: DeclaredVariable; nodeId: string } | null>(null);
 	const [assetEditorOpen, setAssetEditorOpen] = useState(false);
 	const [helpOpen, setHelpOpen] = useState(false);
 	const [nodeFinderOpen, setNodeFinderOpen] = useState(false);
@@ -284,7 +302,7 @@ export function EditorPage({
 	const [exportOpen, setExportOpen] = useState(false);
 	const [clipboard, setClipboard] = useState<EditorClipboard | null>(null);
 	const [assets, setAssets] = useState<EditorAsset[]>(initialProject.assets);
-	const [defaultVariables, setDefaultVariables] = useState<DefaultVariable[]>(initialProject.defaultVariables);
+	const [declaredVariables, setDeclaredVariables] = useState<DeclaredVariable[]>(initialProject.declaredVariables);
 	const [secretDeclarations, setSecretDeclarations] = useState<SecretDeclaration[]>(initialProject.secretDeclarations);
 	const [scriptSettings, setScriptSettings] = useState<ScriptSetting[]>(initialProject.scriptSettings);
 	const [simulationSecretValues, setSimulationSecretValues] = useState<Record<string, string>>({});
@@ -340,25 +358,53 @@ export function EditorPage({
 		[setEdges],
 	);
 	const permissions = useMemo(
-		() => calculatePermissions(scriptNodes, secretDeclarations, defaultVariables),
-		[scriptNodes, secretDeclarations, defaultVariables],
+		() => calculatePermissions(scriptNodes, secretDeclarations, declaredVariables),
+		[scriptNodes, secretDeclarations, declaredVariables],
 	);
 	const capabilities = useMemo(
-		() => calculateCapabilities(scriptNodes, secretDeclarations, defaultVariables),
-		[scriptNodes, secretDeclarations, defaultVariables],
+		() => calculateCapabilities(scriptNodes, secretDeclarations, declaredVariables),
+		[scriptNodes, secretDeclarations, declaredVariables],
 	);
 	const riskLevel = useMemo(() => calculateRiskLevel(permissions), [permissions]);
-	const variableEntries = useMemo(
+	const variableRegistry = useMemo(
 		() =>
-			createVariablePanelEntries(
-				projectSettings,
+			createEditorVariableRegistry(
+				{ identity: persistedProject.identity, settings: projectSettings },
 				scriptNodes,
 				simulationVariables,
 				secretDeclarations,
-				defaultVariables,
+				declaredVariables,
 				scriptSettings,
 			),
-		[projectSettings, scriptNodes, simulationVariables, secretDeclarations, defaultVariables, scriptSettings],
+		[
+			persistedProject.identity,
+			projectSettings,
+			scriptNodes,
+			simulationVariables,
+			secretDeclarations,
+			declaredVariables,
+			scriptSettings,
+		],
+	);
+	const variableEntries = useMemo(
+		() =>
+			createVariablePanelEntries(
+				{ identity: persistedProject.identity, settings: projectSettings },
+				scriptNodes,
+				simulationVariables,
+				secretDeclarations,
+				declaredVariables,
+				scriptSettings,
+			),
+		[
+			persistedProject.identity,
+			projectSettings,
+			scriptNodes,
+			simulationVariables,
+			secretDeclarations,
+			declaredVariables,
+			scriptSettings,
+		],
 	);
 	const exportSummary = useMemo(
 		() =>
@@ -384,22 +430,22 @@ export function EditorPage({
 				edges,
 				nodes: scriptNodes,
 				permissions,
-				defaultVariables,
+				declaredVariables,
 				secretDeclarations,
-				variables: variableEntries,
+				variables: variableRegistry,
 				scriptName: projectSettings.name,
 				targetRuntimes: projectSettings.targetRuntimes,
 			}),
 		[
 			assets,
-			defaultVariables,
+			declaredVariables,
 			edges,
 			scriptNodes,
 			permissions,
 			projectSettings.name,
 			projectSettings.targetRuntimes,
 			secretDeclarations,
-			variableEntries,
+			variableRegistry,
 		],
 	);
 	const verificationSignature = useMemo(
@@ -410,9 +456,9 @@ export function EditorPage({
 				edges,
 				assets,
 				secretDeclarations,
-				defaultVariables,
+				declaredVariables,
 			),
-		[projectSettings, scriptNodes, edges, assets, secretDeclarations, defaultVariables],
+		[projectSettings, scriptNodes, edges, assets, secretDeclarations, declaredVariables],
 	);
 	const normalizedProjectSettings = {
 		...projectSettings,
@@ -425,7 +471,7 @@ export function EditorPage({
 		() => ({
 			assets,
 			comments,
-			defaultVariables,
+			declaredVariables,
 			edgeStyle,
 			edges,
 			identity: persistedProject.identity,
@@ -440,7 +486,7 @@ export function EditorPage({
 		[
 			assets,
 			comments,
-			defaultVariables,
+			declaredVariables,
 			edgeStyle,
 			edges,
 			persistedProject,
@@ -476,6 +522,94 @@ export function EditorPage({
 		);
 	}, []);
 
+	const flushQueuedSimulationSteps = useCallback(() => {
+		const currentRunId = simulationLifecycleRef.current.runId;
+		const queuedSteps = queuedSimulationStepsRef.current;
+		queuedSimulationStepsRef.current = [];
+		const steps = queuedSteps
+			.filter((queuedStep) => queuedStep.runId === currentRunId)
+			.map((queuedStep) => queuedStep.step);
+		if (steps.length === 0) {
+			return;
+		}
+
+		const outputLogs = steps.flatMap((step) => step.outputLogs);
+		if (outputLogs.length > 0) {
+			appendOutputLogs(outputLogs);
+		}
+
+		const traces = steps.flatMap((step) => step.traces);
+		if (traces.length > 0) {
+			appendSimulationLogs(traces);
+		}
+
+		const traversedEdgeIds = steps.flatMap((step) => step.traversedEdgeIds);
+		if (traversedEdgeIds.length > 0) {
+			setSimulationEdgeIds((currentEdgeIds) => {
+				const nextEdgeIds = new Set(currentEdgeIds);
+				for (const edgeId of traversedEdgeIds) {
+					nextEdgeIds.add(edgeId);
+				}
+				return nextEdgeIds;
+			});
+		}
+
+		const nodeStates = steps.flatMap((step) => (step.nodeState ? [step.nodeState] : []));
+		if (nodeStates.length > 0) {
+			setActiveSimulationNodeId((currentNodeId) => {
+				let nextNodeId = currentNodeId;
+				for (const nodeState of nodeStates) {
+					if (nodeState.status === "active") {
+						nextNodeId = nodeState.nodeId;
+					} else if (nextNodeId === nodeState.nodeId) {
+						nextNodeId = null;
+					}
+				}
+				return nextNodeId;
+			});
+
+			const completedNodeIds = nodeStates
+				.filter((nodeState) => nodeState.status === "completed")
+				.map((nodeState) => nodeState.nodeId);
+			if (completedNodeIds.length > 0) {
+				setSimulationNodeIds((currentNodeIds) => {
+					const nextNodeIds = new Set(currentNodeIds);
+					for (const nodeId of completedNodeIds) {
+						nextNodeIds.add(nodeId);
+					}
+					return nextNodeIds;
+				});
+			}
+		}
+
+		setSimulationVariables(steps[steps.length - 1]?.variables ?? []);
+	}, [appendOutputLogs, appendSimulationLogs]);
+
+	const queueSimulationStep = useCallback(
+		(step: SimulationStep, runId: number) => {
+			queuedSimulationStepsRef.current.push({ runId, step });
+			if (simulationUpdateFrameRef.current !== null) {
+				return;
+			}
+
+			simulationUpdateFrameRef.current = window.requestAnimationFrame(() => {
+				simulationUpdateFrameRef.current = null;
+				flushQueuedSimulationSteps();
+			});
+		},
+		[flushQueuedSimulationSteps],
+	);
+
+	useEffect(
+		() => () => {
+			if (simulationUpdateFrameRef.current !== null) {
+				window.cancelAnimationFrame(simulationUpdateFrameRef.current);
+			}
+			queuedSimulationStepsRef.current = [];
+		},
+		[],
+	);
+
 	const abortSimulationLifecycle = useCallback((reason: string) => {
 		const lifecycle = simulationLifecycleRef.current;
 		lifecycle.abortController?.abort(reason);
@@ -483,6 +617,11 @@ export function EditorPage({
 		lifecycle.active = false;
 		lifecycle.authorizedHttpOrigins = new Set();
 		lifecycle.runId += 1;
+		queuedSimulationStepsRef.current = [];
+		if (simulationUpdateFrameRef.current !== null) {
+			window.cancelAnimationFrame(simulationUpdateFrameRef.current);
+			simulationUpdateFrameRef.current = null;
+		}
 		simulationNetworkAuthorizationResolveRef.current?.(false);
 		simulationNetworkAuthorizationResolveRef.current = null;
 		setSimulationNetworkAuthorizationOrigins([]);
@@ -495,7 +634,7 @@ export function EditorPage({
 			abortSimulationLifecycle("history restored");
 			setProjectSettings(project.settings);
 			setAssets(project.assets);
-			setDefaultVariables(project.defaultVariables);
+			setDeclaredVariables(project.declaredVariables);
 			setSecretDeclarations(project.secretDeclarations);
 			setScriptSettings(project.scriptSettings);
 			setEdgeStyle(project.edgeStyle);
@@ -596,14 +735,14 @@ export function EditorPage({
 	useEffect(() => {
 		const currentValues = simulationPersistentVariablesRef.current;
 		simulationPersistentVariablesRef.current = Object.fromEntries(
-			defaultVariables
+			declaredVariables
 				.filter((variable) => variable.scope === "persistent")
 				.map((variable) => [
 					variable.name,
 					variable.name in currentValues ? currentValues[variable.name] : structuredClone(variable.value),
 				]),
 		);
-	}, [defaultVariables]);
+	}, [declaredVariables]);
 
 	const handleExport = () => {
 		setExportOpen(true);
@@ -619,7 +758,7 @@ export function EditorPage({
 			comments,
 			edgeStyle,
 			secretDeclarations,
-			defaultVariables,
+			declaredVariables,
 			scriptSettings,
 		});
 	};
@@ -741,35 +880,7 @@ export function EditorPage({
 				return [];
 			}
 
-			const nodeState = step.nodeState;
-			flushSync(() => {
-				if (step.outputLogs.length > 0) {
-					appendOutputLogs(step.outputLogs);
-				}
-				if (step.traces.length > 0) {
-					appendSimulationLogs(step.traces);
-				}
-				if (step.traversedEdgeIds.length > 0) {
-					setSimulationEdgeIds((currentEdgeIds) => {
-						const nextEdgeIds = new Set(currentEdgeIds);
-						for (const edgeId of step.traversedEdgeIds) {
-							nextEdgeIds.add(edgeId);
-						}
-						return nextEdgeIds;
-					});
-				}
-				if (nodeState?.status === "active") {
-					setActiveSimulationNodeId(nodeState.nodeId);
-				} else if (nodeState?.status === "completed") {
-					setActiveSimulationNodeId((currentNodeId) => (currentNodeId === nodeState.nodeId ? null : currentNodeId));
-					setSimulationNodeIds((currentNodeIds) => {
-						const nextNodeIds = new Set(currentNodeIds);
-						nextNodeIds.add(nodeState.nodeId);
-						return nextNodeIds;
-					});
-				}
-				setSimulationVariables(step.variables);
-			});
+			queueSimulationStep(step, runId);
 
 			if (step.sideEffects.length === 0) {
 				return [];
@@ -785,11 +896,11 @@ export function EditorPage({
 				showFormDialog: showSimulationFormDialog,
 			});
 			if (sideEffectResult.traces.length > 0 && simulationLifecycleRef.current.runId === runId && !signal.aborted) {
-				flushSync(() => appendSimulationLogs(sideEffectResult.traces));
+				appendSimulationLogs(sideEffectResult.traces);
 			}
 			return sideEffectResult.results;
 		},
-		[appendOutputLogs, appendSimulationLogs, assets, showSimulationMessageBox, showSimulationFormDialog],
+		[appendSimulationLogs, assets, queueSimulationStep, showSimulationMessageBox, showSimulationFormDialog],
 	);
 
 	const runSimulationTrigger = useCallback(
@@ -830,8 +941,9 @@ export function EditorPage({
 					nodes: scriptNodes,
 					edges,
 					overrides: simulationOverrides,
+					identity: persistedProject.identity,
 					projectSettings,
-					defaultVariables,
+					declaredVariables,
 					scriptSettings,
 					globalVariables: simulationGlobalVariablesRef.current,
 					httpSimulation: {
@@ -850,6 +962,7 @@ export function EditorPage({
 					return;
 				}
 
+				flushQueuedSimulationSteps();
 				simulationGlobalVariablesRef.current = run.globalVariables;
 				simulationPersistentVariablesRef.current = run.persistentVariables;
 				setSimulationVariables(run.finalVariables);
@@ -868,9 +981,10 @@ export function EditorPage({
 			assets,
 			completeSimulationLifecycle,
 			edges,
+			flushQueuedSimulationSteps,
 			handleSimulationStep,
 			projectSettings,
-			defaultVariables,
+			declaredVariables,
 			secretDeclarations,
 			scriptSettings,
 			scriptNodes,
@@ -1262,7 +1376,7 @@ export function EditorPage({
 	const handleResetStoredSimulationValues = useCallback(() => {
 		abortSimulationLifecycle("stored simulation values reset");
 		const persistentVariables = Object.fromEntries(
-			defaultVariables
+			declaredVariables
 				.filter((variable) => variable.scope === "persistent")
 				.map((variable) => [variable.name, structuredClone(variable.value)]),
 		);
@@ -1284,10 +1398,10 @@ export function EditorPage({
 				message: "Reset simulated persistent values to their defaults and cleared simulated global values.",
 			},
 		]);
-	}, [abortSimulationLifecycle, appendSystemLogs, defaultVariables]);
+	}, [abortSimulationLifecycle, appendSystemLogs, declaredVariables]);
 
-	const handleDefaultVariablesChange = useCallback(
-		(nextVariables: DefaultVariable[], renames: VariableRename[] = []) => {
+	const handleDeclaredVariablesChange = useCallback(
+		(nextVariables: DeclaredVariable[], renames: VariableRename[] = []) => {
 			if (renames.length > 0) {
 				setNodes((currentNodes) =>
 					renames.reduce((nextNodes, rename) => renameNodeVariableReferences(nextNodes, rename, true), currentNodes),
@@ -1308,13 +1422,13 @@ export function EditorPage({
 					appendSystemLogs([
 						{
 							level: "info",
-							message: `Renamed default variable "${rename.from}" to "${rename.to}" and updated its node references.`,
+							message: `Renamed declared variable "${rename.from}" to "${rename.to}" and updated its node references.`,
 						},
 					]);
 				}
 			}
 
-			setDefaultVariables(nextVariables);
+			setDeclaredVariables(nextVariables);
 		},
 		[appendSystemLogs, setNodes],
 	);
@@ -1456,6 +1570,46 @@ export function EditorPage({
 			},
 		]);
 		expandPanel("bottom");
+	};
+
+	/**
+	 * Opens the declaration dialog for the selected Variable Operation.
+	 *
+	 * The type is prefilled from what the operation implies, because a
+	 * declaration made for Toggle boolean that is not a boolean is one the
+	 * picker would immediately refuse to offer back.
+	 */
+	const handleDeclareFromNode = () => {
+		if (!selectedNode || selectedNode.data.actionType !== "runtime.set_variable") return;
+		const rawOperation = selectedNode.data.config.operation;
+		const operation = normalizeVariableOperation(typeof rawOperation === "string" ? rawOperation : "");
+		const impliedType = getVariableOperationFixedType(operation) ?? (operation === "increment" ? "integer" : "string");
+		setNodeDeclaration({
+			draft: {
+				description: "",
+				name: "",
+				scope: "runtime",
+				type: impliedType,
+				value: createEmptyTypedValue(impliedType),
+				...(impliedType === "list" ? { itemType: "string" as const } : {}),
+			},
+			nodeId: selectedNode.id,
+		});
+	};
+
+	/** Declares the drafted variable and selects it on the node that asked. */
+	const handleSaveNodeDeclaration = () => {
+		if (!nodeDeclaration) return;
+		const declared: DeclaredVariable = {
+			...nodeDeclaration.draft,
+			description: nodeDeclaration.draft.description.trim(),
+			name: nodeDeclaration.draft.name.trim(),
+		};
+		handleDeclaredVariablesChange(
+			[...declaredVariables, declared].sort((left, right) => left.name.localeCompare(right.name)),
+		);
+		handleUpdateNodeConfig(nodeDeclaration.nodeId, "name", declared.name);
+		setNodeDeclaration(null);
 	};
 
 	const handleUpdateNodeConfig = (nodeId: string, key: string, value: JsonValue) => {
@@ -1767,8 +1921,9 @@ export function EditorPage({
 					simulationSettings={simulationSettings}
 					simulationStatus={simulationStatus}
 					simulationTriggerInputDrafts={simulationTriggerInputDrafts}
-					variables={variableEntries}
-					declaredVariables={defaultVariables}
+					variables={variableRegistry}
+					declaredVariables={declaredVariables}
+					onDeclareVariable={handleDeclareFromNode}
 					width={sizes.right}
 					collapsed={collapsed.right}
 					onAddSimulationOverride={handleAddSimulationOverride}
@@ -1829,17 +1984,33 @@ export function EditorPage({
 				title={verificationErrorDialog.title}
 				onClose={() => setVerificationErrorDialog((currentDialog) => ({ ...currentDialog, open: false }))}
 			/>
+			{nodeDeclaration && (
+				<DeclaredVariableDialog
+					draft={nodeDeclaration.draft}
+					editingName={null}
+					open
+					secrets={secretDeclarations}
+					variables={declaredVariables}
+					onCancel={() => setNodeDeclaration(null)}
+					onDraftChange={(draft) => setNodeDeclaration((current) => (current ? { ...current, draft } : current))}
+					onSave={handleSaveNodeDeclaration}
+				/>
+			)}
 			<ProjectSettingsModal
+				initialTab={projectSettingsTab}
 				open={projectSettingsOpen}
 				projectId={persistedProject.identity.id}
 				settings={projectSettings}
-				defaultVariables={defaultVariables}
+				declaredVariables={declaredVariables}
 				secretDeclarations={secretDeclarations}
 				scriptSettings={scriptSettings}
 				simulationSecretValues={simulationSecretValues}
-				onClose={() => setProjectSettingsOpen(false)}
+				onClose={() => {
+					setProjectSettingsOpen(false);
+					setProjectSettingsTab("general");
+				}}
 				onSave={handleSaveProjectSettings}
-				onDefaultVariablesChange={handleDefaultVariablesChange}
+				onDeclaredVariablesChange={handleDeclaredVariablesChange}
 				onSecretDeclarationsChange={handleSecretDeclarationsChange}
 				onScriptSettingsChange={handleScriptSettingsChange}
 				onSimulationSecretValuesChange={setSimulationSecretValues}

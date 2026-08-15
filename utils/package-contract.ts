@@ -13,13 +13,7 @@ import {
 import { typedDatetimeIso } from "@/data/project/datetime";
 import { targetRuntimes } from "@/data/project/runtimes";
 import { userIdentifierPattern } from "@/data/project/user-identifier";
-import {
-	durationUnits,
-	getVariableOperationFixedType,
-	listItemTypes,
-	normalizeVariableOperation,
-	variableTypes,
-} from "@/data/project/variables";
+import { durationUnits, listItemTypes, variableScopes, variableTypes } from "@/data/project/variables";
 import {
 	type ActionType,
 	type JsonValue,
@@ -170,7 +164,7 @@ type PackageJsonFiles = Record<string, unknown>;
 export function validatePackageJsonContracts(jsonFiles: PackageJsonFiles) {
 	return [
 		...validateManifestContract(jsonFiles["manifest.json"]),
-		...validateDefaultVariableProgramContract(jsonFiles["manifest.json"], jsonFiles["program.json"]),
+		...validateDeclaredVariableProgramContract(jsonFiles["manifest.json"], jsonFiles["program.json"]),
 		...validateProgramContract(jsonFiles["program.json"]),
 		...validatePermissionsContract(
 			jsonFiles["permissions.json"],
@@ -325,7 +319,7 @@ export function validateManifestContract(value: unknown) {
 				if (names.has(name)) errors.push(`manifest.json contains duplicate variable name "${name}".`);
 				if (secretNames.has(name)) errors.push(`manifest.json variable "${name}" conflicts with a secret declaration.`);
 				names.add(name);
-				if (variable.scope !== "runtime" && variable.scope !== "persistent") {
+				if (!variableScopes.includes(variable.scope as (typeof variableScopes)[number])) {
 					errors.push(`manifest.json variable "${name}" has invalid scope "${String(variable.scope)}".`);
 				}
 				if (!variableTypes.includes(type)) {
@@ -472,7 +466,7 @@ function serializedByteLength(value: unknown) {
 	}
 }
 
-function validateDefaultVariableProgramContract(manifestValue: unknown, programValue: unknown) {
+function validateDeclaredVariableProgramContract(manifestValue: unknown, programValue: unknown) {
 	const manifest = asRecord(manifestValue);
 	const program = asRecord(programValue);
 	const entry = asRecord(program?.entry);
@@ -481,34 +475,24 @@ function validateDefaultVariableProgramContract(manifestValue: unknown, programV
 		return [];
 	}
 
-	const defaults = new Map(
+	// This used to check a node's scope and type against the declaration's. They
+	// cannot disagree now, because a node carries neither. What it checks is
+	// that the variable is declared at all: a node writing a name the manifest
+	// does not list is a package fault, and the runner refuses to start such a
+	// run, so an import that accepted one would only defer the failure.
+	const declared = new Set(
 		manifest.variables.flatMap((value) => {
 			const variable = asRecord(value);
-			return typeof variable?.name === "string" ? [[variable.name, variable] as const] : [];
+			return typeof variable?.name === "string" ? [variable.name] : [];
 		}),
 	);
 	return block.steps.flatMap((value) => {
 		const step = asRecord(value);
 		const config = asRecord(step?.config);
 		if (step?.action_type !== "runtime.set_variable" || typeof config?.name !== "string") return [];
-		const variable = defaults.get(config.name);
-		const operation = normalizeVariableOperation(typeof config.operation === "string" ? config.operation : "set");
-		const declaredType =
-			operation === "set"
-				? typeof config.valueType === "string"
-					? config.valueType
-					: undefined
-				: getVariableOperationFixedType(operation);
-		const itemTypesMatch = operation !== "set" || variable?.type !== "list" || variable.item_type === config.itemType;
-		const typeMatches = declaredType === null || (variable?.type === declaredType && itemTypesMatch);
-		if (!variable || (variable.scope === config.scope && typeMatches)) {
-			return [];
-		}
-		return [
-			declaredType === null
-				? `manifest.json variable "${config.name}" must match its ${operation === "clear" ? "Clear" : "Delete Variable"} operation scope.`
-				: `manifest.json variable "${config.name}" must match its Variable Operation scope, type, and list item type.`,
-		];
+		if (declared.has(config.name)) return [];
+		const nodeId = typeof step?.id === "string" ? step.id : "unknown";
+		return [`program.json node "${nodeId}" writes variable "${config.name}", which manifest.json does not declare.`];
 	});
 }
 
@@ -910,15 +894,29 @@ export function recalculateProgramDeclarations(programValue: unknown, manifestVa
 		});
 	const capabilities = new Set<string>();
 	const permissions = new Map<string, PermissionSummary>();
+	// A Variable Operation asks for a permission matching the scope of what it
+	// writes, and that scope lives in the declaration. Deriving it without one
+	// made every write look runtime-scoped, so a package writing a persistent
+	// variable was told it had a local.set permission it did not need.
+	const declaredScopes = new Map(
+		(Array.isArray(asRecord(manifestValue)?.variables) ? (asRecord(manifestValue)?.variables as unknown[]) : [])
+			.map((value) => asRecord(value))
+			.flatMap((variable) =>
+				typeof variable?.name === "string" && typeof variable.scope === "string"
+					? [[variable.name, variable.scope] as const]
+					: [],
+			),
+	);
 
 	for (const node of programNodes) {
 		const actionType = node.action_type as ActionType;
 		const config = isJsonObject(node.config) ? node.config : {};
-		for (const capability of getNodeCapabilities(actionType, config)) {
+		const declaredScope = typeof config.name === "string" ? declaredScopes.get(config.name) : undefined;
+		for (const capability of getNodeCapabilities(actionType, config, declaredScope)) {
 			capabilities.add(capability);
 		}
 
-		for (const permission of getNodePermissions(actionType, config)) {
+		for (const permission of getNodePermissions(actionType, config, declaredScope)) {
 			const existing = permissions.get(permission.name);
 			if (!existing || riskWeight[permission.risk] > riskWeight[existing.risk]) {
 				permissions.set(permission.name, permission);

@@ -111,11 +111,13 @@ test("datetime values use selectable timezones while retaining UTC storage", asy
 	assert.equal(formatTypedDatetimeForTemporalInput({ type: "datetime", value: "invalid" }, "datetime", "UTC"), null);
 	assert.equal(formatTypedDatetimeForTemporalInput({ type: "datetime", value: "2026-02-30T12:30:15Z" }, "date"), null);
 
-	const typedValueSource = read(join(appRoot, "data", "project", "typed-values.ts"));
-	assert.match(
-		typedValueSource,
-		/case "datetime":\s*return \{ type: "datetime", value: new Date\(\)\.toISOString\(\) \};/,
-	);
+	// A new datetime declaration used to start at the current instant, pinned
+	// here by matching the source text. It starts at the epoch now, so that the
+	// value a declaration begins at is the one its own Clear returns it to, and
+	// so that building the same declaration twice produces the same package.
+	// The rule is checked against the shared fixture for all ten types in
+	// type-vocabulary.test.mts, which is both broader and not tied to how the
+	// line happens to be written.
 });
 
 test("editor supports the complete If / Else condition operator set", async () => {
@@ -546,8 +548,37 @@ test("generated runner port contract covers every editor node", () => {
 	assert.deepEqual(contract.nodes["action.http"], {
 		kind: "fixed",
 		inputs: ["input"],
-		outputs: ["success", "failed"],
+		outputs: ["ok", "client_error", "server_error", "unexpected_status", "failed"],
 	});
+	assert.deepEqual(contract.nodes["action.message_box"], {
+		kind: "fixed",
+		inputs: ["input"],
+		outputs: ["ok", "cancel", "confirm", "yes", "no", "timed_out", "failed"],
+	});
+	assert.deepEqual(contract.nodes["action.form_dialog"], {
+		kind: "fixed",
+		inputs: ["input"],
+		outputs: ["submitted", "cancelled", "timed_out", "failed"],
+	});
+	const selectedOutputs = {
+		"action.process.run": ["exited_zero", "exited_nonzero", "timed_out", "failed"],
+		"action.shell": ["exited_zero", "exited_nonzero", "timed_out", "failed"],
+		"action.process.status": ["running", "not_running", "failed"],
+		"action.file.read": ["read", "not_found", "failed"],
+		"action.file.delete": ["deleted", "not_found", "failed"],
+		"action.window.focus": ["focused", "not_found", "failed"],
+		"action.process.kill": ["killed", "not_found", "failed"],
+		"action.websocket.write": ["sent", "connection_closed", "failed"],
+		"action.serial.write": ["sent", "device_unavailable", "failed"],
+		"trigger.file_watch": ["created", "modified", "deleted", "renamed"],
+	};
+	for (const [actionType, outputs] of Object.entries(selectedOutputs)) {
+		assert.deepEqual(
+			contract.nodes[actionType].outputs,
+			outputs,
+			`${actionType} outputs must remain in the runner contract`,
+		);
+	}
 	assert.deepEqual(contract.nodes["control.switch"], {
 		kind: "switch_cases",
 		config_key: "cases",
@@ -625,15 +656,19 @@ test("select config fields produce enum values in generated node schemas", () =>
 		"remove_object_field",
 		"merge_object",
 		"clear",
-		"delete",
+		"reset",
 	]);
-	assert.equal(variableSchema.$defs.config.required.includes("valueType"), false);
-	assert.ok(
-		variableSchema.$defs.config.allOf.some(
-			(rule) => rule.if?.properties?.operation?.const === "set" && rule.then?.required?.includes("valueType"),
-		),
-		"Only Set requires a configured valueType",
-	);
+	// Neither valueType nor itemType is a node property. A variable's type,
+	// and what a list holds, live in its declaration, so no operation can
+	// require either on the node.
+	for (const key of ["valueType", "itemType", "scope"]) {
+		assert.equal(variableSchema.$defs.config.required.includes(key), false, `config must not require ${key}`);
+		assert.equal(Object.hasOwn(variableSchema.$defs.config.properties, key), false, `config must not offer ${key}`);
+		assert.ok(
+			!variableSchema.$defs.config.allOf.some((rule) => rule.then?.required?.includes(key)),
+			`no operation may require ${key}`,
+		);
+	}
 });
 
 test("schemas are served with public canonical ids", () => {
@@ -911,22 +946,25 @@ test("variable-capable editor inputs declare and enforce type contracts", () => 
 	const validationSource = read(join(appRoot, "data", "nodes", "config-field-validation.ts"));
 	const registrySource = read(join(appRoot, "data", "nodes", "registry.ts"));
 	const verificationSource = read(join(appRoot, "utils", "verification.ts"));
+	const calculateSource = read(join(appRoot, "data", "nodes", "definitions", "actions", "calculate.ts"));
 
 	for (const declaration of definitions.matchAll(/usesVariables:\s*true/g)) {
 		assert.match(
 			definitions.slice(declaration.index, declaration.index + 160),
-			/variableTypes:\s*"[a-z_]+"/,
+			/variableTypes:\s*(?:"[a-z_]+"|\[[\s\S]*?\])/,
 			"every variable-capable node field must declare its accepted variable contract",
 		);
 	}
+	assert.match(extractConfigField(calculateSource, "expression"), /variableTypes:\s*\[\s*"integer",\s*"float"\s*\]/);
 	assert.match(variableInputSource, /variableTypes:\s*VariableInputContract;/);
 	assert.match(variableInputSource, /filterCompatibleVariables\(variables, variableTypes\)/);
 	assert.match(variableInputSource, /data-variable-status=\{displayStatus\}/);
 	assert.match(variableInputSource, /displayStatus === "type-mismatch" && "bg-cyan-400\/20 text-cyan-300"/);
-	// Matching is exact now that every deleted type has been folded into the
-	// shape it always was. There is no longer a compatibleTypes lookup table.
+	// Matching is exact unless a field explicitly lists multiple accepted
+	// types. There is no longer a compatibleTypes lookup table.
 	assert.doesNotMatch(validationSource, /compatibleTypes/);
-	assert.match(validationSource, /contract === "any" \|\| type === contract/);
+	assert.match(validationSource, /isVariableTypeList\(contract\) \? contract\.includes\(type\) : type === contract/);
+	assert.match(validationSource, /function isVariableTypeList\(contract: VariableInputContract\)/);
 	assert.match(
 		validationSource,
 		/contract !== "any" && getVariableReferenceStatus\(reference, variables\) === "possible"/,
@@ -1027,22 +1065,23 @@ test("simulator does not retain streamed step history or use recursive traversal
 	assert.match(simulationSource, /processSimulationFrames/);
 	assert.match(
 		simulationSource,
-		/const results = \(await context\.onStep\(step\)\) \?\? \[\];\s*await yieldSimulationTask/,
+		/const results = \(await context\.onStep\(step\)\) \?\? \[\];\s*await yieldForRealtimeUi/,
 	);
 	assert.match(simulationSource, /await pushNodeState\(context, node\.id, "active"\)/);
 	assert.match(
 		simulationSource,
 		/finally\s*\{\s*if \(!context\.signal\?\.aborted\)\s*\{\s*await pushNodeState\(context, node\.id, "completed"\)/,
 	);
-	assert.match(editorSource, /flushSync\(\(\) => \{/);
-	assert.match(editorSource, /nodeState\?\.status === "active"/);
-	assert.match(editorSource, /nodeState\?\.status === "completed"/);
+	assert.match(editorSource, /requestAnimationFrame/);
+	assert.doesNotMatch(editorSource, /flushSync/);
+	assert.match(editorSource, /nodeState\.status === "active"/);
+	assert.match(editorSource, /nodeState\.status === "completed"/);
 	assert.doesNotMatch(editorSource, /nextNodeIds\.add\(traversedEdge\.target\)/);
-	assert.doesNotMatch(simulationSource, /SIMULATION_YIELD_INTERVAL|streamedSteps/);
+	assert.match(simulationSource, /REALTIME_UI_YIELD_BUDGET_MS/);
 	assert.ok(
-		editorSource.indexOf("setSimulationVariables(step.variables)") <
+		editorSource.indexOf("queueSimulationStep(step, runId)") <
 			editorSource.indexOf("executeSimulationSideEffects(step.sideEffects"),
-		"simulation state must be published before browser side effects execute",
+		"simulation state must be queued before browser side effects execute",
 	);
 	assert.equal(/async function followHandle|async function executeNode\(/.test(simulationSource), false);
 	assert.equal(/switch\s*\(\s*node\.data\.actionType\s*\)/.test(simulationSource), false);
@@ -1330,8 +1369,10 @@ test("file permissions are derived from node config paths", async () => {
 	const copyFileSource = read(join(appRoot, "data", "nodes", "definitions", "actions", "file-copy.ts"));
 	const watchFileSource = read(join(appRoot, "data", "nodes", "definitions", "triggers", "file-watch.ts"));
 
-	assert.match(analysisSource, /getNodePermissions\(node\.data\.actionType, node\.data\.config\)/);
-	assert.match(contractSource, /getNodePermissions\(actionType, config\)/);
+	// The declared scope rides along, because a Variable Operation no longer
+	// carries one and the permission a write needs depends entirely on it.
+	assert.match(analysisSource, /getNodePermissions\(\s*node\.data\.actionType,\s*node\.data\.config,/);
+	assert.match(contractSource, /getNodePermissions\(actionType, config, declaredScope\)/);
 	assert.match(filePolicySource, /file\.read\.any/);
 	assert.match(filePolicySource, /file\.write\.any/);
 	assert.match(filePolicySource, /pathUsesRuntimeData/);
@@ -1680,7 +1721,14 @@ test("secret declarations are package metadata while simulation values remain se
 	const simulationSource = read(join(appRoot, "utils", "simulation.ts"));
 
 	assert.ok(manifestSchema.properties.secrets, "manifest must declare secret references");
-	assert.deepEqual(variableSchema.$defs.config.properties.scope.enum, ["runtime", "persistent", "global"]);
+	// A Variable Operation no longer carries a scope: the declaration settles it,
+	// so the node schema has no scope property to enumerate.
+	assert.equal(variableSchema.$defs.config.properties.scope, undefined);
+	assert.deepEqual(manifestSchema.properties.variables.items.properties.scope.enum, [
+		"runtime",
+		"persistent",
+		"global",
+	]);
 	assert.ok(permissionsSchema.properties.declared_permissions.items.enum.includes("secret.read"));
 	assert.match(editorPage, /simulationSecretValues/);
 	assert.match(packageSource, /secretDeclarations/);
@@ -1690,9 +1738,8 @@ test("secret declarations are package metadata while simulation values remain se
 	assert.match(simulationSource, /\[REDACTED\]/);
 });
 
-test("default variables are typed package metadata and runner execution state", () => {
+test("declared variables are typed package metadata and runner execution state", () => {
 	const manifestSchema = JSON.parse(read(join(schemasRoot, "manifest.schema.json")));
-	const defaultVariableSource = read(join(appRoot, "data", "project", "default-variables.ts"));
 	const editorPage = read(join(appRoot, "app", "editor-page.tsx"));
 	const packageSource = read(join(appRoot, "utils", "bbs-package.ts"));
 	const simulationSource = read(join(appRoot, "utils", "simulation.ts"));
@@ -1701,13 +1748,29 @@ test("default variables are typed package metadata and runner execution state", 
 	);
 
 	assert.ok(manifestSchema.properties.variables, "manifest must declare default variables");
-	assert.deepEqual(manifestSchema.properties.variables.items.properties.scope.enum, ["runtime", "persistent"]);
-	assert.equal(stringDefaultSchema.properties.value.pattern, "\\S");
-	assert.match(defaultVariableSource, /Default value is required/);
-	assert.match(editorPage, /defaultVariables/);
-	assert.match(packageSource, /variables:\s*params\.defaultVariables\.map/);
-	assert.match(simulationSource, /defaultVariables[\s\S]*variable\.scope === "persistent"/);
-	assert.match(simulationSource, /defaultVariables[\s\S]*variable\.scope === "runtime"/);
+	// A declaration may name any of the three scopes a Variable Operation can.
+	// Global was storable but not declarable, which was a gap rather than a
+	// decision, and the two enums now agree.
+	assert.deepEqual(manifestSchema.properties.variables.items.properties.scope.enum, [
+		"runtime",
+		"persistent",
+		"global",
+	]);
+	// A declared string may be empty. It used to need a non-whitespace
+	// character, which is why the sample script declared "none" and explained
+	// the sentinel in its description — while Clear writes "" at run time, a
+	// value the declaration itself could not hold. A hotkey still needs a real
+	// key, and a colour still needs its hex form.
+	assert.equal(stringDefaultSchema.properties.value.pattern, undefined);
+	assert.equal(
+		manifestSchema.properties.variables.items.oneOf.find((option) => option.properties.type.const === "hotkey")
+			.properties.value.pattern,
+		"\\S",
+	);
+	assert.match(editorPage, /declaredVariables/);
+	assert.match(packageSource, /variables:\s*params\.declaredVariables\.map/);
+	assert.match(simulationSource, /declaredVariables[\s\S]*variable\.scope === "persistent"/);
+	assert.match(simulationSource, /declaredVariables[\s\S]*variable\.scope === "runtime"/);
 	assert.match(simulationSource, /persistentVariables:\s*structuredClone/);
 });
 

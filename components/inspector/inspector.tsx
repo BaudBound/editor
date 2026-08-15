@@ -11,6 +11,7 @@ import { ColorConfigInput } from "@/components/inspector/color-config-input";
 import { FormDialogBuilder } from "@/components/inspector/form-dialog-builder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupButton } from "@/components/ui/input-group";
 import { OptionCombobox } from "@/components/ui/option-combobox";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,6 +26,7 @@ import {
 import { validateTextTransformField } from "@/data/nodes/definitions/actions/format-text";
 import {
 	combinatorOptions,
+	durationUnitOptions,
 	ifElseComparisonOperatorOptions,
 	isBetweenConditionOperator,
 	isNumericConditionOperator,
@@ -33,7 +35,6 @@ import {
 	type SelectOption,
 	textTransformOperationOptions,
 	variableOperationOptions,
-	variableScopeOptions,
 	variableTypeOptions,
 } from "@/data/nodes/definitions/options";
 import {
@@ -59,7 +60,6 @@ import {
 import { numericContractApplies, runtimeNumberContract } from "@/data/nodes/numeric-validation";
 import { createDefaultNodeConfig, getNodeConfigFields } from "@/data/nodes/registry";
 import { validateSwitchCaseName, validateSwitchCaseValue } from "@/data/nodes/switch-validation";
-import { builtInVariableNames } from "@/data/project/built-in-variables";
 import { createSerialDeviceOptions, serialLineEndingOptions } from "@/data/project/serial";
 import { createEmptyTypedValue, normalizeListItemType, validateTypedValue } from "@/data/project/typed-values";
 import {
@@ -72,7 +72,6 @@ import {
 	validateObjectFieldPath,
 	validateVariableOperationType,
 	validateVariableOperationValue,
-	validateWritableVariableName,
 	variableOperationDefinitions,
 	variableScopeDefinitions,
 	variableTypeDefinitions,
@@ -86,7 +85,7 @@ import {
 import { type ActiveReorderDragState, useReorderController } from "@/hooks/use-reorder-controller";
 import type {
 	ActionType,
-	DefaultVariable,
+	DeclaredVariable,
 	EditorAsset,
 	InspectorTab,
 	JsonValue,
@@ -102,10 +101,10 @@ import { PanelCollapseButton } from "../shell/panel-collapse-button";
 import { RiskBadge } from "../shell/risk-badge";
 import { SimulatorPanel } from "../simulation/simulator-panel";
 import { DatetimeTokenPanel } from "./datetime-token-panel";
+import { DurationTokenPanel } from "./duration-token-panel";
 import { EdgeOrderPanel } from "./edge-order-panel";
 import { KeyCaptureInput } from "./key-capture-input";
 import { RuntimeDataPanel } from "./runtime-data-panel";
-import { VariableNameInput } from "./variable-name-input";
 
 type InspectorProps = {
 	activeTab: InspectorTab;
@@ -120,7 +119,9 @@ type InspectorProps = {
 	simulationStatus: SimulationRunStatus;
 	simulationTriggerInputDrafts: Record<string, SimulationTriggerInputDraft>;
 	variables: EditorVariable[];
-	declaredVariables: DefaultVariable[];
+	declaredVariables: DeclaredVariable[];
+	/** Opens Settings on the Variables tab so a variable can be declared without leaving the node. */
+	onDeclareVariable: () => void;
 	width: number;
 	collapsed: boolean;
 	onAddSimulationOverride: (nodeId: string) => void;
@@ -155,6 +156,7 @@ export function Inspector({
 	simulationTriggerInputDrafts,
 	variables,
 	declaredVariables,
+	onDeclareVariable,
 	width,
 	collapsed,
 	onAddSimulationOverride,
@@ -228,6 +230,7 @@ export function Inspector({
 						<PropertiesPanel
 							assets={assets}
 							declaredVariables={declaredVariables}
+							onDeclareVariable={onDeclareVariable}
 							nodes={nodes}
 							selectedNode={selectedNode}
 							variables={variables}
@@ -266,14 +269,16 @@ function PropertiesPanel({
 	nodes,
 	selectedNode,
 	variables,
+	onDeclareVariable,
 	onUpdateNodeConfig,
 	onDeleteNode,
 }: {
 	assets: EditorAsset[];
-	declaredVariables: DefaultVariable[];
+	declaredVariables: DeclaredVariable[];
 	nodes: Node<ScriptNodeData>[];
 	selectedNode: Node<ScriptNodeData> | null;
 	variables: EditorVariable[];
+	onDeclareVariable: () => void;
 	onUpdateNodeConfig: (nodeId: string, key: string, value: JsonValue) => void;
 	onDeleteNode: (nodeId: string) => void;
 }) {
@@ -360,6 +365,7 @@ function PropertiesPanel({
 								config={selectedNode.data.config}
 								declaredVariables={declaredVariables}
 								variableCompletions={configVariableCompletions}
+								onDeclareVariable={onDeclareVariable}
 								onChange={(key, value) => onUpdateNodeConfig(selectedNode.id, key, value)}
 							/>
 						)}
@@ -380,6 +386,7 @@ function PropertiesPanel({
 						{usesConditionRows(selectedNode.data.actionType) && (
 							<IfElseConfigPanel
 								config={selectedNode.data.config}
+								declaredVariables={declaredVariables}
 								variableCompletions={variableCompletions}
 								onChange={(key, value) => onUpdateNodeConfig(selectedNode.id, key, value)}
 							/>
@@ -452,6 +459,7 @@ function PropertiesPanel({
 			</section>
 
 			{formatsADatetime(selectedNode) && <DatetimeTokenPanel />}
+			{formatsADuration(selectedNode) && <DurationTokenPanel />}
 
 			<RuntimeDataPanel selectedNode={selectedNode} />
 
@@ -670,12 +678,34 @@ function StringListField({
 	);
 }
 
+/**
+ * Warns that Is null or missing cannot be true for a declared variable.
+ *
+ * A declaration is what makes a variable exist, so one always has a value.
+ * The operator still means something for a node output that has not run and
+ * for a null inside an object, which is why this is a note rather than a
+ * rejected combination.
+ */
+function declaredVariableConditionNote(
+	condition: { left: string; operator: string },
+	declaredVariables: DeclaredVariable[],
+) {
+	if (condition.operator !== "is_null_or_missing") return "";
+	const referenced = /^\s*\{\{\s*([A-Za-z0-9_-]+)\s*\}\}\s*$/.exec(condition.left)?.[1];
+	if (!referenced) return "";
+	const declared = declaredVariables.find((variable) => variable.name === referenced);
+	if (!declared) return "";
+	return `"${referenced}" is declared, so it always has a value and this is never true. Compare it against its value instead.`;
+}
+
 function IfElseConfigPanel({
 	config,
+	declaredVariables,
 	variableCompletions,
 	onChange,
 }: {
 	config: Record<string, JsonValue>;
+	declaredVariables: DeclaredVariable[];
 	variableCompletions: VariableCompletion[];
 	onChange: (key: string, value: JsonValue) => void;
 }) {
@@ -754,6 +784,11 @@ function IfElseConfigPanel({
 											)
 										}
 									/>
+									{declaredVariableConditionNote(condition, declaredVariables) && (
+										<p className="text-xs leading-4 text-baud-amber">
+											{declaredVariableConditionNote(condition, declaredVariables)}
+										</p>
+									)}
 									<ConditionInvertCheckbox
 										checked={condition.invert === true}
 										onChange={(checked) => updateCondition(conditions, condition.id, { invert: checked }, onChange)}
@@ -1064,6 +1099,26 @@ function TextTransformConfigPanel({
 									onChange={onChange}
 								/>
 							)}
+							{operation === "format_duration" && (
+								<>
+									<ComboboxField
+										label="Input unit"
+										value={row.durationUnit}
+										options={durationUnitOptions}
+										onChange={(durationUnit) =>
+											updateTextTransformOperation(operations, row.id, { durationUnit }, onChange)
+										}
+									/>
+									<TextTransformRowInput
+										label="Pattern"
+										field="pattern"
+										row={row}
+										rows={operations}
+										variableCompletions={variableCompletions}
+										onChange={onChange}
+									/>
+								</>
+							)}
 							{(operation === "split" || operation === "join") && (
 								<TextTransformRowInput
 									label="Delimiter"
@@ -1210,20 +1265,47 @@ function VariableOperationConfigPanel({
 	declaredVariables,
 	variableCompletions,
 	onChange,
+	onDeclareVariable,
 }: {
 	config: Record<string, JsonValue>;
-	declaredVariables: DefaultVariable[];
+	declaredVariables: DeclaredVariable[];
 	variableCompletions: VariableCompletion[];
 	onChange: (key: string, value: JsonValue) => void;
+	onDeclareVariable: () => void;
 }) {
 	const operation = normalizeVariableOperation(valueToInputString(config.operation));
 	const fixedType = getVariableOperationFixedType(operation);
 	const savedName = valueToInputString(config.name);
-	// A declared default variable already fixes its scope and type, and a
+	// A declared declared variable already fixes its scope and type, and a
 	// package whose Variable Operation disagrees with the declaration is
 	// rejected. Read both from the declaration rather than asking a second
 	// time for something the project already states.
 	const declared = declaredVariables.find((variable) => variable.name === savedName);
+	// What this operation can be applied to. An operation with a fixed type
+	// accepts only that type; increment accepts either numeric type, since it
+	// preserves whichever the variable was declared with.
+	const writableVariableOptions = declaredVariables
+		.filter((variable) => {
+			if (operation === "increment") return variable.type === "integer" || variable.type === "float";
+			// A hotkey has no empty value — there is no key combination that
+			// means "no key" — so clearing one has no answer. Reset does.
+			if (operation === "clear") return variable.type !== "hotkey";
+			return fixedType ? variable.type === fixedType : true;
+		})
+		.map((variable) => ({
+			// The description is what tells two similarly named variables apart,
+			// so it belongs where the choice is made. The scope and type belong
+			// there too: the list is narrowed by type, so the option has to say
+			// which type it is being offered for.
+			description: variable.description || undefined,
+			label: `${variable.name} (${variable.scope} ${variable.type})`,
+			value: variable.name,
+		}));
+	// The mirror of the rule above: with a hotkey selected, Clear is not on
+	// offer at all rather than offered and then refused by the runner.
+	const availableOperationOptions = variableOperationOptions.filter(
+		(option) => option.value !== "clear" || declared?.type !== "hotkey",
+	);
 	const scope = declared ? declared.scope : normalizeScope(valueToInputString(config.scope));
 	const selectedType = fixedType ?? declared?.type ?? normalizeVariableType(valueToInputString(config.valueType));
 	const itemType = declared?.itemType ?? normalizeListItemType(config.itemType) ?? "string";
@@ -1231,31 +1313,18 @@ function VariableOperationConfigPanel({
 	const fieldItemType = normalizeListItemType(config.fieldItemType) ?? "string";
 	const savedValue = valueToInputString(config.value);
 	const savedFieldPath = valueToInputString(config.fieldPath);
-	const [draftName, setDraftName] = useState(savedName);
 	const [draftValue, setDraftValue] = useState(savedValue);
 	const [draftFieldPath, setDraftFieldPath] = useState(savedFieldPath);
 
 	useEffect(() => {
-		setDraftName(savedName);
 		setDraftValue(savedValue);
 		setDraftFieldPath(savedFieldPath);
 	}, [savedName, savedValue, savedFieldPath]);
 
-	// The stored config still carries scope and type, because the package
-	// format and the export check both read them. Write the declared values
-	// through so what is shown and what is exported cannot drift apart.
-	useEffect(() => {
-		if (!declared) return;
-		if (valueToInputString(config.scope) !== declared.scope) onChange("scope", declared.scope);
-		if (operation === "set" && valueToInputString(config.valueType) !== declared.type) {
-			onChange("valueType", declared.type);
-		}
-		if (operation === "set" && declared.itemType && valueToInputString(config.itemType) !== declared.itemType) {
-			onChange("itemType", declared.itemType);
-		}
-	}, [declared, operation, config.scope, config.valueType, config.itemType, onChange]);
-
-	const nameValidationMessage = validateWritableVariableName(draftName, builtInVariableNames);
+	// The name is picked from the declarations, so the only way it fails is a
+	// variable that was declared once and has since been renamed or removed.
+	const nameValidationMessage =
+		savedName && !declared ? `"${savedName}" is not declared. Pick a declared variable or declare it in Settings.` : "";
 	const typeCompatibilityMessage = validateVariableOperationType(operation, selectedType);
 	const validationMessage = validateVariableOperationValue(
 		operation,
@@ -1274,27 +1343,20 @@ function VariableOperationConfigPanel({
 	const definition = variableTypeDefinitions[selectedType];
 	const operationDefinition = variableOperationDefinitions[operation];
 
-	const handleTypeChange = (value: string) => {
-		const nextType = normalizeVariableType(value);
-		onChange("valueType", nextType);
-		if (nextType === "list") {
-			onChange("itemType", "string");
-		}
-		const nextValue = createEmptyVariableOperationInput(nextType);
-		onChange("value", nextValue);
-		setDraftValue(nextValue);
-	};
-
+	// Changing the operation can narrow which variables are writable. If the
+	// one already named is no longer among them, clear it rather than leave a
+	// selection the picker cannot show.
 	const handleOperationChange = (value: string) => {
 		const nextOperation = normalizeVariableOperation(value);
-		const nextType = getVariableOperationFixedType(nextOperation) ?? selectedType;
+		const nextFixedType = getVariableOperationFixedType(nextOperation);
+		const nextType = nextFixedType ?? selectedType;
 		onChange("operation", nextOperation);
-		if (nextOperation === "set") {
-			onChange("valueType", nextType);
-		}
-		if (nextOperation === "set" && nextType === "list") {
-			onChange("itemType", itemType);
-		}
+		const stillWritable = declared
+			? nextOperation === "increment"
+				? declared.type === "integer" || declared.type === "float"
+				: !nextFixedType || declared.type === nextFixedType
+			: false;
+		if (!stillWritable && savedName) onChange("name", "");
 		if (nextOperation === "set_object_field") {
 			onChange("fieldValueType", fieldValueType);
 		}
@@ -1328,11 +1390,17 @@ function VariableOperationConfigPanel({
 		}
 	};
 
+	// Picking a different variable can change the type being written, so the
+	// value is reset to an empty input of the new type rather than left as
+	// something the previous variable's type made sense of.
 	const handleNameChange = (value: string) => {
-		setDraftName(value);
-		if (!validateWritableVariableName(value, builtInVariableNames)) {
-			onChange("name", value.trim());
-		}
+		const nextDeclared = declaredVariables.find((variable) => variable.name === value);
+		onChange("name", value);
+		const nextType = fixedType ?? nextDeclared?.type ?? selectedType;
+		const inputType = getVariableOperationInputType(operation, nextType, fieldValueType);
+		const nextValue = variableOperationNeedsValue(operation) ? createEmptyVariableOperationInput(inputType) : "";
+		onChange("value", nextValue);
+		setDraftValue(nextValue);
 	};
 
 	return (
@@ -1340,43 +1408,55 @@ function VariableOperationConfigPanel({
 			<ComboboxField
 				label="Operation"
 				value={operation}
-				options={variableOperationOptions}
+				options={availableOperationOptions}
 				onChange={handleOperationChange}
 			/>
 			<p className="text-xs leading-4 text-baud-muted">{operationDefinition.description}</p>
-			<div>
-				<VariableNameInput
-					label="Variable name"
-					value={draftName}
-					variables={variableCompletions}
-					onChange={handleNameChange}
-					hasError={!!nameValidationMessage}
-				/>
-				{nameValidationMessage && <p className="mt-1 text-xs leading-4 text-baud-danger">{nameValidationMessage}</p>}
-			</div>
+			{/* A picker over declared variables rather than free text. A name
+			    that is not declared cannot be written, so typing one was only
+			    ever a way to build a package the runner refuses. The list is
+			    narrowed to what this operation can accept: Append list offers
+			    only lists, Toggle boolean only booleans. */}
 			<ComboboxField
-				label="Scope"
-				value={scope}
-				options={variableScopeOptions}
-				disabled={Boolean(declared)}
-				onChange={(value) => onChange("scope", value)}
+				label="Variable name"
+				value={savedName}
+				options={writableVariableOptions}
+				emptyMessage={
+					declaredVariables.length === 0
+						? "No variables are declared yet."
+						: `No declared variable accepts ${operationDefinition.label}.`
+				}
+				placeholder="Select a variable"
+				hasError={!!nameValidationMessage}
+				trailing={
+					<InputGroupButton
+						type="button"
+						variant="ghost"
+						size="icon-sm"
+						className="h-full rounded-none border-0 border-l border-baud-border text-baud-muted hover:bg-baud-line hover:text-baud-text"
+						aria-label="Declare a variable in Settings"
+						title="Declare a variable in Settings"
+						onClick={onDeclareVariable}
+					>
+						<Plus />
+					</InputGroupButton>
+				}
+				onChange={handleNameChange}
 			/>
+			{nameValidationMessage && <p className="mt-1 text-xs leading-4 text-baud-danger">{nameValidationMessage}</p>}
+			{/* Scope and type are read, not chosen. They belong to the declaration,
+			    which is the only place they live, so the node states what it is
+			    writing rather than offering a second answer that could differ. */}
 			{declared ? (
 				<p className="text-xs leading-4 text-baud-muted">
-					Set by the default variable <span className="font-mono">{declared.name}</span>. Rename this node to write a
-					different variable.
+					Writes <span className="font-mono">{declared.name}</span>, declared {scope} and typed{" "}
+					<span className="font-mono">{declared.type}</span>. {variableScopeDefinitions[normalizeScope(scope)]}
 				</p>
 			) : (
-				<p className="text-xs leading-4 text-baud-muted">{variableScopeDefinitions[normalizeScope(scope)]}</p>
-			)}
-			{operation === "set" && (
-				<ComboboxField
-					label="Variable type"
-					value={selectedType}
-					options={variableTypeOptions}
-					disabled={Boolean(declared)}
-					onChange={handleTypeChange}
-				/>
+				<p className="text-xs leading-4 text-baud-danger">
+					No variable named <span className="font-mono">{savedName || "…"}</span> is declared. Declare it under
+					Settings, then Variables.
+				</p>
 			)}
 			{typeCompatibilityMessage && <p className="text-xs leading-4 text-baud-danger">{typeCompatibilityMessage}</p>}
 			{(operation === "set_object_field" || operation === "remove_object_field") && (
@@ -1600,7 +1680,7 @@ function getVariableOperationInputType(
 }
 
 function variableOperationNeedsValue(operation: ReturnType<typeof normalizeVariableOperation>) {
-	return !["clear", "delete", "toggle_boolean", "remove_object_field"].includes(operation);
+	return !["clear", "reset", "toggle_boolean", "remove_object_field"].includes(operation);
 }
 
 function parseTypedConfigValue(value: string, type: VariableType, itemType?: ListItemType): JsonValue {
@@ -2068,6 +2148,7 @@ function ComboboxField({
 	value,
 	options,
 	onChange,
+	trailing,
 	triggerClassName,
 }: {
 	ariaDescribedBy?: string;
@@ -2081,6 +2162,8 @@ function ComboboxField({
 	value: string;
 	options: SelectOption[];
 	onChange: (value: string) => void;
+	/** Control rendered beside the combobox, sharing its row. */
+	trailing?: ReactNode;
 	triggerClassName?: string;
 }) {
 	const generatedErrorId = useId();
@@ -2089,7 +2172,11 @@ function ComboboxField({
 		<OptionCombobox
 			ariaDescribedBy={ariaDescribedBy ?? (error ? errorId : undefined)}
 			ariaLabel={ariaLabel ?? label}
-			className={triggerClassName ?? "w-full"}
+			className={
+				trailing
+					? "h-full rounded-none border-0 bg-transparent shadow-none hover:border-0 focus-visible:border-0 focus-visible:shadow-none"
+					: (triggerClassName ?? "w-full")
+			}
 			disabled={disabled}
 			emptyMessage={emptyMessage}
 			hasError={hasError || !!error}
@@ -2100,14 +2187,23 @@ function ComboboxField({
 		/>
 	);
 
+	const row = trailing ? (
+		<InputGroup className="[&>div]:min-w-0 [&>div]:flex-1">
+			{combobox}
+			{trailing}
+		</InputGroup>
+	) : (
+		combobox
+	);
+
 	if (!label) {
-		return combobox;
+		return row;
 	}
 
 	return (
 		<div>
 			<span className="mb-1 block font-mono text-sm text-baud-muted">{label}</span>
-			{combobox}
+			{row}
 			<FieldError id={errorId} message={error} />
 		</div>
 	);
@@ -2244,6 +2340,10 @@ function getTextTransformHelp(operation: string) {
 
 	if (operation === "format_datetime") {
 		return "Render a datetime as text with a pattern such as yyyy-MM-dd HH:mm.";
+	}
+
+	if (operation === "format_duration") {
+		return "Render an elapsed number with a pattern such as HH:mm:ss or D HH:mm:ss.";
 	}
 
 	if (operation === "replace") {
@@ -2476,5 +2576,12 @@ function formatsADatetime(selectedNode: Node<ScriptNodeData>) {
 	if (selectedNode.data.actionType !== "action.text.format") return false;
 	return getTextTransformOperationRows(selectedNode.data.config.operations).some(
 		(row) => row.operation === "format_datetime",
+	);
+}
+
+function formatsADuration(selectedNode: Node<ScriptNodeData>) {
+	if (selectedNode.data.actionType !== "action.text.format") return false;
+	return getTextTransformOperationRows(selectedNode.data.config.operations).some(
+		(row) => row.operation === "format_duration",
 	);
 }

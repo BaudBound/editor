@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { logLevelClassName } from "@/data/editor/output-console";
 import { collapsedPanelSizes } from "@/data/editor/panel-layout";
+import { MANIFEST_NAMESPACE, SYSTEM_NAMESPACE } from "@/data/project/built-in-variables";
 import type { EditorVariable } from "@/data/project/variables";
 import type { LogEntry, SimulationTraceEntry } from "@/lib/types";
 
@@ -267,7 +268,6 @@ function VariablesTab({
 	const [showBuiltInVariables, setShowBuiltInVariables] = useState(false);
 	const [showErrorVariables, setShowErrorVariables] = useState(false);
 	const [showOutputVariables, setShowOutputVariables] = useState(true);
-	const [showSystemVariables, setShowSystemVariables] = useState(false);
 	const [variableSearch, setVariableSearch] = useState("");
 	const previousSignaturesRef = useRef<Map<string, string>>(new Map());
 	const updatedOrderRef = useRef<Map<string, number>>(new Map());
@@ -313,11 +313,11 @@ function VariablesTab({
 				return false;
 			}
 
-			if (!showSystemVariables && isSystemVariable(variable)) {
+			if (isBuiltInFieldVariable(variable)) {
 				return false;
 			}
 
-			if (!showBuiltInVariables && isBuiltInVariable(variable)) {
+			if (!showBuiltInVariables && isBuiltInNamespaceVariable(variable)) {
 				return false;
 			}
 
@@ -339,7 +339,6 @@ function VariablesTab({
 		showDerivedMetadata,
 		showErrorVariables,
 		showOutputVariables,
-		showSystemVariables,
 		sortUpdatedFirst,
 		variableSearch,
 		variables,
@@ -429,13 +428,11 @@ function VariablesTab({
 				showDerivedMetadata={showDerivedMetadata}
 				showErrorVariables={showErrorVariables}
 				showOutputVariables={showOutputVariables}
-				showSystemVariables={showSystemVariables}
 				sortUpdatedFirst={sortUpdatedFirst}
 				onShowBuiltInVariablesChange={setShowBuiltInVariables}
 				onShowDerivedMetadataChange={setShowDerivedMetadata}
 				onShowErrorVariablesChange={setShowErrorVariables}
 				onShowOutputVariablesChange={setShowOutputVariables}
-				onShowSystemVariablesChange={setShowSystemVariables}
 				onSortUpdatedFirstChange={setSortUpdatedFirst}
 			/>
 			<Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
@@ -474,26 +471,22 @@ function VariablesFooter({
 	showDerivedMetadata,
 	showErrorVariables,
 	showOutputVariables,
-	showSystemVariables,
 	sortUpdatedFirst,
 	onShowBuiltInVariablesChange,
 	onShowDerivedMetadataChange,
 	onShowErrorVariablesChange,
 	onShowOutputVariablesChange,
-	onShowSystemVariablesChange,
 	onSortUpdatedFirstChange,
 }: {
 	showBuiltInVariables: boolean;
 	showDerivedMetadata: boolean;
 	showErrorVariables: boolean;
 	showOutputVariables: boolean;
-	showSystemVariables: boolean;
 	sortUpdatedFirst: boolean;
 	onShowBuiltInVariablesChange: (enabled: boolean) => void;
 	onShowDerivedMetadataChange: (enabled: boolean) => void;
 	onShowErrorVariablesChange: (enabled: boolean) => void;
 	onShowOutputVariablesChange: (enabled: boolean) => void;
-	onShowSystemVariablesChange: (enabled: boolean) => void;
 	onSortUpdatedFirstChange: (enabled: boolean) => void;
 }) {
 	return (
@@ -517,11 +510,6 @@ function VariablesFooter({
 					label="Show outputs"
 					onCheckedChange={onShowOutputVariablesChange}
 				/>
-				<FooterCheckbox
-					checked={showSystemVariables}
-					label="Show system"
-					onCheckedChange={onShowSystemVariablesChange}
-				/>
 			</div>
 		</fieldset>
 	);
@@ -543,12 +531,15 @@ function isErrorOutputVariable(variable: EditorVariable) {
 	return variable.source === "node_output" && /\.error(?:\.|$)/.test(variable.name);
 }
 
-function isSystemVariable(variable: EditorVariable) {
-	return variable.source === "built_in" && variable.name.startsWith("@system.");
+function isBuiltInFieldVariable(variable: EditorVariable) {
+	return (
+		variable.source === "built_in" &&
+		(variable.name.startsWith(`${SYSTEM_NAMESPACE}.`) || variable.name.startsWith(`${MANIFEST_NAMESPACE}.`))
+	);
 }
 
-function isBuiltInVariable(variable: EditorVariable) {
-	return variable.source === "built_in" && !isSystemVariable(variable);
+function isBuiltInNamespaceVariable(variable: EditorVariable) {
+	return variable.name === SYSTEM_NAMESPACE || variable.name === MANIFEST_NAMESPACE;
 }
 
 function createVariableSearchText(variable: EditorVariable) {

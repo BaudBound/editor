@@ -1,5 +1,13 @@
 import type { Node } from "@xyflow/react";
-import { getBuiltInVariableRuntimeEntries, SETTINGS_NAMESPACE } from "@/data/project/built-in-variables";
+import {
+	createSimulationBuiltInVariableValues,
+	getBuiltInVariableRuntimeEntries,
+	MANIFEST_NAMESPACE,
+	type ManifestVariableSource,
+	SETTINGS_NAMESPACE,
+	SYSTEM_NAMESPACE,
+} from "@/data/project/built-in-variables";
+import { createSimulationScriptSettingValues } from "@/data/project/script-settings";
 import {
 	createConfiguredVariableDefinitions,
 	createDerivedVariableMetadataDefinitions,
@@ -7,8 +15,7 @@ import {
 	type EditorVariable,
 } from "@/data/project/variables";
 import type {
-	DefaultVariable,
-	ProjectSettings,
+	DeclaredVariable,
 	ScriptNodeData,
 	ScriptSetting,
 	SecretDeclaration,
@@ -16,41 +23,76 @@ import type {
 } from "@/lib/types";
 
 export function createVariablePanelEntries(
-	projectSettings: ProjectSettings,
+	source: ManifestVariableSource,
 	nodes: Node<ScriptNodeData>[],
 	snapshots: SimulationVariableSnapshot[],
 	secretDeclarations: SecretDeclaration[] = [],
-	defaultVariables: DefaultVariable[] = [],
+	declaredVariables: DeclaredVariable[] = [],
 	scriptSettings: ScriptSetting[] = [],
 ): EditorVariable[] {
 	return createEditorVariableRegistry(
-		projectSettings,
+		source,
 		nodes,
 		snapshots,
 		secretDeclarations,
-		defaultVariables,
+		declaredVariables,
 		scriptSettings,
-	);
+	).filter((variable) => !(variable.source === "setting" && variable.name.startsWith(`${SETTINGS_NAMESPACE}.`)));
 }
 
 export function createEditorVariableRegistry(
-	projectSettings: ProjectSettings,
+	source: ManifestVariableSource,
 	nodes: Node<ScriptNodeData>[],
 	snapshots: SimulationVariableSnapshot[] = [],
 	secretDeclarations: SecretDeclaration[] = [],
-	defaultVariables: DefaultVariable[] = [],
+	declaredVariables: DeclaredVariable[] = [],
 	scriptSettings: ScriptSetting[] = [],
 ): EditorVariable[] {
 	const variables = new Map<string, EditorVariable>();
+	const builtInValues = createSimulationBuiltInVariableValues(source);
+	const settingsValue = createSimulationScriptSettingValues(scriptSettings);
 
 	for (const variable of [
-		...getBuiltInVariableRuntimeEntries(projectSettings),
+		...getBuiltInVariableRuntimeEntries(source),
 		...createConfiguredVariableDefinitions(nodes),
 		...createNodeOutputVariables(nodes),
 	]) {
 		variables.set(variable.name, variable);
 	}
-	for (const variable of defaultVariables) {
+	variables.set(MANIFEST_NAMESPACE, {
+		description: "Read-only metadata for this script.",
+		name: MANIFEST_NAMESPACE,
+		preTrigger: true,
+		read_only: true,
+		scope: "manifest",
+		source: "built_in",
+		token: `{{${MANIFEST_NAMESPACE}}}`,
+		type: "object",
+		value: builtInValues[MANIFEST_NAMESPACE],
+	});
+	variables.set(SYSTEM_NAMESPACE, {
+		description: "Read-only values supplied by the runner.",
+		name: SYSTEM_NAMESPACE,
+		preTrigger: true,
+		read_only: true,
+		scope: "system",
+		source: "built_in",
+		token: `{{${SYSTEM_NAMESPACE}}}`,
+		type: "object",
+		value: builtInValues[SYSTEM_NAMESPACE],
+	});
+	variables.set(SETTINGS_NAMESPACE, {
+		description: "Read-only values configured for this script.",
+		name: SETTINGS_NAMESPACE,
+		preTrigger: true,
+		read_only: true,
+		scope: "setting",
+		source: "setting",
+		token: `{{${SETTINGS_NAMESPACE}}}`,
+		type: "object",
+		value: settingsValue,
+	});
+	for (const variable of declaredVariables) {
 		variables.set(variable.name, {
 			description: variable.description,
 			name: variable.name,
@@ -74,23 +116,6 @@ export function createEditorVariableRegistry(
 			type: secret.type,
 		});
 	}
-	const settingsValue = Object.fromEntries(
-		scriptSettings.map((setting) => [
-			setting.name,
-			structuredClone(setting.simulationValue ?? setting.defaultValue ?? null),
-		]),
-	);
-	variables.set("settings", {
-		description: "Read-only values configured for this script.",
-		name: "settings",
-		preTrigger: true,
-		read_only: true,
-		scope: "setting",
-		source: "setting",
-		token: "{{settings}}",
-		type: "object",
-		value: settingsValue,
-	});
 	for (const setting of scriptSettings) {
 		const name = `${SETTINGS_NAMESPACE}.${setting.name}`;
 		variables.set(name, {

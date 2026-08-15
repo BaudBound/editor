@@ -6,6 +6,8 @@ import {
 } from "../../project/variables";
 
 export type SelectOption = {
+	/** Optional second line in the picker, for telling similar options apart. */
+	description?: string;
 	label: string;
 	value: string;
 };
@@ -131,6 +133,7 @@ export const variableOperationOptions: SelectOption[] = variableOperations.map((
 export const textTransformOperationOptions: SelectOption[] = [
 	{ label: "Template", value: "template" },
 	{ label: "Format date and time", value: "format_datetime" },
+	{ label: "Format duration", value: "format_duration" },
 	{ label: "Trim", value: "trim" },
 	{ label: "Uppercase", value: "uppercase" },
 	{ label: "Lowercase", value: "lowercase" },
@@ -149,6 +152,20 @@ export const textTransformOperationOptions: SelectOption[] = [
 	{ label: "Base64 decode", value: "base64_decode" },
 	{ label: "JSON escape", value: "json_escape" },
 	{ label: "JSON unescape", value: "json_unescape" },
+];
+
+export const durationUnitOptions: SelectOption[] = [
+	{ label: "Milliseconds", value: "milliseconds" },
+	{ label: "Seconds", value: "seconds" },
+	{ label: "Minutes", value: "minutes" },
+	{ label: "Hours", value: "hours" },
+	{ label: "Days", value: "days" },
+];
+
+export const calculationResultTypeOptions: SelectOption[] = [
+	{ label: "Automatic", value: "automatic" },
+	{ label: "Integer", value: "integer" },
+	{ label: "Float", value: "float" },
 ];
 
 export const logLevelOptions: SelectOption[] = [

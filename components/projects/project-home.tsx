@@ -97,7 +97,7 @@ export function ProjectHome() {
 			await exportBbsPackage({
 				assets: project.assets,
 				comments: project.comments,
-				defaultVariables: project.defaultVariables,
+				declaredVariables: project.declaredVariables,
 				edges: project.edges,
 				edgeStyle: project.edgeStyle,
 				identity: project.identity,
@@ -310,7 +310,7 @@ function importedToProject(imported: ImportedBbsPackage): EditorProject {
 	return {
 		assets: imported.assets,
 		comments: imported.comments,
-		defaultVariables: imported.defaultVariables,
+		declaredVariables: imported.declaredVariables,
 		edgeStyle: imported.edgeStyle,
 		edges: imported.edges,
 		identity: imported.identity,

@@ -69,6 +69,11 @@ export const httpRequestNode = defineNode({
 	icon: Globe,
 	kind: "action",
 	label: "HTTP Request",
+	portPolicy: {
+		kind: "fixed",
+		inputs: ["input"],
+		outputs: ["ok", "client_error", "server_error", "unexpected_status", "failed"],
+	},
 	permission: { name: "http.request", risk: "medium" },
 	risk: "medium",
 	runtimeOutputs: fallible([

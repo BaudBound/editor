@@ -7,18 +7,17 @@ import {
 	getRunnerTriggerType,
 	sanitizeNodeConfig,
 } from "@/data/nodes/registry";
-import { createBuiltInVariableRuntimeContext } from "@/data/project/built-in-variables";
+import { createBuiltInVariableRuntimeContext, type ManifestVariableSource } from "@/data/project/built-in-variables";
 import { createNodeOutputVariables } from "@/data/project/variables";
 import type {
 	ActionType,
 	CapabilitySummary,
-	DefaultVariable,
+	DeclaredVariable,
 	EditorAsset,
 	ExecutableActionType,
 	ExportSummary,
 	LogEntry,
 	PermissionSummary,
-	ProjectSettings,
 	RiskLevel,
 	ScriptNodeData,
 	SecretDeclaration,
@@ -35,15 +34,35 @@ const riskWeight: Record<RiskLevel, number> = {
 	dangerous: 4,
 };
 
+/**
+ * The scope a Variable Operation node writes at.
+ *
+ * Read from the declaration rather than the node, because a node no longer
+ * carries a scope. The permission a write needs depends entirely on it, so a
+ * node naming an undeclared variable contributes none rather than guessing at
+ * the least privileged one.
+ */
+function declaredScopeForNode(node: Node<ScriptNodeData>, declaredVariables: DeclaredVariable[]) {
+	if (node.data.actionType !== "runtime.set_variable") {
+		return undefined;
+	}
+	const name = typeof node.data.config.name === "string" ? node.data.config.name : "";
+	return declaredVariables.find((variable) => variable.name === name)?.scope;
+}
+
 export function calculatePermissions(
 	nodes: Node<ScriptNodeData>[],
 	secretDeclarations: SecretDeclaration[] = [],
-	defaultVariables: DefaultVariable[] = [],
+	declaredVariables: DeclaredVariable[] = [],
 ): PermissionSummary[] {
 	const permissions = new Map<string, PermissionSummary>();
 
 	for (const node of nodes) {
-		for (const permission of getNodePermissions(node.data.actionType, node.data.config)) {
+		for (const permission of getNodePermissions(
+			node.data.actionType,
+			node.data.config,
+			declaredScopeForNode(node, declaredVariables),
+		)) {
 			const existing = permissions.get(permission.name);
 			if (!existing || riskWeight[permission.risk] > riskWeight[existing.risk]) {
 				permissions.set(permission.name, permission);
@@ -53,10 +72,10 @@ export function calculatePermissions(
 	if (secretDeclarations.length > 0) {
 		permissions.set("secret.read", { name: "secret.read", risk: "high" });
 	}
-	if (defaultVariables.some((variable) => variable.scope === "runtime")) {
+	if (declaredVariables.some((variable) => variable.scope === "runtime")) {
 		permissions.set("variable.local.set", { name: "variable.local.set", risk: "low" });
 	}
-	if (defaultVariables.some((variable) => variable.scope === "persistent")) {
+	if (declaredVariables.some((variable) => variable.scope === "persistent")) {
 		permissions.set("variable.persistent.set", { name: "variable.persistent.set", risk: "medium" });
 	}
 
@@ -68,22 +87,26 @@ export function calculatePermissions(
 export function calculateCapabilities(
 	nodes: Node<ScriptNodeData>[],
 	secretDeclarations: SecretDeclaration[] = [],
-	defaultVariables: DefaultVariable[] = [],
+	declaredVariables: DeclaredVariable[] = [],
 ): CapabilitySummary[] {
 	const capabilities = new Set<string>();
 
 	for (const node of nodes) {
-		for (const capability of getNodeCapabilities(node.data.actionType, node.data.config)) {
+		for (const capability of getNodeCapabilities(
+			node.data.actionType,
+			node.data.config,
+			declaredScopeForNode(node, declaredVariables),
+		)) {
 			capabilities.add(capability);
 		}
 	}
 	if (secretDeclarations.length > 0) {
 		capabilities.add("runtime.secrets");
 	}
-	if (defaultVariables.length > 0) {
+	if (declaredVariables.length > 0) {
 		capabilities.add("runtime.variables");
 	}
-	if (defaultVariables.some((variable) => variable.scope === "persistent")) {
+	if (declaredVariables.some((variable) => variable.scope === "persistent")) {
 		capabilities.add("runtime.persistent_storage");
 	}
 
@@ -142,10 +165,10 @@ export function createConsoleLogs(
 	return logs;
 }
 
-export function toProgramJson(nodes: Node<ScriptNodeData>[], edges: Edge[], projectSettings: ProjectSettings) {
+export function toProgramJson(nodes: Node<ScriptNodeData>[], edges: Edge[], source: ManifestVariableSource) {
 	const triggers = nodes.filter((node) => node.data.kind === "trigger").map(toTriggerJson);
 	const steps = nodes.filter((node) => node.data.kind !== "trigger").map(toStepJson);
-	const builtInVariableContext = createBuiltInVariableRuntimeContext(projectSettings);
+	const builtInVariableContext = createBuiltInVariableRuntimeContext(source);
 	const nodeOutputVariables = createNodeOutputVariables(nodes);
 
 	if (triggers.length === 0) {

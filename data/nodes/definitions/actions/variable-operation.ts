@@ -15,41 +15,42 @@ import type { JsonValue } from "@/lib/types";
 import type { SimulationContext } from "@/utils/simulation-types";
 import { validateVariableInput } from "../../config-field-validation";
 import { defineNode, type NodeSimulationApi } from "../../node-definition";
-import { variableOperationOptions, variableScopeOptions, variableTypeOptions } from "../options";
+import { variableOperationOptions } from "../options";
 
 export const variableOperationNode = defineNode({
 	actionType: "runtime.set_variable",
 	capabilities: ["runtime.variables"],
+	// No Scope or Variable type control. Both belong to the declaration, which
+	// is the only place they live now, so asking for them again on the node
+	// offered an author a second answer that could contradict the first.
 	configFields: [
 		{ key: "operation", label: "Operation", type: "select", options: variableOperationOptions },
 		{ key: "name", label: "Variable name", identifier: true, type: "text" },
-		{ key: "scope", label: "Scope", type: "select", options: variableScopeOptions },
-		{ key: "valueType", label: "Variable type", type: "select", options: variableTypeOptions, required: false },
 	],
 	defaultConfig: () => ({
 		operation: "set",
 		name: "",
-		scope: "runtime",
-		valueType: "string",
-		itemType: "string",
 		value: "",
 		fieldPath: "",
 		fieldValueType: "string",
 		fieldItemType: "string",
 		removeMode: "all",
 	}),
-	description: "Create, change, merge, clear, or delete variable values.",
+	description: "Create, change, merge, clear, or reset variable values.",
 	fallible: true,
-	deriveCapabilities: (config) =>
-		configString(config.scope) === "runtime"
-			? ["runtime.variables"]
-			: ["runtime.variables", "runtime.persistent_storage"],
-	derivePermissions: (config) => {
-		const scope = configString(config.scope);
-		if (scope === "persistent") {
+	// Both read the declared scope rather than the node, which no longer has
+	// one. An undeclared name yields the least privileged answer here; the
+	// package contract refuses the write outright, so this is never the only
+	// thing standing between a script and a permission it did not ask for.
+	deriveCapabilities: (_config, declaredScope) =>
+		declaredScope === "persistent" || declaredScope === "global"
+			? ["runtime.variables", "runtime.persistent_storage"]
+			: ["runtime.variables"],
+	derivePermissions: (_config, declaredScope) => {
+		if (declaredScope === "persistent") {
 			return [{ name: "variable.persistent.set", risk: "medium" }];
 		}
-		if (scope === "global") {
+		if (declaredScope === "global") {
 			return [{ name: "variable.global.set", risk: "high" }];
 		}
 		return [{ name: "variable.local.set", risk: "low" }];
@@ -70,24 +71,23 @@ export const variableOperationNode = defineNode({
 		const name = configString(config.name);
 		const nameError = validateVariableName(name);
 		const operation = normalizeVariableOperation(configString(config.operation));
-		const rawType = configString(config.valueType);
-		const scope = configString(config.scope);
+		// Neither scope nor type is checked here any more. The node does not
+		// carry them: it names a declared variable, and the declaration settles
+		// both. What this can still catch is a name that is not a legal
+		// identifier, and an operation's own options.
 		const fixedType = getVariableOperationFixedType(operation);
-		const declaredType = variableTypes.find((type) => type === rawType);
-		const valueType = fixedType ?? declaredType;
 		const itemType = normalizeListItemType(configString(config.itemType));
 		const fieldValueType = normalizeVariableTypeOrUndefined(configString(config.fieldValueType));
 		const fieldItemType = normalizeListItemType(configString(config.fieldItemType));
+		const valueType = fixedType;
 		const errors = [
 			nameError ? `has invalid variable name: ${nameError}` : "",
-			["runtime", "persistent", "global"].includes(scope) ? "" : `has invalid variable scope "${scope || "missing"}".`,
-			operation !== "set" || valueType ? "" : `has invalid variable type "${rawType || "missing"}".`,
 			operation === "remove_list_items" && !["first", "all"].includes(configString(config.removeMode))
 				? `has invalid removal mode "${configString(config.removeMode) || "missing"}".`
 				: "",
 		];
 
-		if (operation !== "clear" && operation !== "delete" && valueType) {
+		if (operation !== "clear" && operation !== "reset" && valueType) {
 			const valueError = validateVariableOperationValue(
 				operation,
 				valueType,
@@ -134,13 +134,11 @@ export const variableOperationNode = defineNode({
 			}
 
 			const result = applyVariableOperation(node.data.config, context, api);
-			const scope = api.getConfigString(node, "scope");
-			const variables = getVariableStore(scope, context);
-			if (result.deleted) {
-				delete variables[name];
-			} else {
-				variables[name] = result.value;
-			}
+			// The declaration, like applyVariableOperation above. Reading the
+			// node here and the declaration there would put the value in one
+			// store and read it from another the moment the two disagreed.
+			const variables = getVariableStore(declaredScope(name, context), context);
+			variables[name] = result.value;
 
 			return [
 				{
@@ -165,7 +163,7 @@ function validateVariableOperationVariables(
 	variables: readonly VariableReferenceCandidate[],
 ) {
 	const operation = normalizeVariableOperation(configString(config.operation));
-	if (["clear", "delete", "toggle_boolean", "remove_object_field"].includes(operation)) return [];
+	if (["clear", "reset", "toggle_boolean", "remove_object_field"].includes(operation)) return [];
 	// Increment applies to either an integer or a float variable. There is no
 	// wildcard for "either numeric type" in the exact-match contract, so this
 	// follows the same default other generic numeric inputs use.
@@ -202,11 +200,16 @@ function applyVariableOperation(
 		throw new Error(nameError);
 	}
 	const operation = normalizeVariableOperation(configString(config.operation));
-	const type = getVariableOperationFixedType(operation) ?? normalizeVariableType(configString(config.valueType));
-	const itemType = normalizeListItemType(configString(config.itemType));
+	// The declaration settles the type, as it does on the runner. An operation
+	// that implies one still wins, because that is a property of the operation
+	// rather than of the variable.
+	const declared = context.declaredVariables[name];
+	const type = getVariableOperationFixedType(operation) ?? normalizeVariableType(declared?.type ?? "");
+	const itemType = normalizeListItemType(declared?.itemType ?? "");
 	const fieldValueType = normalizeVariableType(configString(config.fieldValueType));
 	const fieldItemType = normalizeListItemType(configString(config.fieldItemType));
-	const scope = configString(config.scope);
+	// From the declaration, matching the runner. A node no longer settles this.
+	const scope = declaredScope(name, context);
 	const variables = getVariableStore(scope, context);
 	const scopeLabel = scope === "persistent" ? "persistent" : scope === "global" ? "global" : "runtime";
 	const currentValue = variables[name];
@@ -324,19 +327,24 @@ function applyVariableOperation(
 		};
 	}
 
-	if (operation === "delete") {
+	// Reset restores the declared default. Deleting the variable is not on
+	// offer any more: a declaration is what makes a variable exist, so a run
+	// cannot remove one and leave the rest of the script reading a name that
+	// nothing declares.
+	if (operation === "reset") {
+		const value = structuredClone(declared.value);
 		return {
-			deleted: true,
-			value: null,
-			message:
-				currentValue === undefined
-					? `${scopeLabel[0].toUpperCase()}${scopeLabel.slice(1)} variable "${name}" was already missing.`
-					: `Deleted ${scopeLabel} variable "${name}".`,
+			value,
+			message: `Reset ${scopeLabel} variable "${name}" to its declared value ${api.formatValue(value)}.`,
 		};
 	}
 
+	// Clear empties the variable for its declared type, whatever it holds now.
+	// It used to derive the empty value from the current one, which made the
+	// result depend on what happened to be stored rather than on what the
+	// variable is.
 	if (operation === "clear") {
-		const value = getClearedSimulationValue(currentValue, name);
+		const value = getClearedSimulationValue(type);
 
 		return {
 			value,
@@ -353,9 +361,12 @@ function applyVariableOperation(
 }
 
 function getVariableOperationConfigKeys(operation: ReturnType<typeof normalizeVariableOperation>) {
-	const base = ["customName", "operation", "name", "scope"];
+	// scope, valueType and itemType are absent, not merely unused: they belong
+	// to the declaration, the runner and simulator both read them from there,
+	// and the node schema refuses a config that carries them.
+	const base = ["customName", "operation", "name"];
 	const operationKeys: Record<ReturnType<typeof normalizeVariableOperation>, string[]> = {
-		set: ["valueType", "itemType", "value"],
+		set: ["value"],
 		increment: ["value"],
 		toggle_boolean: [],
 		append_list: ["value"],
@@ -363,13 +374,15 @@ function getVariableOperationConfigKeys(operation: ReturnType<typeof normalizeVa
 		set_object_field: ["fieldPath", "fieldValueType", "fieldItemType", "value"],
 		remove_object_field: ["fieldPath"],
 		merge_object: ["value"],
-		// Clear keeps valueType so the runner can tell a color or a keyboard key
-		// from a plain string. All three are strings once stored, and each has a
-		// different empty value, or none at all.
-		clear: ["valueType"],
-		delete: [],
+		clear: [],
+		reset: [],
 	};
 	return new Set([...base, ...operationKeys[operation]]);
+}
+
+/** The scope a declared variable lives in, or runtime when it is undeclared. */
+function declaredScope(name: string, context: SimulationContext) {
+	return context.declaredVariables[name]?.scope ?? "runtime";
 }
 
 function getVariableStore(scope: string, context: SimulationContext) {
@@ -472,24 +485,36 @@ function getListItemKind(value: JsonValue) {
 	return "object";
 }
 
-function getClearedSimulationValue(value: JsonValue | undefined, name: string): JsonValue {
-	if (value === undefined) {
-		throw new Error(`Clearing requires existing variable "${name}".`);
+/**
+ * The empty value for a type — what Clear writes.
+ *
+ * Not createEmptyTypedValue, which gives a datetime the current instant: right
+ * for a new declaration, wrong for clearing, where the empty datetime is the
+ * epoch. Exported so the shared clear and reset fixtures can check it against
+ * what the runner does.
+ */
+export function getClearedSimulationValue(type: VariableType): JsonValue {
+	switch (type) {
+		case "integer":
+		case "float":
+			return 0;
+		case "boolean":
+			return false;
+		case "list":
+			return [];
+		case "object":
+			return {};
+		case "datetime":
+			return { type: "datetime", value: "1970-01-01T00:00:00.000Z" };
+		case "duration":
+			return { type: "duration", unit: "seconds", value: 0 };
+		// A color is a JSON string, but "" is not a color. Black is its empty
+		// value, which is what the runner writes.
+		case "color":
+			return "#000000";
+		default:
+			return "";
 	}
-	if (typeof value === "string") return "";
-	if (typeof value === "number") return 0;
-	if (typeof value === "boolean") return false;
-	if (Array.isArray(value)) return [];
-	if (!value || typeof value !== "object") {
-		throw new Error(`Existing variable "${name}" has an unsupported value type.`);
-	}
-	if (value.type === "datetime") {
-		return { type: "datetime", value: "1970-01-01T00:00:00.000Z" };
-	}
-	if (value.type === "duration") {
-		return { type: "duration", unit: "seconds", value: 0 };
-	}
-	return {};
 }
 
 function resolveVariableInput(
