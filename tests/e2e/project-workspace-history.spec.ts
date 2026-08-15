@@ -251,7 +251,7 @@ test("history restores dynamic switch rows and their edited values", async ({ pa
 	const switchNode = page.locator(".react-flow__node").filter({ hasText: "Switch" }).first();
 	const cases = page.getByRole("list", { name: "Switch cases" }).locator("li");
 	await expect(cases).toHaveCount(1);
-	await expect(switchNode).toContainText("default");
+	await expect(switchNode).toContainText("Default");
 
 	await page.getByRole("button", { name: "Add switch case" }).click();
 	await expect(cases).toHaveCount(2);
