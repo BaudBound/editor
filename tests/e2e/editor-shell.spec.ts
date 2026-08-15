@@ -36,7 +36,12 @@ test("real-time simulation streams steps without blocking the editor UI", async 
 	await page.getByRole("button", { name: "Manual" }).click();
 	await page.getByRole("textbox", { name: "Search blocks" }).fill("Repeat");
 	await page.getByRole("button", { name: /^Repeat low/ }).click();
-	await page.getByRole("textbox", { name: "Repeat count" }).fill("40");
+	const repeatCount = page.getByRole("textbox", { name: "Repeat count" });
+	// Real time adds no pause of its own, so any loop that can finish is over
+	// before the editor can be driven at all. This one cannot finish inside a
+	// test, which is what makes the checks below observations of a run that is
+	// still in flight rather than a race against one that has already ended.
+	await repeatCount.fill("1000000");
 
 	const manualNode = page.locator(".react-flow__node").filter({ hasText: "Manual Trigger" });
 	const repeatNode = page.locator(".react-flow__node").filter({ hasText: "Repeat" });
@@ -53,6 +58,26 @@ test("real-time simulation streams steps without blocking the editor UI", async 
 	await expect(page.getByRole("textbox", { name: "Search variables" })).toBeVisible();
 	await page.getByRole("button", { name: "Simulation", exact: true }).click();
 	await expect(page.getByText(/Simulation completed\./)).toHaveCount(0);
+
+	// Steps reached the panel while the run was still going, and kept arriving
+	// while it was being driven: the run streams rather than holding the thread
+	// and publishing everything once it ends.
+	const streamedIteration = async () => {
+		const lines = await page.getByText(/Repeat .* iteration \d+ of 1000000\./).allTextContents();
+		return Math.max(0, ...lines.map((line) => Number(/iteration (\d+) of/.exec(line)?.[1] ?? 0)));
+	};
+	const streamedSoFar = await streamedIteration();
+	expect(streamedSoFar).toBeGreaterThan(0);
+	await expect.poll(streamedIteration).toBeGreaterThan(streamedSoFar);
+
+	await page.getByRole("button", { name: "Stop simulation" }).click();
+	await expect(runState).toContainText("stopped");
+
+	// The same loop, bounded, reports every one of its iterations and completes.
+	await page.getByRole("button", { name: "Properties" }).click();
+	await repeatCount.fill("40");
+	await page.getByRole("button", { name: "Simulator" }).click();
+	await page.getByRole("button", { name: "Trigger", exact: true }).click();
 	await expect(page.getByText(/Repeat .* iteration 40 of 40\./)).toBeVisible();
 	await expect(page.getByText(/Simulation completed\./)).toBeVisible();
 	await expect(runState).toContainText("waiting");
