@@ -2492,16 +2492,21 @@ test("control click keeps multiple nodes selected and opens the clicked node pro
 	if (!paneBox) {
 		throw new Error("React Flow pane is not visible.");
 	}
-	const addNode = async (name: string, x: number) => {
-		await page.mouse.click(x, paneBox.y + paneBox.height / 2, { button: "right" });
+	const addNode = async (name: string, x: number, y: number) => {
+		await page.mouse.click(x, y, { button: "right" });
 		const browser = page.getByRole("dialog", { name: "Add node" });
 		await browser.getByRole("textbox", { name: "Search nodes" }).fill(name);
 		await browser.getByRole("button", { name: new RegExp(name) }).click();
 	};
 
-	await addNode("Log", paneBox.x + 180);
-	await addNode("HTTP Request", paneBox.x + paneBox.width / 2);
-	await addNode("Delay", paneBox.x + paneBox.width - 180);
+	// A node names every outcome it can reach now, so three of them no longer
+	// fit across one row of the pane: the first would cover the point the
+	// second is added at, and the right click would land on that node rather
+	// than on empty canvas. They are staggered instead, which is what keeps
+	// each of the three separately clickable below.
+	await addNode("Log", paneBox.x + 140, paneBox.y + 82);
+	await addNode("HTTP Request", paneBox.x + paneBox.width - 140, paneBox.y + 82);
+	await addNode("Delay", paneBox.x + 140, paneBox.y + paneBox.height - 110);
 
 	const logNode = page.locator(".react-flow__node").filter({ hasText: "Log" }).first();
 	const httpNode = page.locator(".react-flow__node").filter({ hasText: "HTTP Request" }).first();

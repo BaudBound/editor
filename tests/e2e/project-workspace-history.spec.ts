@@ -403,9 +403,17 @@ test("one multi-node drag is restored as one history transaction", async ({ page
 		x: Math.min(initialLogBox.x, initialHttpBox.x) - 12,
 		y: Math.min(initialLogBox.y, initialHttpBox.y) - 12,
 	};
+	// A node is taller than the pane once it names every outcome it can reach,
+	// so the box that encloses both nodes reaches past the bottom of the pane.
+	// Dragging there makes React Flow auto-pan the canvas, which moves every
+	// node on screen and makes the drag measured below meaningless. Partial
+	// selection is enough to catch both nodes, so the box stops inside the pane.
 	const selectionEnd = {
 		x: Math.max(initialLogBox.x + initialLogBox.width, initialHttpBox.x + initialHttpBox.width) + 12,
-		y: Math.max(initialLogBox.y + initialLogBox.height, initialHttpBox.y + initialHttpBox.height) + 12,
+		y: Math.min(
+			Math.max(initialLogBox.y + initialLogBox.height, initialHttpBox.y + initialHttpBox.height) + 12,
+			paneBox.y + paneBox.height - 48,
+		),
 	};
 	await page.keyboard.down("Control");
 	await page.mouse.move(selectionStart.x, selectionStart.y);
