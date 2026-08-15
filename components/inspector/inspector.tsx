@@ -1293,8 +1293,12 @@ function VariableOperationConfigPanel({
 			return fixedType ? variable.type === fixedType : true;
 		})
 		.map((variable) => ({
+			// The description is what tells two similarly named variables apart,
+			// so it belongs where the choice is made. The scope and type belong
+			// there too: the list is narrowed by type, so the option has to say
+			// which type it is being offered for.
 			description: variable.description || undefined,
-			label: variable.name,
+			label: `${variable.name} (${variable.scope} ${variable.type})`,
 			value: variable.name,
 		}));
 	// The mirror of the rule above: with a hotkey selected, Clear is not on
