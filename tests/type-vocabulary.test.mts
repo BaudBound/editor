@@ -327,6 +327,26 @@ test("a node cannot write a variable the manifest does not declare", async () =>
 	assert.match(undeclared[0] ?? "", /n-1/);
 });
 
+test("Variable Operation validates set values against the declared variable type", async () => {
+	const { validateNodeConfig } = await import("../data/nodes/registry.ts");
+	const variables = [
+		{ name: "item", type: "integer", value: 0 },
+		{ name: "label", type: "string" },
+		{ name: "n-convert.value", type: "integer" },
+	] as const;
+	const config = (value: string) => ({
+		name: "item",
+		operation: "set",
+		value,
+	});
+
+	assert.deepEqual(validateNodeConfig("runtime.set_variable", config("{{n-convert.value}}"), variables), []);
+
+	const errors = validateNodeConfig("runtime.set_variable", config("{{label}}"), variables);
+	assert.equal(errors.length, 1);
+	assert.match(errors[0] ?? "", /Variable "label" has type string; this field accepts integer variables/);
+});
+
 test("a trigger's overlap mode falls back to queue", async () => {
 	const { triggerOverlapMode } = await import("../data/nodes/definitions/shared-fields.ts");
 
