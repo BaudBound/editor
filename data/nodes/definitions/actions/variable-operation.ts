@@ -5,6 +5,7 @@ import {
 	getVariableOperationFixedType,
 	type ListItemType,
 	listItemTypes,
+	normalizeVariableReferenceName,
 	normalizeVariableOperation,
 	type VariableType,
 	validateVariableName,
@@ -164,19 +165,22 @@ function validateVariableOperationVariables(
 ) {
 	const operation = normalizeVariableOperation(configString(config.operation));
 	if (["clear", "reset", "toggle_boolean", "remove_object_field"].includes(operation)) return [];
+	const targetName = normalizeVariableReferenceName(configString(config.name));
+	const declaredTargetType = normalizeVariableTypeOrUndefined(
+		configString(variables.find((variable) => variable.name === targetName)?.type),
+	);
 	// Increment applies to either an integer or a float variable. There is no
-	// wildcard for "either numeric type" in the exact-match contract, so this
-	// follows the same default other generic numeric inputs use.
+	// single exact-match contract for that, so accept either numeric type.
 	const targetType =
 		operation === "increment"
-			? "float"
+			? (["integer", "float"] as const)
 			: operation === "merge_object"
 				? "object"
 				: operation === "set_object_field"
 					? normalizeVariableType(configString(config.fieldValueType))
-					: operation === "append_list" || operation === "remove_list_items"
-						? "string"
-						: normalizeVariableType(configString(config.valueType));
+				: operation === "append_list" || operation === "remove_list_items"
+					? "any"
+					: (declaredTargetType ?? "any");
 	const error = validateVariableInput(configString(config.value), variables, targetType);
 	return error ? [`value: ${error}`] : [];
 }
