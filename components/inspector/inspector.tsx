@@ -104,6 +104,7 @@ import { DatetimeTokenPanel } from "./datetime-token-panel";
 import { DurationTokenPanel } from "./duration-token-panel";
 import { EdgeOrderPanel } from "./edge-order-panel";
 import { KeyCaptureInput } from "./key-capture-input";
+import { RouterConfigPanel } from "./router-config-panel";
 import { RuntimeDataPanel } from "./runtime-data-panel";
 
 type InspectorProps = {
@@ -287,8 +288,6 @@ function PropertiesPanel({
 	onUpdateNodeConfigValues: (nodeId: string, values: Record<string, JsonValue>) => void;
 	onDeleteNode: (nodeId: string) => void;
 }) {
-	void onUpdateNodeConfigValues;
-
 	if (!selectedNode) {
 		return (
 			<div className="p-4">
@@ -403,6 +402,12 @@ function PropertiesPanel({
 								config={selectedNode.data.config}
 								variableCompletions={variableCompletions}
 								onChange={(key, value) => onUpdateNodeConfig(selectedNode.id, key, value)}
+							/>
+						)}
+						{selectedNode.data.actionType === "control.router" && (
+							<RouterConfigPanel
+								config={selectedNode.data.config}
+								onChange={(values) => onUpdateNodeConfigValues(selectedNode.id, values)}
 							/>
 						)}
 						{(selectedNode.data.actionType === "action.http" ||
@@ -2323,6 +2328,7 @@ function hasCustomConfigPanel(actionType: ActionType) {
 		usesKeyReference(actionType) ||
 		usesConditionRows(actionType) ||
 		actionType === "control.switch" ||
+		actionType === "control.router" ||
 		actionType === "action.http" ||
 		actionType === "action.webhook_response" ||
 		actionType === "action.sound.play" ||
