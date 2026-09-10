@@ -1,5 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
-import { isEditorEdgeStyle } from "@/data/editor/flow-canvas";
+import { type EditorEdgeStyle, isEditorEdgeStyle } from "@/data/editor/flow-canvas";
 import {
 	getTargetRuntimeCompatibilityErrors as getRegistryTargetRuntimeCompatibilityErrors,
 	validateNodeConfig,
@@ -16,13 +16,31 @@ import {
 import type {
 	DeclaredVariable,
 	EditorAsset,
+	EditorComment,
 	PermissionSummary,
+	ProjectSettings,
 	ScriptNodeData,
+	ScriptSetting,
 	SecretDeclaration,
 	TargetRuntime,
 } from "@/lib/types";
 import { getEdgeExecutionOrderErrors, isSelfConnection } from "@/utils/editor-graph";
-import { validatePackageJsonContracts } from "./package-contract";
+import type { ProjectIdentity } from "../data/projects/model";
+import {
+	type BbsPackageMetadata,
+	createBbsPackageMetadata,
+	getBbsPackageSizeErrors,
+	toPackageJsonFiles,
+} from "./bbs-package-metadata";
+import {
+	validateCapabilitiesContract,
+	validateDeclaredVariableProgramContract,
+	validateEditorContract,
+	validateManifestContract,
+	validatePackageJsonContracts,
+	validatePermissionsContract,
+	validateProgramContract,
+} from "./package-contract";
 
 export type VerificationOutcome = "passed" | "warning" | "failed";
 export type VerificationStatus = "unverified" | "verified" | "warning" | "failed";
@@ -47,14 +65,26 @@ type VerificationRule<Context> = {
 
 type CreateVerificationChecksOptions = {
 	assets: EditorAsset[];
+	comments?: EditorComment[];
 	declaredVariables?: DeclaredVariable[];
+	edgeStyle?: EditorEdgeStyle;
 	edges: Edge[];
+	identity?: ProjectIdentity;
 	nodes: Node<ScriptNodeData>[];
 	permissions: PermissionSummary[];
+	projectSettings?: ProjectSettings;
 	secretDeclarations?: SecretDeclaration[];
 	scriptName: string;
+	scriptSettings?: ScriptSetting[];
 	targetRuntimes: TargetRuntime[];
 	variables?: readonly VariableReferenceCandidate[];
+};
+
+type EditorVerificationContext = CreateVerificationChecksOptions & {
+	packageBuildErrors: string[];
+	packageJsonFiles: Record<string, unknown> | null;
+	packageMetadata: BbsPackageMetadata | null;
+	packageSizeErrors: string[];
 };
 
 export type PackageVerificationContext = {
@@ -71,8 +101,9 @@ export type VerificationSummary = {
 };
 
 export function createVerificationChecks(options: CreateVerificationChecksOptions): VerificationCheck[] {
+	const context = createEditorVerificationContext(options);
 	return editorVerificationRules.map((rule) => {
-		const result = rule.run(options);
+		const result = rule.run(context);
 		return {
 			id: rule.id,
 			title: rule.title,
@@ -118,7 +149,64 @@ export function getVerificationFindings(
 	);
 }
 
-const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>[] = [
+function createEditorVerificationContext(options: CreateVerificationChecksOptions): EditorVerificationContext {
+	const { identity, projectSettings } = options;
+	const missingInputs = [
+		...(!identity ? ["Project identity is not available."] : []),
+		...(!projectSettings ? ["Project settings are not available."] : []),
+	];
+
+	if (!identity || !projectSettings) {
+		return {
+			...options,
+			packageBuildErrors: missingInputs,
+			packageJsonFiles: null,
+			packageMetadata: null,
+			packageSizeErrors: [],
+		};
+	}
+
+	try {
+		const packageMetadata = createBbsPackageMetadata({
+			assets: options.assets,
+			comments: options.comments ?? [],
+			declaredVariables: options.declaredVariables ?? [],
+			edges: options.edges,
+			edgeStyle: options.edgeStyle ?? "bezier",
+			identity,
+			nodes: options.nodes,
+			projectSettings,
+			secretDeclarations: options.secretDeclarations ?? [],
+			scriptSettings: options.scriptSettings ?? [],
+		});
+
+		return {
+			...options,
+			packageBuildErrors: [],
+			packageJsonFiles: toPackageJsonFiles(packageMetadata),
+			packageMetadata,
+			packageSizeErrors: getBbsPackageSizeErrors(packageMetadata, options.assets),
+		};
+	} catch (error) {
+		return {
+			...options,
+			packageBuildErrors: [error instanceof Error ? error.message : "Package metadata could not be generated."],
+			packageJsonFiles: null,
+			packageMetadata: null,
+			packageSizeErrors: [],
+		};
+	}
+}
+
+function packageBuildFailureResult(context: EditorVerificationContext) {
+	return {
+		outcome: "failed" as const,
+		message: "Package metadata could not be generated.",
+		details: context.packageBuildErrors,
+	};
+}
+
+const editorVerificationRules: VerificationRule<EditorVerificationContext>[] = [
 	{
 		id: "metadata",
 		title: "Script metadata",
@@ -336,6 +424,132 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 		},
 	},
 	{
+		id: "package-manifest",
+		title: "Manifest",
+		description: "Checking generated manifest metadata before export.",
+		run: (context) => {
+			if (!context.packageJsonFiles) {
+				return packageBuildFailureResult(context);
+			}
+
+			const errors = validateManifestContract(context.packageJsonFiles["manifest.json"]);
+			return {
+				outcome: errors.length === 0 ? "passed" : "failed",
+				message:
+					errors.length === 0 ? "Generated manifest metadata is valid." : "Generated manifest metadata is invalid.",
+				...(errors.length > 0 ? { details: errors } : {}),
+			};
+		},
+	},
+	{
+		id: "package-program",
+		title: "Program JSON",
+		description: "Checking generated runner program metadata before export.",
+		run: (context) => {
+			if (!context.packageJsonFiles) {
+				return packageBuildFailureResult(context);
+			}
+
+			const errors = [
+				...validateProgramContract(context.packageJsonFiles["program.json"]),
+				...validateDeclaredVariableProgramContract(
+					context.packageJsonFiles["manifest.json"],
+					context.packageJsonFiles["program.json"],
+				),
+			];
+			return {
+				outcome: errors.length === 0 ? "passed" : "failed",
+				message:
+					errors.length === 0 ? "Generated program metadata is valid." : "Generated program metadata is invalid.",
+				...(errors.length > 0 ? { details: errors } : {}),
+			};
+		},
+	},
+	{
+		id: "package-permissions",
+		title: "Package permissions",
+		description: "Checking generated permission declarations before export.",
+		run: (context) => {
+			if (!context.packageJsonFiles) {
+				return packageBuildFailureResult(context);
+			}
+
+			const errors = validatePermissionsContract(
+				context.packageJsonFiles["permissions.json"],
+				context.packageJsonFiles["program.json"],
+				context.packageJsonFiles["manifest.json"],
+			);
+			return {
+				outcome: errors.length === 0 ? "passed" : "failed",
+				message:
+					errors.length === 0
+						? "Generated permission declarations are valid."
+						: "Generated permission declarations are invalid.",
+				...(errors.length > 0 ? { details: errors } : {}),
+			};
+		},
+	},
+	{
+		id: "package-capabilities",
+		title: "Package capabilities",
+		description: "Checking generated runtime capability declarations before export.",
+		run: (context) => {
+			if (!context.packageJsonFiles) {
+				return packageBuildFailureResult(context);
+			}
+
+			const errors = validateCapabilitiesContract(
+				context.packageJsonFiles["capabilities.json"],
+				context.packageJsonFiles["program.json"],
+				context.packageJsonFiles["manifest.json"],
+			);
+			return {
+				outcome: errors.length === 0 ? "passed" : "failed",
+				message:
+					errors.length === 0
+						? "Generated capability declarations are valid."
+						: "Generated capability declarations are invalid.",
+				...(errors.length > 0 ? { details: errors } : {}),
+			};
+		},
+	},
+	{
+		id: "package-editor-metadata",
+		title: "Editor metadata",
+		description: "Checking generated editor layout metadata before export.",
+		run: (context) => {
+			if (!context.packageJsonFiles) {
+				return packageBuildFailureResult(context);
+			}
+
+			const errors = validateEditorContract(context.packageJsonFiles["editor.json"]);
+			return {
+				outcome: errors.length === 0 ? "passed" : "failed",
+				message: errors.length === 0 ? "Generated editor metadata is valid." : "Generated editor metadata is invalid.",
+				...(errors.length > 0 ? { details: errors } : {}),
+			};
+		},
+	},
+	{
+		id: "package-limits",
+		title: "Package limits",
+		description: "Checking generated metadata size and package entry limits before export.",
+		run: (context) => {
+			if (!context.packageMetadata) {
+				return packageBuildFailureResult(context);
+			}
+
+			return {
+				outcome: context.packageSizeErrors.length === 0 ? "passed" : "failed",
+				message:
+					context.packageSizeErrors.length === 0
+						? "Generated package is within size and entry limits."
+						: "Generated package exceeds export limits.",
+				...(context.packageSizeErrors.length > 0 ? { details: context.packageSizeErrors } : {}),
+			};
+		},
+	},
+	{
 		id: "serial",
 		title: "Serial devices",
 		description: "Checking serial device ids and write targets.",
@@ -374,6 +588,9 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 				context.declaredVariables ?? [],
 				context.secretDeclarations ?? [],
 			);
+			const packageContractErrors = context.packageJsonFiles
+				? validatePackageJsonContracts(context.packageJsonFiles)
+				: context.packageBuildErrors;
 			const details = [
 				...(!context.scriptName.trim() ? ["Project Settings > Script name: enter a name for the script."] : []),
 				...(context.targetRuntimes.length === 0
@@ -394,6 +611,8 @@ const editorVerificationRules: VerificationRule<CreateVerificationChecksOptions>
 				...invalidDefaults,
 				...invalidAssets,
 				...invalidTargetRuntime,
+				...packageContractErrors,
+				...context.packageSizeErrors,
 			];
 
 			return {

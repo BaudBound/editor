@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, CheckCircle2, Circle, Loader2, X, XCircle } from "lucide-react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { VerificationResultBlock } from "@/components/modals/verification-result-block";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -36,7 +36,16 @@ const VERIFICATION_STEP_GAP_MS = 1;
 
 export function VerificationModal({ checks, onClose, open }: VerificationModalProps) {
 	const titleId = useId();
-	const summary = summarizeVerification(checks);
+	const [verificationChecks, setVerificationChecks] = useState<VerificationCheck[]>(checks);
+	const wasOpenRef = useRef(false);
+	const summary = summarizeVerification(verificationChecks);
+
+	useEffect(() => {
+		if (open && !wasOpenRef.current) {
+			setVerificationChecks(checks);
+		}
+		wasOpenRef.current = open;
+	}, [checks, open]);
 
 	if (!open) {
 		return null;
@@ -46,7 +55,7 @@ export function VerificationModal({ checks, onClose, open }: VerificationModalPr
 		<Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
 			<DialogContent
 				aria-labelledby={titleId}
-				className="grid max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-2xl"
+				className="grid h-[86vh] max-h-[86vh] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-5xl"
 				onInteractOutside={(event) => event.preventDefault()}
 				showCloseButton={false}
 			>
@@ -62,7 +71,7 @@ export function VerificationModal({ checks, onClose, open }: VerificationModalPr
 
 				<div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4 p-4">
 					<div className="min-h-0 overflow-y-auto pr-1">
-						<VerificationProgress checks={checks} active={open} />
+						<VerificationProgress checks={verificationChecks} active={open} />
 					</div>
 
 					<div className="flex justify-end">
@@ -79,6 +88,11 @@ export function VerificationModal({ checks, onClose, open }: VerificationModalPr
 export function VerificationProgress({ active = true, checks, onComplete }: VerificationProgressProps) {
 	const initialSteps = useMemo(() => createInitialSteps(checks), [checks]);
 	const [steps, setSteps] = useState<VerificationStepView[]>(initialSteps);
+	const onCompleteRef = useRef(onComplete);
+
+	useEffect(() => {
+		onCompleteRef.current = onComplete;
+	}, [onComplete]);
 
 	useEffect(() => {
 		if (!active) {
@@ -95,7 +109,7 @@ export function VerificationProgress({ active = true, checks, onComplete }: Veri
 			}
 
 			if (index >= checks.length) {
-				onComplete?.(summarizeVerification(checks));
+				onCompleteRef.current?.(summarizeVerification(checks));
 				return;
 			}
 
@@ -128,7 +142,7 @@ export function VerificationProgress({ active = true, checks, onComplete }: Veri
 				window.clearTimeout(timer);
 			}
 		};
-	}, [active, checks, onComplete]);
+	}, [active, checks]);
 
 	const completedSteps = steps.filter((step) => step.status !== "pending" && step.status !== "running").length;
 	const failedSteps = steps.filter((step) => step.status === "failed").length;
@@ -136,18 +150,24 @@ export function VerificationProgress({ active = true, checks, onComplete }: Veri
 	const running = steps.some((step) => step.status === "running");
 	const complete = completedSteps === steps.length;
 	const progress = steps.length > 0 ? (completedSteps / steps.length) * 100 : 0;
+	const progressStatus = getProgressStatus(running, complete, failedSteps, warningSteps);
 
 	return (
 		<div className="space-y-4">
 			<div>
 				<div className="mb-2 flex items-center justify-between font-mono text-xs text-baud-muted">
-					<span>{running ? "Running checks" : complete ? "Checks complete" : "Preparing checks"}</span>
-					<span>
+					<span className={getProgressStatusClassName(progressStatus)}>
+						{getProgressStatusLabel(progressStatus, failedSteps, warningSteps)}
+					</span>
+					<span className={getProgressStatusClassName(progressStatus)}>
 						{completedSteps}/{steps.length}
 					</span>
 				</div>
 				<div className="h-1.5 overflow-hidden rounded bg-baud-soft">
-					<div className="h-full bg-baud-green transition-[width] duration-200" style={{ width: `${progress}%` }} />
+					<div
+						className={`h-full transition-[width,background-color] duration-200 ${getProgressBarClassName(progressStatus)}`}
+						style={{ width: `${progress}%` }}
+					/>
 				</div>
 			</div>
 
@@ -180,6 +200,89 @@ export function VerificationProgress({ active = true, checks, onComplete }: Veri
 
 function createInitialSteps(checks: VerificationCheck[]): VerificationStepView[] {
 	return checks.map((check) => ({ ...check, status: "pending" }));
+}
+
+type VerificationProgressStatus = "pending" | "running" | "passed" | "warning" | "failed";
+
+function getProgressStatus(
+	running: boolean,
+	complete: boolean,
+	failedSteps: number,
+	warningSteps: number,
+): VerificationProgressStatus {
+	if (failedSteps > 0) {
+		return "failed";
+	}
+
+	if (warningSteps > 0) {
+		return "warning";
+	}
+
+	if (running) {
+		return "running";
+	}
+
+	return complete ? "passed" : "pending";
+}
+
+function getProgressStatusLabel(status: VerificationProgressStatus, failedSteps: number, warningSteps: number) {
+	if (status === "failed") {
+		return `Checks failed - ${failedSteps} error${failedSteps === 1 ? "" : "s"}`;
+	}
+
+	if (status === "warning") {
+		return `Checks have warnings - ${warningSteps} warning${warningSteps === 1 ? "" : "s"}`;
+	}
+
+	if (status === "passed") {
+		return "All checks passed";
+	}
+
+	if (status === "running") {
+		return "Running checks";
+	}
+
+	return "Preparing checks";
+}
+
+function getProgressStatusClassName(status: VerificationProgressStatus) {
+	if (status === "failed") {
+		return "text-baud-danger";
+	}
+
+	if (status === "warning") {
+		return "text-baud-amber";
+	}
+
+	if (status === "passed") {
+		return "text-baud-green";
+	}
+
+	if (status === "running") {
+		return "text-baud-blue";
+	}
+
+	return "text-baud-muted";
+}
+
+function getProgressBarClassName(status: VerificationProgressStatus) {
+	if (status === "failed") {
+		return "bg-baud-danger";
+	}
+
+	if (status === "warning") {
+		return "bg-baud-amber";
+	}
+
+	if (status === "passed") {
+		return "bg-baud-green";
+	}
+
+	if (status === "running") {
+		return "bg-baud-blue";
+	}
+
+	return "bg-baud-muted";
 }
 
 function getStepIcon(status: VerificationStepStatus) {

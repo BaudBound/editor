@@ -73,6 +73,16 @@ textarea,
 	user-select: text;
 }
 
+.cn-toast,
+.cn-toast [data-title],
+.cn-toast [data-description] {
+	user-select: text;
+}
+
+.cn-toast button {
+	user-select: none;
+}
+
 .react-flow {
 	--xy-background-color: #080a0f;
 	--xy-edge-stroke-default: #53627d;

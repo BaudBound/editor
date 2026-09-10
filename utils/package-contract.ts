@@ -324,7 +324,7 @@ export function validateManifestContract(value: unknown) {
 				}
 				if (!variableTypes.includes(type)) {
 					errors.push(`manifest.json variable "${name}" has invalid type "${String(variable.type)}".`);
-				} else if (!defaultValueMatchesType(type, variable.value, variable.item_type)) {
+				} else if (!defaultValueMatchesType(type, variable.value, variable.item_type, true)) {
 					errors.push(`manifest.json variable "${name}" value does not match type "${type}".`);
 				}
 				if (variable.description !== undefined && typeof variable.description !== "string") {
@@ -466,7 +466,7 @@ function serializedByteLength(value: unknown) {
 	}
 }
 
-function validateDeclaredVariableProgramContract(manifestValue: unknown, programValue: unknown) {
+export function validateDeclaredVariableProgramContract(manifestValue: unknown, programValue: unknown) {
 	const manifest = asRecord(manifestValue);
 	const program = asRecord(programValue);
 	const entry = asRecord(program?.entry);

@@ -467,12 +467,12 @@ function FlowCanvasContent({
 						.join(" ") || undefined,
 				label: groupSize > 1 && executionOrder !== null ? String(executionOrder + 1) : undefined,
 				labelBgBorderRadius: 4,
-				labelBgPadding: [5, 3] as [number, number],
+				labelBgPadding: [7, 5] as [number, number],
 				labelBgStyle: {
 					fill: selected ? edgeColors.selected : simulated ? "#176b4b" : "#182033",
 					fillOpacity: 1,
 				},
-				labelStyle: { fill: "#ffffff", fontSize: 11, fontWeight: 700 },
+				labelStyle: { fill: "#ffffff", fontSize: 16, fontWeight: 700 },
 				type: toReactFlowEdgeType(edgeStyle),
 				style: {
 					stroke: selected ? edgeColors.selected : simulated ? edgeColors.simulated : edgeColors.default,

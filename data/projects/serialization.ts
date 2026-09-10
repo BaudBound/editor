@@ -598,7 +598,7 @@ export function isDeclaredVariable(value: unknown): value is DeclaredVariable {
 		isRecord(value) &&
 		typeof value.name === "string" &&
 		typeof value.description === "string" &&
-		(value.scope === "runtime" || value.scope === "persistent") &&
+		(value.scope === "runtime" || value.scope === "persistent" || value.scope === "global") &&
 		variableTypes.includes(type as DeclaredVariable["type"]) &&
 		(type === "list" ? !!itemType : value.itemType === undefined) &&
 		isJsonValue(value.value) &&

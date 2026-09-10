@@ -686,6 +686,7 @@ test("editor schema and package contract support editor-only metadata", () => {
 	const editorSchema = JSON.parse(read(join(schemasRoot, "editor.schema.json")));
 	const programSchema = JSON.parse(read(join(schemasRoot, "program.schema.json")));
 	const packageContractSource = read(join(appRoot, "utils", "package-contract.ts"));
+	const packageMetadataSource = read(join(appRoot, "utils", "bbs-package-metadata.ts"));
 	const packageSource = read(join(appRoot, "utils", "bbs-package.ts"));
 	const flowCanvasSource = read(join(appRoot, "data", "editor", "flow-canvas.ts"));
 
@@ -711,9 +712,9 @@ test("editor schema and package contract support editor-only metadata", () => {
 	assert.match(packageContractSource, /editor\.json comments/);
 	assert.match(packageContractSource, /canvas\.edge_style/);
 	assert.match(packageContractSource, /font_size from 12 to 72/);
-	assert.match(packageSource, /edge_style/);
-	assert.match(packageSource, /font_size/);
-	assert.match(packageSource, /comments: comments\.map/);
+	assert.match(packageMetadataSource, /edge_style/);
+	assert.match(packageMetadataSource, /font_size/);
+	assert.match(packageMetadataSource, /comments: comments\.map/);
 	assert.match(packageSource, /function toEditorComments/);
 	const edgeStyleBlock = flowCanvasSource.match(/edgeStyleOptions = \[([\s\S]*?)\] as const/);
 	assert.ok(edgeStyleBlock, "flow-canvas.ts should define edge style options");
@@ -1741,7 +1742,8 @@ test("secret declarations are package metadata while simulation values remain se
 test("declared variables are typed package metadata and runner execution state", () => {
 	const manifestSchema = JSON.parse(read(join(schemasRoot, "manifest.schema.json")));
 	const editorPage = read(join(appRoot, "app", "editor-page.tsx"));
-	const packageSource = read(join(appRoot, "utils", "bbs-package.ts"));
+	const projectSerializationSource = read(join(appRoot, "data", "projects", "serialization.ts"));
+	const packageMetadataSource = read(join(appRoot, "utils", "bbs-package-metadata.ts"));
 	const simulationSource = read(join(appRoot, "utils", "simulation.ts"));
 	const stringDefaultSchema = manifestSchema.properties.variables.items.oneOf.find(
 		(option) => option.properties.type.const === "string",
@@ -1768,7 +1770,8 @@ test("declared variables are typed package metadata and runner execution state",
 		"\\S",
 	);
 	assert.match(editorPage, /declaredVariables/);
-	assert.match(packageSource, /variables:\s*params\.declaredVariables\.map/);
+	assert.match(projectSerializationSource, /value\.scope === "global"/);
+	assert.match(packageMetadataSource, /variables:\s*params\.declaredVariables\.map/);
 	assert.match(simulationSource, /declaredVariables[\s\S]*variable\.scope === "persistent"/);
 	assert.match(simulationSource, /declaredVariables[\s\S]*variable\.scope === "runtime"/);
 	assert.match(simulationSource, /persistentVariables:\s*structuredClone/);
@@ -1777,7 +1780,7 @@ test("declared variables are typed package metadata and runner execution state",
 test("Script Settings are typed package metadata and read only simulation values", () => {
 	const manifestSchema = JSON.parse(read(join(schemasRoot, "manifest.schema.json")));
 	const settingSource = read(join(appRoot, "data", "project", "script-settings.ts"));
-	const packageSource = read(join(appRoot, "utils", "bbs-package.ts"));
+	const packageMetadataSource = read(join(appRoot, "utils", "bbs-package-metadata.ts"));
 	const simulationSource = read(join(appRoot, "utils", "simulation.ts"));
 	const variableNameInputSource = read(join(appRoot, "components", "inspector", "variable-name-input.tsx"));
 	const variableOperationSource = read(
@@ -1821,7 +1824,7 @@ test("Script Settings are typed package metadata and read only simulation values
 		assert.doesNotMatch(type, /[\s_-]/, type);
 	}
 	assert.match(settingSource, /createSimulationScriptSettingValues/);
-	assert.match(packageSource, /settings:\s*params\.scriptSettings\.map/);
+	assert.match(packageMetadataSource, /settings:\s*params\.scriptSettings\.map/);
 	assert.match(simulationSource, /createSimulationScriptSettingValues/);
 	// Seeded under the reserved namespace, so a user variable named "settings"
 	// cannot shadow the Script Settings object.

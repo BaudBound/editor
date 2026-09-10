@@ -406,6 +406,16 @@ export function EditorPage({
 			scriptSettings,
 		],
 	);
+	const normalizedProjectSettings = useMemo(
+		() => ({
+			...projectSettings,
+			name: projectSettings.name.trim() || "untitled-script",
+			version: projectSettings.version.trim(),
+			repositoryUrl: projectSettings.repositoryUrl.trim(),
+			minimumRunnerVersion: projectSettings.minimumRunnerVersion.trim() || DEFAULT_MINIMUM_RUNNER_VERSION,
+		}),
+		[projectSettings],
+	);
 	const exportSummary = useMemo(
 		() =>
 			createExportSummary(
@@ -427,24 +437,33 @@ export function EditorPage({
 		() =>
 			createVerificationChecks({
 				assets,
+				comments,
+				edgeStyle,
 				edges,
+				identity: persistedProject.identity,
 				nodes: scriptNodes,
 				permissions,
 				declaredVariables,
+				projectSettings: normalizedProjectSettings,
 				secretDeclarations,
+				scriptSettings,
 				variables: variableRegistry,
 				scriptName: projectSettings.name,
-				targetRuntimes: projectSettings.targetRuntimes,
+				targetRuntimes: normalizedProjectSettings.targetRuntimes,
 			}),
 		[
 			assets,
+			comments,
 			declaredVariables,
+			edgeStyle,
 			edges,
+			persistedProject.identity,
 			scriptNodes,
 			permissions,
 			projectSettings.name,
-			projectSettings.targetRuntimes,
+			normalizedProjectSettings,
 			secretDeclarations,
+			scriptSettings,
 			variableRegistry,
 		],
 	);
@@ -460,13 +479,6 @@ export function EditorPage({
 			),
 		[projectSettings, scriptNodes, edges, assets, secretDeclarations, declaredVariables],
 	);
-	const normalizedProjectSettings = {
-		...projectSettings,
-		name: projectSettings.name.trim() || "untitled-script",
-		version: projectSettings.version.trim(),
-		repositoryUrl: projectSettings.repositoryUrl.trim(),
-		minimumRunnerVersion: projectSettings.minimumRunnerVersion.trim() || DEFAULT_MINIMUM_RUNNER_VERSION,
-	};
 	const currentProject = useMemo<EditorProject>(
 		() => ({
 			assets,
@@ -582,7 +594,12 @@ export function EditorPage({
 			}
 		}
 
-		setSimulationVariables(steps[steps.length - 1]?.variables ?? []);
+		const latestStep = steps[steps.length - 1];
+		if (latestStep) {
+			simulationPersistentVariablesRef.current = latestStep.storedVariables.persistent;
+			simulationGlobalVariablesRef.current = latestStep.storedVariables.global;
+			setSimulationVariables(latestStep.variables);
+		}
 	}, [appendOutputLogs, appendSimulationLogs]);
 
 	const queueSimulationStep = useCallback(
@@ -610,24 +627,28 @@ export function EditorPage({
 		[],
 	);
 
-	const abortSimulationLifecycle = useCallback((reason: string) => {
-		const lifecycle = simulationLifecycleRef.current;
-		lifecycle.abortController?.abort(reason);
-		lifecycle.abortController = null;
-		lifecycle.active = false;
-		lifecycle.authorizedHttpOrigins = new Set();
-		lifecycle.runId += 1;
-		queuedSimulationStepsRef.current = [];
-		if (simulationUpdateFrameRef.current !== null) {
-			window.cancelAnimationFrame(simulationUpdateFrameRef.current);
-			simulationUpdateFrameRef.current = null;
-		}
-		simulationNetworkAuthorizationResolveRef.current?.(false);
-		simulationNetworkAuthorizationResolveRef.current = null;
-		setSimulationNetworkAuthorizationOrigins([]);
-		setActiveScheduleTriggerId(null);
-		setActiveSimulationNodeId(null);
-	}, []);
+	const abortSimulationLifecycle = useCallback(
+		(reason: string) => {
+			flushQueuedSimulationSteps();
+			const lifecycle = simulationLifecycleRef.current;
+			lifecycle.abortController?.abort(reason);
+			lifecycle.abortController = null;
+			lifecycle.active = false;
+			lifecycle.authorizedHttpOrigins = new Set();
+			lifecycle.runId += 1;
+			queuedSimulationStepsRef.current = [];
+			if (simulationUpdateFrameRef.current !== null) {
+				window.cancelAnimationFrame(simulationUpdateFrameRef.current);
+				simulationUpdateFrameRef.current = null;
+			}
+			simulationNetworkAuthorizationResolveRef.current?.(false);
+			simulationNetworkAuthorizationResolveRef.current = null;
+			setSimulationNetworkAuthorizationOrigins([]);
+			setActiveScheduleTriggerId(null);
+			setActiveSimulationNodeId(null);
+		},
+		[flushQueuedSimulationSteps],
+	);
 
 	const restoreDocument = useCallback(
 		(project: EditorProject) => {
@@ -744,7 +765,29 @@ export function EditorPage({
 		);
 	}, [declaredVariables]);
 
+	const stopSimulationBeforeVerification = useCallback(
+		(action: "export" | "verification") => {
+			if (!simulationLifecycleRef.current.active) {
+				return;
+			}
+
+			abortSimulationLifecycle(`${action} requested`);
+			setSimulationStatus("stopped");
+			appendSimulationLogs([
+				{
+					level: "warn",
+					message:
+						action === "export"
+							? "[Simulation] Stopped before export verification."
+							: "[Simulation] Stopped before verification.",
+				},
+			]);
+		},
+		[abortSimulationLifecycle, appendSimulationLogs],
+	);
+
 	const handleExport = () => {
+		stopSimulationBeforeVerification("export");
 		setExportOpen(true);
 	};
 
@@ -773,6 +816,7 @@ export function EditorPage({
 	);
 
 	const handleVerify = () => {
+		stopSimulationBeforeVerification("verification");
 		const summary = summarizeVerification(verificationChecks);
 		setVerificationRecord({ signature: verificationSignature, status: summary.status });
 		setVerificationOpen(true);
@@ -1041,10 +1085,16 @@ export function EditorPage({
 					message: `[Simulation] Waiting for input from ${triggerNodes.length} trigger${triggerNodes.length === 1 ? "" : "s"}. Start a Schedule trigger from its simulator card when you want to test its interval.`,
 				},
 			]);
-			setSimulationVariables([]);
+			setSimulationVariables(
+				createStoredSimulationVariableSnapshots(
+					declaredVariables,
+					simulationPersistentVariablesRef.current,
+					simulationGlobalVariablesRef.current,
+				),
+			);
 			return simulationLifecycleRef.current;
 		},
-		[appendSimulationLogs, appendSystemLogs, expandPanel, scriptNodes, startSimulationLifecycle],
+		[appendSimulationLogs, appendSystemLogs, declaredVariables, expandPanel, scriptNodes, startSimulationLifecycle],
 	);
 
 	const prepareVerifiedSimulationSession = useCallback(
@@ -1968,7 +2018,7 @@ export function EditorPage({
 				onClose={projectSave.closeFailure}
 				onExport={() => {
 					projectSave.closeFailure();
-					setExportOpen(true);
+					handleExport();
 				}}
 				onRetry={() => void projectSave.save()}
 			/>
@@ -2059,4 +2109,64 @@ export function EditorPage({
 
 function isScriptFlowNode(node: EditorFlowNode): node is ScriptFlowNode {
 	return node.type !== "commentNode";
+}
+
+function createStoredSimulationVariableSnapshots(
+	declaredVariables: DeclaredVariable[],
+	persistentVariables: Record<string, JsonValue>,
+	globalVariables: Record<string, JsonValue>,
+): SimulationVariableSnapshot[] {
+	const snapshots = new Map<string, SimulationVariableSnapshot>();
+	const declaredPersistentNames = new Set<string>();
+	const declaredGlobalNames = new Set<string>();
+
+	for (const variable of declaredVariables) {
+		if (variable.scope === "persistent") {
+			declaredPersistentNames.add(variable.name);
+			const value = Object.hasOwn(persistentVariables, variable.name)
+				? persistentVariables[variable.name]
+				: variable.value;
+			snapshots.set(variable.name, {
+				name: variable.name,
+				source: "persistent",
+				value: structuredClone(value),
+			});
+		}
+
+		if (variable.scope === "global") {
+			declaredGlobalNames.add(variable.name);
+			const value = Object.hasOwn(globalVariables, variable.name) ? globalVariables[variable.name] : variable.value;
+			snapshots.set(variable.name, {
+				name: variable.name,
+				source: "global",
+				value: structuredClone(value),
+			});
+		}
+	}
+
+	for (const [name, value] of Object.entries(persistentVariables)) {
+		if (!declaredPersistentNames.has(name)) {
+			continue;
+		}
+
+		snapshots.set(name, {
+			name,
+			source: "persistent",
+			value: structuredClone(value),
+		});
+	}
+
+	for (const [name, value] of Object.entries(globalVariables)) {
+		if (!declaredGlobalNames.has(name)) {
+			continue;
+		}
+
+		snapshots.set(name, {
+			name,
+			source: "global",
+			value: structuredClone(value),
+		});
+	}
+
+	return [...snapshots.values()].sort((left, right) => left.name.localeCompare(right.name));
 }

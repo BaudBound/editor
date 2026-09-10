@@ -154,7 +154,14 @@ export async function createSimulationRun({
 		assetsByPackagePath: new Map(assets.map((asset) => [asset.packagePath.toLowerCase(), asset])),
 		edgesBySource: groupEdgesBySource(edges),
 		failed: false,
-		globalVariables: structuredClone(globalVariables),
+		globalVariables: {
+			...Object.fromEntries(
+				declaredVariables
+					.filter((variable) => variable.scope === "global")
+					.map((variable) => [variable.name, structuredClone(variable.value)]),
+			),
+			...structuredClone(globalVariables),
+		},
 		halted: false,
 		lastYieldAt: performance.now(),
 		declaredVariables: Object.fromEntries(
@@ -1718,6 +1725,7 @@ async function pushOutputLog(context: SimulationContext, log: LogEntry) {
 	return emitStep(context, {
 		outputLogs: [truncateLog(redactLog(context, log))],
 		sideEffects: [],
+		storedVariables: createStoredVariableSnapshot(context),
 		traces: [],
 		traversedEdgeIds: [],
 		variables: createVariableSnapshot(context),
@@ -1733,6 +1741,7 @@ async function pushNodeState(
 		nodeState: { nodeId, status },
 		outputLogs: [],
 		sideEffects: [],
+		storedVariables: createStoredVariableSnapshot(context),
 		traces: [],
 		traversedEdgeIds: [],
 		variables: createVariableSnapshot(context),
@@ -1828,9 +1837,17 @@ function createTraceStep(
 	return {
 		outputLogs: [],
 		sideEffects,
+		storedVariables: createStoredVariableSnapshot(context),
 		traces: [trace],
 		traversedEdgeIds,
 		variables: createVariableSnapshot(context),
+	};
+}
+
+function createStoredVariableSnapshot(context: SimulationContext) {
+	return {
+		global: structuredClone(context.globalVariables),
+		persistent: structuredClone(context.persistentVariables),
 	};
 }
 

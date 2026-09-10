@@ -327,6 +327,25 @@ test("a node cannot write a variable the manifest does not declare", async () =>
 	assert.match(undeclared[0] ?? "", /n-1/);
 });
 
+test("a declared string variable may use an empty default value", async () => {
+	const { validateManifestContract } = await import("../utils/package-contract.ts");
+
+	assert.deepEqual(
+		validateManifestContract({
+			format_version: 1,
+			script_language_version: 1,
+			id: "11111111-1111-4111-8111-111111111111",
+			name: "Empty string defaults",
+			version: "1.0.0",
+			created_with: "BaudBound Editor",
+			created_at: "2026-08-16T00:00:00.000Z",
+			minimum_runner_version: "0.1.0",
+			variables: [{ name: "data", scope: "persistent", type: "string", value: "", description: "" }],
+		}),
+		[],
+	);
+});
+
 test("Variable Operation validates set values against the declared variable type", async () => {
 	const { validateNodeConfig } = await import("../data/nodes/registry.ts");
 	const variables = [
@@ -345,6 +364,68 @@ test("Variable Operation validates set values against the declared variable type
 	const errors = validateNodeConfig("runtime.set_variable", config("{{label}}"), variables);
 	assert.equal(errors.length, 1);
 	assert.match(errors[0] ?? "", /Variable "label" has type string; this field accepts integer variables/);
+});
+
+test("editor verification includes generated package contract errors", async () => {
+	const { calculatePermissions } = await import("../utils/analysis.ts");
+	const { createVerificationChecks } = await import("../utils/verification.ts");
+	const { getNodeDefinition, getNodePorts } = await import("../data/nodes/registry.ts");
+	const definition = getNodeDefinition("trigger.manual");
+	if (!definition) {
+		throw new Error("Manual trigger definition is missing.");
+	}
+	const config = definition.defaultConfig?.() ?? {};
+	const ports = getNodePorts("trigger.manual", config);
+	const nodes = [
+		{
+			id: "n-trigger",
+			position: { x: 0, y: 0 },
+			data: {
+				actionType: "trigger.manual" as const,
+				config,
+				inputs: ports.inputs,
+				kind: "trigger" as const,
+				label: definition.label,
+				outputs: ports.outputs,
+				risk: definition.risk,
+				runtimeOutputs: [],
+			},
+		},
+	];
+
+	const checks = createVerificationChecks({
+		assets: [],
+		comments: [],
+		declaredVariables: [],
+		edgeStyle: "bezier",
+		edges: [],
+		identity: { id: "11111111-1111-4111-8111-111111111111", createdAt: "2026-08-16T00:00:00.000Z" },
+		nodes,
+		permissions: calculatePermissions(nodes),
+		projectSettings: {
+			author: "",
+			description: "",
+			minimumRunnerVersion: "0.1.0",
+			name: "Invalid version package",
+			repositoryUrl: "",
+			source: "",
+			tags: [],
+			targetRuntimes: ["Windows Desktop"],
+			version: "not-semver",
+			website: "",
+		},
+		secretDeclarations: [],
+		scriptName: "Invalid version package",
+		scriptSettings: [],
+		targetRuntimes: ["Windows Desktop"],
+		variables: [],
+	});
+	const manifestCheck = checks.find((check) => check.id === "package-manifest");
+	const readinessCheck = checks.find((check) => check.id === "export-readiness");
+
+	assert.equal(manifestCheck?.outcome, "failed");
+	assert.match(manifestCheck?.details?.join("\n") ?? "", /manifest\.json version must be a valid semantic version/);
+	assert.equal(readinessCheck?.outcome, "failed");
 });
 
 test("a trigger's overlap mode falls back to queue", async () => {
