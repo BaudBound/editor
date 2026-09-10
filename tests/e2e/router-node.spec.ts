@@ -23,7 +23,7 @@ test("Router properties panel edits inputs, outputs, and routes", async ({ page 
 	await expect(routerNode).toContainText("1 in - 2 out - 2 routes");
 
 	// Reorder so the route to Output 2 executes first.
-	await page.getByRole("button", { name: "Move route 2 up" }).click();
+	await page.getByRole("button", { name: "Move route 2 for Input 1 up" }).click();
 	await expect(routerRoutes.getByRole("listitem").first()).toContainText("Output 2");
 
 	// Renaming a port updates the canvas handle label without touching routes.

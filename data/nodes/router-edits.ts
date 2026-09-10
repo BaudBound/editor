@@ -54,10 +54,10 @@ export function toggleRouterRoute(config: RouterConfig, inputId: string, outputI
 	const existing = config.routes.find((route) => route.inputId === inputId && route.outputId === outputId);
 	if (existing) return removeRouterRoute(config, existing.id);
 	const order = getRouterRoutesForInput(config, inputId).length;
-	return {
+	return normalizeRouterRouteOrders({
 		...cloneConfig(config),
 		routes: [...config.routes, createRouterRouteRow(inputId, outputId, order)],
-	};
+	});
 }
 
 export function moveRouterRoute(config: RouterConfig, routeId: string, direction: -1 | 1): RouterConfig {

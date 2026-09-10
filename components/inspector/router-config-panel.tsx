@@ -215,8 +215,6 @@ function RouteList({
 	onMove: (routeId: string, direction: -1 | 1) => void;
 	onRemove: (routeId: string) => void;
 }) {
-	let position = 0;
-
 	return (
 		<div className="space-y-2">
 			<div className="font-mono text-xs uppercase tracking-[0.18em] text-baud-muted">Routes</div>
@@ -225,8 +223,7 @@ function RouteList({
 					const routes = getRouterRoutesForInput(router, input.id);
 					const inputLabel = routerPortLabel(input, inputIndex, "input");
 					return routes.map((route, routeIndex) => {
-						position += 1;
-						const current = position;
+						const routeNumber = routeIndex + 1;
 						const outputIndex = router.outputs.findIndex((output) => output.id === route.outputId);
 						const output = router.outputs[outputIndex];
 						const outputLabel = output ? routerPortLabel(output, outputIndex, "output") : route.outputId;
@@ -236,7 +233,7 @@ function RouteList({
 								key={route.id}
 								className="flex items-center gap-2 rounded border border-baud-border bg-baud-panel px-2 py-1 font-mono text-sm"
 							>
-								<span className="w-6 shrink-0 text-baud-muted">{routeIndex + 1}.</span>
+								<span className="w-6 shrink-0 text-baud-muted">{routeNumber}.</span>
 								<span className="min-w-0 flex-1 truncate text-baud-text">
 									{inputLabel} to {outputLabel}
 								</span>
@@ -244,8 +241,8 @@ function RouteList({
 									type="button"
 									size="xsIcon"
 									variant="ghost"
-									aria-label={`Move route ${current} up`}
-									title={`Move route ${current} up`}
+									aria-label={`Move route ${routeNumber} for ${inputLabel} up`}
+									title={`Move route ${routeNumber} for ${inputLabel} up`}
 									disabled={routeIndex === 0}
 									onClick={() => onMove(route.id, -1)}
 								>
@@ -255,8 +252,8 @@ function RouteList({
 									type="button"
 									size="xsIcon"
 									variant="ghost"
-									aria-label={`Move route ${current} down`}
-									title={`Move route ${current} down`}
+									aria-label={`Move route ${routeNumber} for ${inputLabel} down`}
+									title={`Move route ${routeNumber} for ${inputLabel} down`}
 									disabled={routeIndex === routes.length - 1}
 									onClick={() => onMove(route.id, 1)}
 								>
@@ -266,8 +263,8 @@ function RouteList({
 									type="button"
 									size="xsIcon"
 									variant="destructive"
-									aria-label={`Remove route ${current}`}
-									title={`Remove route ${current}`}
+									aria-label={`Remove route ${routeNumber} for ${inputLabel}`}
+									title={`Remove route ${routeNumber} for ${inputLabel}`}
 									onClick={() => onRemove(route.id)}
 								>
 									<X size={13} />

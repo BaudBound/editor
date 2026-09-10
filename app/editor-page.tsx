@@ -106,6 +106,7 @@ import {
 	getCenteredScriptNodePosition,
 	hasManualTrigger,
 	normalizeEdgeExecutionOrders,
+	pruneEdgesForNodePorts,
 	reorderEdgeExecutionGroup,
 } from "@/utils/editor-graph";
 import { truncateLogEntry, truncateSimulationTrace } from "@/utils/editor-log";
@@ -1704,19 +1705,13 @@ export function EditorPage({
 		);
 
 		if (nextPorts) {
-			const validInputIds = new Set(nextPorts.inputs.map((input) => input.id));
-			const validOutputIds = new Set(nextPorts.outputs.map((output) => output.id));
 			setEdges((currentEdges) => {
-				const remainingEdges = currentEdges.filter(
-					(edge) =>
-						(edge.source !== nodeId || validOutputIds.has(edge.sourceHandle ?? "")) &&
-						(edge.target !== nodeId || validInputIds.has(edge.targetHandle ?? "")),
-				);
+				const remainingEdges = pruneEdgesForNodePorts(currentEdges, nodeId, nextPorts);
 				if (selectedEdgeId && !remainingEdges.some((edge) => edge.id === selectedEdgeId)) {
 					setSelectedEdgeId(null);
 				}
 
-				return normalizeEdgeExecutionOrders(remainingEdges);
+				return remainingEdges;
 			});
 		}
 	};

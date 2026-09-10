@@ -597,6 +597,7 @@ async function processRouterNode(
 	const input = inputIndex === -1 ? undefined : config.inputs[inputIndex];
 	if (!input) {
 		context.failed = true;
+		context.halted = true;
 		await pushStep(context, {
 			level: "error",
 			message: `[Simulation] Router (${node.id}) was entered through unknown input "${inputHandle ?? "none"}". Branch stopped.`,
@@ -608,6 +609,7 @@ async function processRouterNode(
 	const routes = getRouterRoutesForInput(config, input.id);
 	if (routes.length === 0) {
 		context.failed = true;
+		context.halted = true;
 		await pushStep(context, {
 			level: "error",
 			message: `[Simulation] Router (${node.id}) input "${inputLabel}" has no routes. Branch stopped.`,

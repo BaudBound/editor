@@ -406,6 +406,7 @@ function PropertiesPanel({
 						)}
 						{selectedNode.data.actionType === "control.router" && (
 							<RouterConfigPanel
+								key={selectedNode.id}
 								config={selectedNode.data.config}
 								onChange={(values) => onUpdateNodeConfigValues(selectedNode.id, values)}
 							/>

@@ -90,6 +90,39 @@ test("toggleRouterRoute adds at the end of the input's order and removes with re
 	]);
 });
 
+test("toggleRouterRoute normalizes a denormalized input's orders so it cannot mint a duplicate", () => {
+	const denormalized: RouterConfig = {
+		inputs: [
+			{ id: "a", label: "Alpha" },
+			{ id: "b", label: "Beta" },
+		],
+		outputs: [
+			{ id: "x", label: "X" },
+			{ id: "y", label: "Y" },
+			{ id: "z", label: "Z" },
+		],
+		routes: [
+			{ id: "r1", inputId: "a", outputId: "x", order: 0 },
+			{ id: "r2", inputId: "a", outputId: "y", order: 5 },
+		],
+	};
+	const after = toggleRouterRoute(denormalized, "a", "z");
+	const aRoutes = after.routes.filter((route) => route.inputId === "a").sort((left, right) => left.order - right.order);
+	// The new route is appended with an interim order equal to the existing
+	// route count (2), which falls between the denormalized 0 and 5 — so
+	// normalizing by ascending order places it between r1 and r2, matching
+	// the relative order the denormalized orders already implied.
+	assert.deepEqual(
+		aRoutes.map((route) => route.id),
+		["r1", after.routes.find((route) => route.outputId === "z")?.id, "r2"],
+	);
+	assert.deepEqual(
+		aRoutes.map((route) => route.order),
+		[0, 1, 2],
+	);
+	assert.equal(new Set(aRoutes.map((route) => route.order)).size, 3, "orders must be unique");
+});
+
 test("moveRouterRoute swaps order with the neighbour on the same input only", () => {
 	const after = moveRouterRoute(config(), "r2", -1);
 	assert.equal(after.routes.find((route) => route.id === "r2")?.order, 0);
