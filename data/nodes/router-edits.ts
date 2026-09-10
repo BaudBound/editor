@@ -63,6 +63,12 @@ export function addRouterRoute(config: RouterConfig, inputId: string, outputId: 
 	});
 }
 
+/** Adds the route when the pair is unrouted, otherwise removes it. */
+export function toggleRouterRoute(config: RouterConfig, inputId: string, outputId: string): RouterConfig {
+	const existing = config.routes.find((route) => route.inputId === inputId && route.outputId === outputId);
+	return existing ? removeRouterRoute(config, existing.id) : addRouterRoute(config, inputId, outputId);
+}
+
 export function moveRouterRoute(config: RouterConfig, routeId: string, direction: -1 | 1): RouterConfig {
 	const normalized = normalizeRouterRouteOrders(config);
 	const route = normalized.routes.find((candidate) => candidate.id === routeId);

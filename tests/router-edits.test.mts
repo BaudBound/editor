@@ -11,6 +11,7 @@ import {
 	removeRouterRoute,
 	renameRouterPort,
 	routerConfigToJson,
+	toggleRouterRoute,
 } from "../data/nodes/router-edits.ts";
 
 function config(): RouterConfig {
@@ -87,6 +88,20 @@ test("addRouterRoute appends at the end of the input's order", () => {
 
 test("addRouterRoute is a no-op when the pair is already routed", () => {
 	assert.deepEqual(addRouterRoute(config(), "a", "x"), config());
+});
+
+test("toggleRouterRoute adds a missing route and removes an existing one with renumbering", () => {
+	const added = toggleRouterRoute(config(), "b", "x");
+	const newRoute = added.routes.find((route) => route.inputId === "b" && route.outputId === "x");
+	assert.ok(newRoute);
+	assert.equal(newRoute.order, 1);
+	assert.equal(added.routes.length, 4);
+
+	const removed = toggleRouterRoute(config(), "a", "x");
+	assert.deepEqual(removed.routes, [
+		{ id: "r2", inputId: "a", outputId: "y", order: 0 },
+		{ id: "r3", inputId: "b", outputId: "y", order: 0 },
+	]);
 });
 
 test("addRouterRoute appends after a denormalized input's last route and renumbers from zero", () => {

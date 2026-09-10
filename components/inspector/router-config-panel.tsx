@@ -3,7 +3,6 @@ import { useId, useState } from "react";
 import { FieldError } from "@/components/common/field-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { OptionCombobox } from "@/components/ui/option-combobox";
 import {
 	getRouterConfigFromValue,
 	getRouterRoutesForInput,
@@ -15,14 +14,12 @@ import {
 } from "@/data/nodes/router";
 import {
 	addRouterPort,
-	addRouterRoute,
 	moveRouterPort,
 	moveRouterRoute,
-	type RouterPortSide,
 	removeRouterPort,
-	removeRouterRoute,
 	renameRouterPort,
 	routerConfigToJson,
+	toggleRouterRoute,
 } from "@/data/nodes/router-edits";
 import type { JsonValue } from "@/lib/types";
 
@@ -31,37 +28,34 @@ type RouterConfigPanelProps = {
 	onChange: (values: Record<string, JsonValue>) => void;
 };
 
-/** Everything a row needs to name its controls and find its neighbours. */
-type RouterView = {
-	router: RouterConfig;
-	outputLabels: Map<string, string>;
-	incomingCounts: Map<string, number>;
-	highlightedOutputId: string | null;
-	onHighlightOutput: (outputId: string | null) => void;
+/** The cell the pointer is over, so its row and column headers can light up. */
+type HoveredCell = { inputId: string; outputId: string } | null;
+
+type PortActions = {
+	onRename: (label: string) => void;
+	onMove: (direction: -1 | 1) => void;
+	onRemove: () => void;
 };
 
 export function RouterConfigPanel({ config, onChange }: RouterConfigPanelProps) {
 	const router = getRouterConfigFromValue(config);
 	const errors = [...new Set(validateRouterConfig(config))];
 	const errorId = useId();
-	const [highlightedOutputId, setHighlightedOutputId] = useState<string | null>(null);
+	const [hovered, setHovered] = useState<HoveredCell>(null);
 
-	const outputLabels = new Map(
-		router.outputs.map((output, index) => [output.id, routerPortLabel(output, index, "output")]),
-	);
+	const commit = (next: RouterConfig) => onChange(routerConfigToJson(next));
+	const portActions = (side: "inputs" | "outputs", portId: string): PortActions => ({
+		onRename: (label) => commit(renameRouterPort(router, side, portId, label)),
+		onMove: (direction) => commit(moveRouterPort(router, side, portId, direction)),
+		onRemove: () => commit(removeRouterPort(router, side, portId)),
+	});
+
 	const incomingCounts = new Map(router.outputs.map((output) => [output.id, 0]));
 	for (const route of router.routes) {
 		incomingCounts.set(route.outputId, (incomingCounts.get(route.outputId) ?? 0) + 1);
 	}
-	const view: RouterView = {
-		router,
-		outputLabels,
-		incomingCounts,
-		highlightedOutputId,
-		onHighlightOutput: setHighlightedOutputId,
-	};
-
-	const commit = (next: RouterConfig) => onChange(routerConfigToJson(next));
+	const inputLabels = router.inputs.map((input, index) => routerPortLabel(input, index, "input"));
+	const outputLabels = router.outputs.map((output, index) => routerPortLabel(output, index, "output"));
 
 	return (
 		<div className="space-y-3">
@@ -76,46 +70,67 @@ export function RouterConfigPanel({ config, onChange }: RouterConfigPanelProps) 
 				</Button>
 			</div>
 
-			<div className="grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-3">
-				<div className="space-y-2">
-					<ColumnTitle>Inputs</ColumnTitle>
-					<ul className="space-y-2" aria-label="Router inputs">
-						{router.inputs.map((input, index) => (
-							<InputRow
-								key={input.id}
-								input={input}
-								index={index}
-								view={view}
-								onRename={(label) => commit(renameRouterPort(router, "inputs", input.id, label))}
-								onMove={(direction) => commit(moveRouterPort(router, "inputs", input.id, direction))}
-								onRemove={() => commit(removeRouterPort(router, "inputs", input.id))}
-								onAddRoute={(outputId) => commit(addRouterRoute(router, input.id, outputId))}
-								onMoveRoute={(routeId, direction) => commit(moveRouterRoute(router, routeId, direction))}
-								onRemoveRoute={(routeId) => commit(removeRouterRoute(router, routeId))}
-							/>
-						))}
-					</ul>
-				</div>
-				<div className="space-y-2">
-					<ColumnTitle>Outputs</ColumnTitle>
-					<ul className="space-y-2" aria-label="Router outputs">
-						{router.outputs.map((output, index) => (
-							<OutputRow
-								key={output.id}
-								output={output}
-								index={index}
-								view={view}
-								onRename={(label) => commit(renameRouterPort(router, "outputs", output.id, label))}
-								onMove={(direction) => commit(moveRouterPort(router, "outputs", output.id, direction))}
-								onRemove={() => commit(removeRouterPort(router, "outputs", output.id))}
-							/>
-						))}
-					</ul>
-				</div>
+			<div className="overflow-x-auto rounded border border-baud-border bg-baud-panel">
+				<table className="w-full border-separate border-spacing-0" aria-label="Router routes">
+					<thead>
+						<tr>
+							<th
+								scope="col"
+								className="sticky left-0 z-10 border-r border-b border-baud-border bg-baud-panel px-2 py-1.5 text-left font-mono text-xs font-normal uppercase tracking-[0.18em] text-baud-muted"
+							>
+								Inputs \ Outputs
+							</th>
+							{router.outputs.map((output, index) => (
+								<OutputHeader
+									key={output.id}
+									output={output}
+									index={index}
+									total={router.outputs.length}
+									incoming={incomingCounts.get(output.id) ?? 0}
+									highlighted={hovered?.outputId === output.id}
+									actions={portActions("outputs", output.id)}
+								/>
+							))}
+						</tr>
+					</thead>
+					<tbody>
+						{router.inputs.map((input, inputIndex) => {
+							const routes = getRouterRoutesForInput(router, input.id);
+							const routeByOutput = new Map(routes.map((route) => [route.outputId, route]));
+							const inputLabel = inputLabels[inputIndex];
+
+							return (
+								<tr key={input.id}>
+									<InputHeader
+										input={input}
+										index={inputIndex}
+										total={router.inputs.length}
+										unrouted={routes.length === 0}
+										highlighted={hovered?.inputId === input.id}
+										actions={portActions("inputs", input.id)}
+									/>
+									{router.outputs.map((output, outputIndex) => (
+										<RouteCell
+											key={output.id}
+											route={routeByOutput.get(output.id)}
+											routeCount={routes.length}
+											inputLabel={inputLabel}
+											outputLabel={outputLabels[outputIndex]}
+											highlighted={hovered?.inputId === input.id || hovered?.outputId === output.id}
+											onHover={(active) => setHovered(active ? { inputId: input.id, outputId: output.id } : null)}
+											onToggle={() => commit(toggleRouterRoute(router, input.id, output.id))}
+											onMove={(routeId, direction) => commit(moveRouterRoute(router, routeId, direction))}
+										/>
+									))}
+								</tr>
+							);
+						})}
+					</tbody>
+				</table>
 			</div>
 
 			<p className="font-mono text-xs text-baud-muted">
-				Each input lists the outputs it continues to, in execution order. Hover an output to see which inputs reach it.
+				Click a cell to connect an input to an output. The number is the execution order within that row.
 			</p>
 
 			{errors.length > 0 && (
@@ -131,283 +146,224 @@ export function RouterConfigPanel({ config, onChange }: RouterConfigPanelProps) 
 	);
 }
 
-function ColumnTitle({ children }: { children: string }) {
-	return <div className="font-mono text-xs uppercase tracking-[0.18em] text-baud-muted">{children}</div>;
-}
-
-function InputRow({
-	input,
-	index,
-	view,
-	onRename,
-	onMove,
-	onRemove,
-	onAddRoute,
-	onMoveRoute,
-	onRemoveRoute,
-}: {
-	input: RouterPortRow;
-	index: number;
-	view: RouterView;
-	onRename: (label: string) => void;
-	onMove: (direction: -1 | 1) => void;
-	onRemove: () => void;
-	onAddRoute: (outputId: string) => void;
-	onMoveRoute: (routeId: string, direction: -1 | 1) => void;
-	onRemoveRoute: (routeId: string) => void;
-}) {
-	const { router, outputLabels, highlightedOutputId, onHighlightOutput } = view;
-	const label = routerPortLabel(input, index, "input");
-	const routes = getRouterRoutesForInput(router, input.id);
-	const routedOutputIds = new Set(routes.map((route) => route.outputId));
-	const unroutedOutputs = router.outputs.filter((output) => !routedOutputIds.has(output.id));
-	const reachesHighlighted = highlightedOutputId !== null && routedOutputIds.has(highlightedOutputId);
-
-	return (
-		<li
-			className={`space-y-2 rounded border p-2 transition-[border-color] ${
-				reachesHighlighted ? "border-baud-amber" : "border-baud-border"
-			} bg-baud-panel`}
-		>
-			<PortHeader
-				side="inputs"
-				port={input}
-				index={index}
-				total={router.inputs.length}
-				onRename={onRename}
-				onMove={onMove}
-				onRemove={onRemove}
-			/>
-
-			{routes.length > 0 ? (
-				<ol className="flex flex-wrap items-center gap-1" aria-label={`Routes from ${label}`}>
-					{routes.map((route, routeIndex) => (
-						<RouteChip
-							key={route.id}
-							route={route}
-							position={routeIndex + 1}
-							total={routes.length}
-							inputLabel={label}
-							outputLabel={outputLabels.get(route.outputId) ?? route.outputId}
-							highlighted={route.outputId === highlightedOutputId}
-							onHighlight={(active) => onHighlightOutput(active ? route.outputId : null)}
-							onMove={(direction) => onMoveRoute(route.id, direction)}
-							onRemove={() => onRemoveRoute(route.id)}
-						/>
-					))}
-				</ol>
-			) : (
-				<div className="flex items-center gap-1.5 font-mono text-xs text-baud-danger">
-					<AlertTriangle size={13} />
-					No routes yet. Pick an output below.
-				</div>
-			)}
-
-			<OptionCombobox
-				ariaLabel={`Add output for ${label}`}
-				className="w-full"
-				disabled={unroutedOutputs.length === 0}
-				emptyMessage="Every output is already routed from this input."
-				options={router.outputs
-					.map((output, outputIndex) => ({
-						label: routerPortLabel(output, outputIndex, "output"),
-						value: output.id,
-					}))
-					.filter((option) => !routedOutputIds.has(option.value))}
-				placeholder={unroutedOutputs.length === 0 ? "All outputs routed" : "Add output…"}
-				value=""
-				onChange={onAddRoute}
-			/>
-		</li>
-	);
-}
-
-function OutputRow({
+function OutputHeader({
 	output,
 	index,
-	view,
-	onRename,
-	onMove,
-	onRemove,
+	total,
+	incoming,
+	highlighted,
+	actions,
 }: {
 	output: RouterPortRow;
 	index: number;
-	view: RouterView;
-	onRename: (label: string) => void;
-	onMove: (direction: -1 | 1) => void;
-	onRemove: () => void;
+	total: number;
+	incoming: number;
+	highlighted: boolean;
+	actions: PortActions;
 }) {
-	const { router, incomingCounts, highlightedOutputId, onHighlightOutput } = view;
-	const incoming = incomingCounts.get(output.id) ?? 0;
-	const highlighted = output.id === highlightedOutputId;
+	const position = index + 1;
 	const label = routerPortLabel(output, index, "output");
 
 	return (
-		<li
-			className={`space-y-2 rounded border p-2 transition-[border-color] ${
-				highlighted ? "border-baud-amber" : "border-baud-border"
-			} bg-baud-panel`}
-			onMouseEnter={() => onHighlightOutput(output.id)}
-			onMouseLeave={() => onHighlightOutput(null)}
-			onFocus={() => onHighlightOutput(output.id)}
-			onBlur={() => onHighlightOutput(null)}
+		<th
+			scope="col"
+			className={`min-w-36 border-b border-baud-border px-2 py-1.5 text-left align-top font-normal transition-[background-color] ${
+				highlighted ? "bg-baud-amber/10" : ""
+			}`}
 		>
-			<PortHeader
-				side="outputs"
-				port={output}
-				index={index}
-				total={router.outputs.length}
-				onRename={onRename}
-				onMove={onMove}
-				onRemove={onRemove}
-			/>
-			<output
-				className={`flex items-center gap-1.5 font-mono text-xs ${incoming === 0 ? "text-baud-danger" : "text-baud-muted"}`}
-				aria-label={`${label} incoming routes`}
-			>
-				{incoming === 0 && <AlertTriangle size={13} />}
-				{incoming} in
-			</output>
-		</li>
+			<div className="space-y-1">
+				<Input
+					aria-label={`Output ${position} label`}
+					aria-invalid={!output.label.trim()}
+					value={output.label}
+					onChange={(event) => actions.onRename(event.target.value)}
+				/>
+				<div className="flex items-center gap-0.5">
+					<IconButton label={`Move output ${position} left`} disabled={index === 0} onClick={() => actions.onMove(-1)}>
+						<ArrowLeft size={13} />
+					</IconButton>
+					<IconButton
+						label={`Move output ${position} right`}
+						disabled={index === total - 1}
+						onClick={() => actions.onMove(1)}
+					>
+						<ArrowRight size={13} />
+					</IconButton>
+					<IconButton label={`Remove output ${position}`} destructive disabled={total === 1} onClick={actions.onRemove}>
+						<X size={13} />
+					</IconButton>
+					<output
+						className={`ml-auto flex items-center gap-1 font-mono text-xs ${incoming === 0 ? "text-baud-danger" : "text-baud-muted"}`}
+						aria-label={`${label} incoming routes`}
+					>
+						{incoming === 0 && <AlertTriangle size={12} />}
+						{incoming} in
+					</output>
+				</div>
+			</div>
+		</th>
 	);
 }
 
-function PortHeader({
-	side,
-	port,
+function InputHeader({
+	input,
 	index,
 	total,
-	onRename,
-	onMove,
-	onRemove,
+	unrouted,
+	highlighted,
+	actions,
 }: {
-	side: RouterPortSide;
-	port: RouterPortRow;
+	input: RouterPortRow;
 	index: number;
 	total: number;
-	onRename: (label: string) => void;
-	onMove: (direction: -1 | 1) => void;
-	onRemove: () => void;
+	unrouted: boolean;
+	highlighted: boolean;
+	actions: PortActions;
 }) {
-	const noun = side === "inputs" ? "input" : "output";
 	const position = index + 1;
-	const title = side === "inputs" ? "Input" : "Output";
+	const label = routerPortLabel(input, index, "input");
 
 	return (
-		<div className="flex items-center gap-1">
-			<Input
-				aria-label={`${title} ${position} label`}
-				aria-invalid={!port.label.trim()}
-				value={port.label}
-				onChange={(event) => onRename(event.target.value)}
-			/>
-			<Button
-				type="button"
-				size="xsIcon"
-				variant="ghost"
-				aria-label={`Move ${noun} ${position} up`}
-				title={`Move ${noun} ${position} up`}
-				disabled={index === 0}
-				onClick={() => onMove(-1)}
-			>
-				<ArrowUp size={13} />
-			</Button>
-			<Button
-				type="button"
-				size="xsIcon"
-				variant="ghost"
-				aria-label={`Move ${noun} ${position} down`}
-				title={`Move ${noun} ${position} down`}
-				disabled={index === total - 1}
-				onClick={() => onMove(1)}
-			>
-				<ArrowDown size={13} />
-			</Button>
-			<Button
-				type="button"
-				size="xsIcon"
-				variant="destructive"
-				aria-label={`Remove ${noun} ${position}`}
-				title={`Remove ${noun} ${position}`}
-				disabled={total === 1}
-				onClick={onRemove}
-			>
-				<X size={13} />
-			</Button>
-		</div>
+		<th
+			scope="row"
+			className={`sticky left-0 z-10 min-w-40 border-r border-b border-baud-border px-2 py-1.5 text-left align-top font-normal transition-[background-color] ${
+				highlighted ? "bg-baud-amber/10" : "bg-baud-panel"
+			}`}
+		>
+			<div className="space-y-1">
+				<Input
+					aria-label={`Input ${position} label`}
+					aria-invalid={!input.label.trim()}
+					value={input.label}
+					onChange={(event) => actions.onRename(event.target.value)}
+				/>
+				<div className="flex items-center gap-0.5">
+					<IconButton label={`Move input ${position} up`} disabled={index === 0} onClick={() => actions.onMove(-1)}>
+						<ArrowUp size={13} />
+					</IconButton>
+					<IconButton
+						label={`Move input ${position} down`}
+						disabled={index === total - 1}
+						onClick={() => actions.onMove(1)}
+					>
+						<ArrowDown size={13} />
+					</IconButton>
+					<IconButton label={`Remove input ${position}`} destructive disabled={total === 1} onClick={actions.onRemove}>
+						<X size={13} />
+					</IconButton>
+					{unrouted && (
+						<output
+							className="ml-auto flex items-center gap-1 font-mono text-xs text-baud-danger"
+							aria-label={`${label} has no routes`}
+						>
+							<AlertTriangle size={12} />
+							no routes
+						</output>
+					)}
+				</div>
+			</div>
+		</th>
 	);
 }
 
-function RouteChip({
+function RouteCell({
 	route,
-	position,
-	total,
+	routeCount,
 	inputLabel,
 	outputLabel,
 	highlighted,
-	onHighlight,
+	onHover,
+	onToggle,
 	onMove,
-	onRemove,
 }: {
-	route: RouterRouteRow;
-	position: number;
-	total: number;
+	route: RouterRouteRow | undefined;
+	routeCount: number;
 	inputLabel: string;
 	outputLabel: string;
 	highlighted: boolean;
-	onHighlight: (active: boolean) => void;
-	onMove: (direction: -1 | 1) => void;
-	onRemove: () => void;
+	onHover: (active: boolean) => void;
+	onToggle: () => void;
+	onMove: (routeId: string, direction: -1 | 1) => void;
 }) {
-	const name = `route ${position} for ${inputLabel}`;
+	const name = `${inputLabel} to ${outputLabel}`;
+	const connected = route !== undefined;
+	const position = route ? route.order + 1 : 0;
 
 	return (
-		<li
-			data-route-id={route.id}
-			className={`flex items-center gap-0.5 rounded border px-1.5 py-0.5 font-mono text-xs transition-[border-color] ${
-				highlighted ? "border-baud-amber bg-baud-amber/10" : "border-baud-border bg-baud-soft"
+		<td
+			className={`group border-b border-baud-border p-1 text-center align-middle transition-[background-color] ${
+				highlighted ? "bg-baud-amber/10" : ""
 			}`}
-			onMouseEnter={() => onHighlight(true)}
-			onMouseLeave={() => onHighlight(false)}
-			onFocus={() => onHighlight(true)}
-			onBlur={() => onHighlight(false)}
+			onMouseEnter={() => onHover(true)}
+			onMouseLeave={() => onHover(false)}
 		>
-			<span className="text-baud-muted">{position}</span>
-			<span className="mx-1 max-w-32 truncate text-baud-text" title={outputLabel}>
-				{outputLabel}
-			</span>
-			<Button
-				type="button"
-				size="icon-xs"
-				variant="ghost"
-				aria-label={`Move ${name} earlier`}
-				title={`Move ${name} earlier`}
-				disabled={position === 1}
-				onClick={() => onMove(-1)}
-			>
-				<ArrowLeft size={11} />
-			</Button>
-			<Button
-				type="button"
-				size="icon-xs"
-				variant="ghost"
-				aria-label={`Move ${name} later`}
-				title={`Move ${name} later`}
-				disabled={position === total}
-				onClick={() => onMove(1)}
-			>
-				<ArrowRight size={11} />
-			</Button>
-			<Button
-				type="button"
-				size="icon-xs"
-				variant="destructive"
-				aria-label={`Remove ${name}`}
-				title={`Remove ${name}`}
-				onClick={onRemove}
-			>
-				<X size={11} />
-			</Button>
-		</li>
+			<div className="flex items-center justify-center gap-0.5">
+				{connected && (
+					<IconButton
+						label={`Move route ${name} earlier`}
+						className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
+						disabled={position === 1}
+						onClick={() => onMove(route.id, -1)}
+					>
+						<ArrowLeft size={11} />
+					</IconButton>
+				)}
+				<button
+					type="button"
+					aria-pressed={connected}
+					aria-label={`Route ${name}`}
+					title={connected ? `Route ${name}, executes ${position} of ${routeCount}` : `Route ${name}`}
+					className={`flex size-8 items-center justify-center rounded border font-mono text-sm transition-[border-color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-baud-amber/60 ${
+						connected
+							? "border-baud-amber bg-baud-amber/20 text-white"
+							: "border-baud-border bg-baud-soft text-transparent hover:border-baud-line hover:text-baud-muted"
+					}`}
+					onClick={onToggle}
+				>
+					{connected ? position : "+"}
+				</button>
+				{connected && (
+					<IconButton
+						label={`Move route ${name} later`}
+						className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
+						disabled={position === routeCount}
+						onClick={() => onMove(route.id, 1)}
+					>
+						<ArrowRight size={11} />
+					</IconButton>
+				)}
+			</div>
+		</td>
+	);
+}
+
+function IconButton({
+	label,
+	destructive = false,
+	disabled = false,
+	className,
+	onClick,
+	children,
+}: {
+	label: string;
+	destructive?: boolean;
+	disabled?: boolean;
+	className?: string;
+	onClick: () => void;
+	children: React.ReactNode;
+}) {
+	return (
+		<Button
+			type="button"
+			size="icon-xs"
+			variant={destructive ? "destructive" : "ghost"}
+			aria-label={label}
+			title={label}
+			disabled={disabled}
+			className={className}
+			onClick={onClick}
+		>
+			{children}
+		</Button>
 	);
 }
