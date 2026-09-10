@@ -45,10 +45,15 @@ import { StatusBar } from "@/components/shell/status-bar";
 import { TopBar } from "@/components/shell/top-bar";
 import { Toaster } from "@/components/ui/sonner";
 import { defaultEditorEdgeStyle, type EditorEdgeStyle, toReactFlowEdgeType } from "@/data/editor/flow-canvas";
-import { createSwitchOutputPorts, getSwitchCaseRowsFromValue } from "@/data/nodes/definitions/rows";
 import { triggerOverlapMode } from "@/data/nodes/definitions/shared-fields";
 import { createDevelopmentEditorNodes, isDevelopmentGraphEnabled } from "@/data/nodes/development-graph";
-import { createNodeFromPaletteItem, getFlatPaletteItems, getRuntimeDataOutputs } from "@/data/nodes/registry";
+import {
+	createNodeFromPaletteItem,
+	getFlatPaletteItems,
+	getNodePorts,
+	getRuntimeDataOutputs,
+	hasDynamicPorts,
+} from "@/data/nodes/registry";
 import { getScriptSettingSimulationProblems } from "@/data/project/script-settings";
 import { createSimulationSecretValues, getSecretSimulationProblems } from "@/data/project/secrets";
 import { createEmptyTypedValue } from "@/data/project/typed-values";
@@ -67,8 +72,10 @@ import type {
 	InspectorTab,
 	JsonValue,
 	LogEntry,
+	NodePort,
 	PaletteItem,
 	ProjectSettings,
+	ScriptNodeData,
 	ScriptSetting,
 	SecretDeclaration,
 	SimulationOverride,
@@ -1662,8 +1669,15 @@ export function EditorPage({
 		setNodeDeclaration(null);
 	};
 
-	const handleUpdateNodeConfig = (nodeId: string, key: string, value: JsonValue) => {
-		const nextSwitchOutputs = key === "cases" ? createSwitchOutputPorts(getSwitchCaseRowsFromValue(value)) : null;
+	const handleUpdateNodeConfigValues = (nodeId: string, values: Record<string, JsonValue>) => {
+		const targetNode = nodes.find((node): node is ScriptFlowNode => isScriptFlowNode(node) && node.id === nodeId);
+		const derivedPorts =
+			targetNode && hasDynamicPorts(targetNode.data.actionType)
+				? getNodePorts(targetNode.data.actionType, { ...targetNode.data.config, ...values })
+				: null;
+		// Only touch ports and edges when a handle or label actually changed, so
+		// editing a switch value does not churn edge state or history.
+		const nextPorts = derivedPorts && targetNode && samePorts(derivedPorts, targetNode.data) ? null : derivedPorts;
 
 		setNodes((currentNodes) =>
 			currentNodes.map((node) => {
@@ -1671,12 +1685,9 @@ export function EditorPage({
 					return node;
 				}
 
-				const outputs =
-					node.data.actionType === "control.switch" && nextSwitchOutputs ? nextSwitchOutputs : node.data.outputs;
-
 				const config = {
 					...node.data.config,
-					[key]: value,
+					...values,
 				};
 
 				return {
@@ -1684,18 +1695,22 @@ export function EditorPage({
 					data: {
 						...node.data,
 						config,
-						outputs,
+						inputs: nextPorts ? nextPorts.inputs : node.data.inputs,
+						outputs: nextPorts ? nextPorts.outputs : node.data.outputs,
 						runtimeOutputs: getRuntimeDataOutputs(node.data.actionType, config),
 					},
 				};
 			}),
 		);
 
-		if (nextSwitchOutputs) {
-			const validOutputIds = new Set(nextSwitchOutputs.map((output) => output.id));
+		if (nextPorts) {
+			const validInputIds = new Set(nextPorts.inputs.map((input) => input.id));
+			const validOutputIds = new Set(nextPorts.outputs.map((output) => output.id));
 			setEdges((currentEdges) => {
 				const remainingEdges = currentEdges.filter(
-					(edge) => edge.source !== nodeId || validOutputIds.has(edge.sourceHandle ?? ""),
+					(edge) =>
+						(edge.source !== nodeId || validOutputIds.has(edge.sourceHandle ?? "")) &&
+						(edge.target !== nodeId || validInputIds.has(edge.targetHandle ?? "")),
 				);
 				if (selectedEdgeId && !remainingEdges.some((edge) => edge.id === selectedEdgeId)) {
 					setSelectedEdgeId(null);
@@ -1704,6 +1719,10 @@ export function EditorPage({
 				return normalizeEdgeExecutionOrders(remainingEdges);
 			});
 		}
+	};
+
+	const handleUpdateNodeConfig = (nodeId: string, key: string, value: JsonValue) => {
+		handleUpdateNodeConfigValues(nodeId, { [key]: value });
 	};
 
 	const handleDeleteNode = (nodeId: string) => {
@@ -1988,6 +2007,7 @@ export function EditorPage({
 					}
 					onTabChange={setActiveTab}
 					onUpdateNodeConfig={handleUpdateNodeConfig}
+					onUpdateNodeConfigValues={handleUpdateNodeConfigValues}
 					onUpdateSimulationOverride={handleUpdateSimulationOverride}
 					onDeleteEdge={handleDeleteEdge}
 					onDeleteNode={handleDeleteNode}
@@ -2109,6 +2129,17 @@ export function EditorPage({
 
 function isScriptFlowNode(node: EditorFlowNode): node is ScriptFlowNode {
 	return node.type !== "commentNode";
+}
+
+function samePortIds(left: NodePort[], right: NodePort[]) {
+	return (
+		left.length === right.length &&
+		left.every((port, index) => port.id === right[index].id && port.label === right[index].label)
+	);
+}
+
+function samePorts(ports: { inputs: NodePort[]; outputs: NodePort[] }, data: ScriptNodeData) {
+	return samePortIds(ports.inputs, data.inputs) && samePortIds(ports.outputs, data.outputs);
 }
 
 function createStoredSimulationVariableSnapshots(

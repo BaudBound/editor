@@ -134,6 +134,7 @@ type InspectorProps = {
 	onTriggerSimulation: (triggerNodeId: string, payload: SimulationTriggerPayload) => void;
 	onTriggerSimulationInputChange: (triggerNodeId: string, draft: SimulationTriggerInputDraft) => void;
 	onUpdateNodeConfig: (nodeId: string, key: string, value: JsonValue) => void;
+	onUpdateNodeConfigValues: (nodeId: string, values: Record<string, JsonValue>) => void;
 	onUpdateSimulationOverride: (nodeId: string, outcome: SimulationOverrideOutcome) => void;
 	onDeleteNode: (nodeId: string) => void;
 	onDeleteEdge: (edgeId: string) => void;
@@ -169,6 +170,7 @@ export function Inspector({
 	onTriggerSimulation,
 	onTriggerSimulationInputChange,
 	onUpdateNodeConfig,
+	onUpdateNodeConfigValues,
 	onUpdateSimulationOverride,
 	onDeleteEdge,
 	onDeleteNode,
@@ -235,6 +237,7 @@ export function Inspector({
 							selectedNode={selectedNode}
 							variables={variables}
 							onUpdateNodeConfig={onUpdateNodeConfig}
+							onUpdateNodeConfigValues={onUpdateNodeConfigValues}
 							onDeleteNode={onDeleteNode}
 						/>
 					))}
@@ -271,6 +274,7 @@ function PropertiesPanel({
 	variables,
 	onDeclareVariable,
 	onUpdateNodeConfig,
+	onUpdateNodeConfigValues,
 	onDeleteNode,
 }: {
 	assets: EditorAsset[];
@@ -280,8 +284,11 @@ function PropertiesPanel({
 	variables: EditorVariable[];
 	onDeclareVariable: () => void;
 	onUpdateNodeConfig: (nodeId: string, key: string, value: JsonValue) => void;
+	onUpdateNodeConfigValues: (nodeId: string, values: Record<string, JsonValue>) => void;
 	onDeleteNode: (nodeId: string) => void;
 }) {
+	void onUpdateNodeConfigValues;
+
 	if (!selectedNode) {
 		return (
 			<div className="p-4">
