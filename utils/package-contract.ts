@@ -61,6 +61,7 @@ export const canonicalCapabilities = [
 	"runtime.color_match",
 	"runtime.if",
 	"runtime.switch",
+	"runtime.router",
 	"runtime.repeat",
 	"runtime.while",
 	"runtime.for_each",

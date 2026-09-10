@@ -76,6 +76,7 @@ import { continueLoopNode } from "./definitions/control/continue-loop";
 import { forEachNode } from "./definitions/control/for-each";
 import { ifElseNode } from "./definitions/control/if-else";
 import { repeatNode } from "./definitions/control/repeat";
+import { routerNode } from "./definitions/control/router";
 import { switchNode } from "./definitions/control/switch";
 import { whileNode } from "./definitions/control/while";
 import { createSwitchOutputPorts, getSwitchCaseRowsFromValue } from "./definitions/rows";
@@ -100,6 +101,7 @@ import {
 	triggerOutputPort,
 } from "./node-definition";
 import { numericContractApplies, validateNumericConfigValue } from "./numeric-validation";
+import { createRouterPorts, getRouterConfigFromValue } from "./router";
 
 const nodeDefinitions: NodeDefinition[] = [
 	manualTriggerNode,
@@ -114,6 +116,7 @@ const nodeDefinitions: NodeDefinition[] = [
 	colorMatchNode,
 	ifElseNode,
 	switchNode,
+	routerNode,
 	repeatNode,
 	whileNode,
 	forEachNode,
@@ -480,6 +483,10 @@ export function getNodePorts(actionType: ActionType, config?: Record<string, Jso
 		});
 	}
 
+	if (definition?.portPolicy?.kind === "router-ports") {
+		return formatNodePorts(createRouterPorts(getRouterConfigFromValue(config ?? {})));
+	}
+
 	if (actionType.startsWith("trigger.")) {
 		return formatNodePorts({ inputs: [], outputs: [triggerOutputPort] });
 	}
@@ -489,6 +496,14 @@ export function getNodePorts(actionType: ActionType, config?: Record<string, Jso
 	}
 
 	return formatNodePorts({ inputs: [defaultInputPort], outputs: [defaultOutputPort] });
+}
+
+/** True when a node's handles depend on its config, so config edits must refresh ports and prune stale edges. */
+export function hasDynamicPorts(actionType: ActionType) {
+	const definition = getNodeDefinition(actionType);
+	if (!definition) return false;
+	if (definition.derivePorts) return true;
+	return definition.portPolicy?.kind === "switch-cases" || definition.portPolicy?.kind === "router-ports";
 }
 
 function formatNodePorts(ports: { inputs: { id: string; label: string }[]; outputs: { id: string; label: string }[] }) {

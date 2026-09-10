@@ -586,6 +586,13 @@ test("generated runner port contract covers every editor node", () => {
 		input: "input",
 		output_prefix: "case-",
 	});
+	assert.deepEqual(contract.nodes["control.router"], {
+		kind: "router_ports",
+		inputs_key: "inputs",
+		outputs_key: "outputs",
+		input_prefix: "in-",
+		output_prefix: "out-",
+	});
 });
 
 test("program schema uses public per-node schema references", () => {

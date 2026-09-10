@@ -19,6 +19,7 @@ export type ActionType =
 	| "control.if"
 	| "control.color_match"
 	| "control.switch"
+	| "control.router"
 	| "control.repeat"
 	| "control.while"
 	| "control.for_each"
