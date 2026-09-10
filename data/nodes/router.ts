@@ -103,7 +103,6 @@ export function validateRouterConfig(config: Record<string, JsonValue>): string[
 	if (!Array.isArray(rawInputs)) errors.push("must define inputs as a list.");
 	if (!Array.isArray(rawOutputs)) errors.push("must define outputs as a list.");
 	if (!Array.isArray(rawRoutes)) errors.push("must define routes as a list.");
-	if (errors.length > 0) return errors;
 	if (!Array.isArray(rawInputs) || !Array.isArray(rawOutputs) || !Array.isArray(rawRoutes)) return errors;
 
 	if (rawInputs.length === 0) errors.push("must define at least one input.");
@@ -116,6 +115,7 @@ export function validateRouterConfig(config: Record<string, JsonValue>): string[
 
 	const routes = rawRoutes.filter(isRouterRouteRow);
 	if (routes.length !== rawRoutes.length) errors.push("contains an invalid route.");
+	if (routes.some((route) => !route.id.trim())) errors.push("contains an invalid route.");
 	if (duplicateValues(routes.map((route) => route.id)).size > 0) {
 		errors.push("contains duplicate route identifiers.");
 	}

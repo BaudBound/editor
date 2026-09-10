@@ -124,6 +124,12 @@ test("validateRouterConfig rejects malformed rows, blank labels, and duplicate i
 	assert.ok(errors.includes("contains duplicate routes between the same input and output."), errors.join("\n"));
 });
 
+test("validateRouterConfig rejects routes with a blank id", () => {
+	const config = validConfig();
+	config.routes[0].id = "  ";
+	assert.ok(validateRouterConfig(config).includes("contains an invalid route."));
+});
+
 test("validateRouterConfig rejects routes that reference missing ports", () => {
 	const config = validConfig();
 	config.routes.push({ id: "r4", inputId: "zzz", outputId: "x", order: 0 });
