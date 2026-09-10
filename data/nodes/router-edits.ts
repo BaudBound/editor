@@ -50,10 +50,13 @@ export function removeRouterPort(config: RouterConfig, side: RouterPortSide, por
 	});
 }
 
-export function toggleRouterRoute(config: RouterConfig, inputId: string, outputId: string): RouterConfig {
-	const existing = config.routes.find((route) => route.inputId === inputId && route.outputId === outputId);
-	if (existing) return removeRouterRoute(config, existing.id);
-	const order = getRouterRoutesForInput(config, inputId).length;
+/** Appends a route as the last one for its input. Already-routed pairs are left alone. */
+export function addRouterRoute(config: RouterConfig, inputId: string, outputId: string): RouterConfig {
+	if (config.routes.some((route) => route.inputId === inputId && route.outputId === outputId)) {
+		return cloneConfig(config);
+	}
+	const last = getRouterRoutesForInput(config, inputId).at(-1);
+	const order = last ? last.order + 1 : 0;
 	return normalizeRouterRouteOrders({
 		...cloneConfig(config),
 		routes: [...config.routes, createRouterRouteRow(inputId, outputId, order)],
