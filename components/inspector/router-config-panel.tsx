@@ -31,7 +31,7 @@ type RouterConfigPanelProps = {
 
 export function RouterConfigPanel({ config, onChange }: RouterConfigPanelProps) {
 	const router = getRouterConfigFromValue(config);
-	const errors = validateRouterConfig(config);
+	const errors = [...new Set(validateRouterConfig(config))];
 	const errorId = useId();
 	const [selectedInputId, setSelectedInputId] = useState<string | null>(router.inputs[0]?.id ?? null);
 	const selectedInput = router.inputs.find((input) => input.id === selectedInputId) ?? router.inputs[0] ?? null;
@@ -95,9 +95,9 @@ export function RouterConfigPanel({ config, onChange }: RouterConfigPanelProps) 
 
 			{errors.length > 0 && (
 				<ul className="space-y-1" aria-label="Router validation errors">
-					{errors.map((error) => (
+					{errors.map((error, index) => (
 						<li key={error}>
-							<FieldError id={`${errorId}-${error}`} message={`Router ${error}`} />
+							<FieldError id={`${errorId}-${index}`} message={`Router ${error}`} />
 						</li>
 					))}
 				</ul>
