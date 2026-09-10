@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { RouterConfig } from "../data/nodes/router.ts";
 import {
 	addRouterPort,
+	addRouterRoute,
 	moveRouterPort,
 	moveRouterRoute,
 	normalizeRouterRouteOrders,
@@ -10,7 +11,6 @@ import {
 	removeRouterRoute,
 	renameRouterPort,
 	routerConfigToJson,
-	toggleRouterRoute,
 } from "../data/nodes/router-edits.ts";
 
 function config(): RouterConfig {
@@ -76,21 +76,20 @@ test("removeRouterPort drops the port and its routes and renumbers the rest", ()
 	assert.deepEqual(withoutInput.routes, [{ id: "r3", inputId: "b", outputId: "y", order: 0 }]);
 });
 
-test("toggleRouterRoute adds at the end of the input's order and removes with renumbering", () => {
-	const added = toggleRouterRoute(config(), "b", "x");
+test("addRouterRoute appends at the end of the input's order", () => {
+	const added = addRouterRoute(config(), "b", "x");
 	const newRoute = added.routes.find((route) => route.inputId === "b" && route.outputId === "x");
 	assert.ok(newRoute);
 	assert.equal(newRoute.order, 1);
 	assert.equal(added.routes.length, 4);
-
-	const removed = toggleRouterRoute(config(), "a", "x");
-	assert.deepEqual(removed.routes, [
-		{ id: "r2", inputId: "a", outputId: "y", order: 0 },
-		{ id: "r3", inputId: "b", outputId: "y", order: 0 },
-	]);
+	assert.equal(config().routes.length, 3, "input must not be mutated");
 });
 
-test("toggleRouterRoute normalizes a denormalized input's orders so it cannot mint a duplicate", () => {
+test("addRouterRoute is a no-op when the pair is already routed", () => {
+	assert.deepEqual(addRouterRoute(config(), "a", "x"), config());
+});
+
+test("addRouterRoute appends after a denormalized input's last route and renumbers from zero", () => {
 	const denormalized: RouterConfig = {
 		inputs: [
 			{ id: "a", label: "Alpha" },
@@ -106,15 +105,11 @@ test("toggleRouterRoute normalizes a denormalized input's orders so it cannot mi
 			{ id: "r2", inputId: "a", outputId: "y", order: 5 },
 		],
 	};
-	const after = toggleRouterRoute(denormalized, "a", "z");
+	const after = addRouterRoute(denormalized, "a", "z");
 	const aRoutes = after.routes.filter((route) => route.inputId === "a").sort((left, right) => left.order - right.order);
-	// The new route is appended with an interim order equal to the existing
-	// route count (2), which falls between the denormalized 0 and 5 — so
-	// normalizing by ascending order places it between r1 and r2, matching
-	// the relative order the denormalized orders already implied.
 	assert.deepEqual(
 		aRoutes.map((route) => route.id),
-		["r1", after.routes.find((route) => route.outputId === "z")?.id, "r2"],
+		["r1", "r2", after.routes.find((route) => route.outputId === "z")?.id],
 	);
 	assert.deepEqual(
 		aRoutes.map((route) => route.order),
