@@ -1,5 +1,12 @@
 import type { Edge, Node, XYPosition } from "@xyflow/react";
-import type { DeclaredVariable, EditorAsset, ProjectSettings, ScriptNodeData, SecretDeclaration } from "@/lib/types";
+import type {
+	DeclaredVariable,
+	EditorAsset,
+	NodePort,
+	ProjectSettings,
+	ScriptNodeData,
+	SecretDeclaration,
+} from "@/lib/types";
 import { createGraphElementId } from "./graph-element-id";
 
 const SCRIPT_NODE_WIDTH = 256;
@@ -168,6 +175,28 @@ export function reorderEdgeExecutionGroup<EdgeType extends Edge>(
 		const order = orders.get(edge.id);
 		return order === undefined ? edge : withEdgeExecutionOrder(edge, order);
 	});
+}
+
+/**
+ * Drops edges that no longer attach to a real port on `nodeId` after its
+ * ports change (e.g. a router's inputs/outputs are edited), and renumbers
+ * execution orders for what remains. Shared by the editor page and by tests
+ * covering the pruning predicate in isolation.
+ */
+export function pruneEdgesForNodePorts<EdgeType extends Edge>(
+	edges: EdgeType[],
+	nodeId: string,
+	ports: { inputs: NodePort[]; outputs: NodePort[] },
+): EdgeType[] {
+	const validInputIds = new Set(ports.inputs.map((input) => input.id));
+	const validOutputIds = new Set(ports.outputs.map((output) => output.id));
+	return normalizeEdgeExecutionOrders(
+		edges.filter(
+			(edge) =>
+				(edge.source !== nodeId || validOutputIds.has(edge.sourceHandle ?? "")) &&
+				(edge.target !== nodeId || validInputIds.has(edge.targetHandle ?? "")),
+		),
+	);
 }
 
 export function getEdgeExecutionOrderErrors(edges: Edge[]) {

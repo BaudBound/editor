@@ -6,6 +6,13 @@ import type { NodeSimulationApi } from "@/data/nodes/node-definition";
 import { numericContractApplies, validateNumericConfigValue } from "@/data/nodes/numeric-validation";
 import { fallibleActionTypes, getNodeDefinition } from "@/data/nodes/registry";
 import {
+	getRouterConfigFromValue,
+	getRouterRoutesForInput,
+	routerInputIdFromHandle,
+	routerOutputHandle,
+	routerPortLabel,
+} from "@/data/nodes/router";
+import {
 	createSimulationBuiltInVariableValues,
 	liveSystemFieldValues,
 	SETTINGS_NAMESPACE,
@@ -87,6 +94,7 @@ type SimulationFrame =
 			handle: string;
 			sourceNodeId: string;
 			stopAtNodeId?: string;
+			targetHandle: string;
 			targetNodeId: string;
 	  }
 	| {
@@ -108,6 +116,7 @@ type SimulationFrame =
 			nodeId: string;
 	  }
 	| {
+			inputHandle?: string;
 			kind: "node";
 			nodeId: string;
 			stopAtNodeId?: string;
@@ -154,7 +163,14 @@ export async function createSimulationRun({
 		assetsByPackagePath: new Map(assets.map((asset) => [asset.packagePath.toLowerCase(), asset])),
 		edgesBySource: groupEdgesBySource(edges),
 		failed: false,
-		globalVariables: structuredClone(globalVariables),
+		globalVariables: {
+			...Object.fromEntries(
+				declaredVariables
+					.filter((variable) => variable.scope === "global")
+					.map((variable) => [variable.name, structuredClone(variable.value)]),
+			),
+			...structuredClone(globalVariables),
+		},
 		halted: false,
 		lastYieldAt: performance.now(),
 		declaredVariables: Object.fromEntries(
@@ -289,7 +305,7 @@ async function processSimulationFrames(context: SimulationContext, initialFrames
 
 async function processSimulationFrame(context: SimulationContext, frame: SimulationFrame, frames: SimulationFrame[]) {
 	if (frame.kind === "node") {
-		await executeNodeFrame(frame.nodeId, context, frames, frame.stopAtNodeId);
+		await executeNodeFrame(frame.nodeId, context, frames, frame.stopAtNodeId, frame.inputHandle);
 		return;
 	}
 
@@ -308,7 +324,12 @@ async function processSimulationFrame(context: SimulationContext, frame: Simulat
 			[],
 			[frame.edgeId],
 		);
-		frames.push({ kind: "node", nodeId: frame.targetNodeId, stopAtNodeId: frame.stopAtNodeId });
+		frames.push({
+			kind: "node",
+			inputHandle: frame.targetHandle,
+			nodeId: frame.targetNodeId,
+			stopAtNodeId: frame.stopAtNodeId,
+		});
 		return;
 	}
 
@@ -330,6 +351,7 @@ async function executeNodeFrame(
 	context: SimulationContext,
 	frames: SimulationFrame[],
 	stopAtNodeId?: string,
+	inputHandle?: string,
 ) {
 	if (context.halted || context.signal?.aborted) {
 		return;
@@ -359,7 +381,7 @@ async function executeNodeFrame(
 	}
 
 	try {
-		await executeResolvedNodeFrame(node, context, frames);
+		await executeResolvedNodeFrame(node, context, frames, inputHandle);
 	} finally {
 		if (!context.signal?.aborted) {
 			await pushNodeState(context, node.id, "completed");
@@ -371,9 +393,15 @@ async function executeResolvedNodeFrame(
 	node: Node<ScriptNodeData>,
 	context: SimulationContext,
 	frames: SimulationFrame[],
+	inputHandle?: string,
 ) {
 	if (node.data.actionType === "control.break_loop" || node.data.actionType === "control.continue_loop") {
 		await processLoopControlNode(node, context, frames);
+		return;
+	}
+
+	if (node.data.actionType === "control.router") {
+		await processRouterNode(node, context, frames, inputHandle);
 		return;
 	}
 
@@ -557,6 +585,53 @@ async function processLoopControlNode(
 	});
 }
 
+async function processRouterNode(
+	node: Node<ScriptNodeData>,
+	context: SimulationContext,
+	frames: SimulationFrame[],
+	inputHandle?: string,
+) {
+	const config = getRouterConfigFromValue(node.data.config);
+	const inputId = inputHandle ? routerInputIdFromHandle(inputHandle) : null;
+	const inputIndex = inputId === null ? -1 : config.inputs.findIndex((input) => input.id === inputId);
+	const input = inputIndex === -1 ? undefined : config.inputs[inputIndex];
+	if (!input) {
+		context.failed = true;
+		context.halted = true;
+		await pushStep(context, {
+			level: "error",
+			message: `[Simulation] Router (${node.id}) was entered through unknown input "${inputHandle ?? "none"}". Branch stopped.`,
+		});
+		return;
+	}
+
+	const inputLabel = routerPortLabel(input, inputIndex, "input");
+	const routes = getRouterRoutesForInput(config, input.id);
+	if (routes.length === 0) {
+		context.failed = true;
+		context.halted = true;
+		await pushStep(context, {
+			level: "error",
+			message: `[Simulation] Router (${node.id}) input "${inputLabel}" has no routes. Branch stopped.`,
+		});
+		return;
+	}
+
+	const outputLabels = routes.map((route) => {
+		const outputIndex = config.outputs.findIndex((output) => output.id === route.outputId);
+		const output = config.outputs[outputIndex];
+		return output ? routerPortLabel(output, outputIndex, "output") : route.outputId;
+	});
+	await pushStep(context, {
+		level: "info",
+		message: `[Simulation] Router ${node.id} input "${inputLabel}" selected ${routes.length} output${routes.length === 1 ? "" : "s"}: ${outputLabels.join(", ")}.`,
+	});
+
+	for (const route of [...routes].reverse()) {
+		frames.push({ kind: "follow", sourceNodeId: node.id, handle: routerOutputHandle(route.outputId) });
+	}
+}
+
 function findActiveLoopFrameIndex(frames: SimulationFrame[]) {
 	return frames.findLastIndex(isLoopFrame);
 }
@@ -689,6 +764,7 @@ async function enqueueFollowFrames(
 			edgeId: edge.id,
 			kind: "edge",
 			sourceNodeId: node.id,
+			targetHandle: edge.targetHandle ?? "input",
 			targetNodeId: edge.target,
 			handle: selectedHandle,
 			stopAtNodeId,
@@ -1718,6 +1794,7 @@ async function pushOutputLog(context: SimulationContext, log: LogEntry) {
 	return emitStep(context, {
 		outputLogs: [truncateLog(redactLog(context, log))],
 		sideEffects: [],
+		storedVariables: createStoredVariableSnapshot(context),
 		traces: [],
 		traversedEdgeIds: [],
 		variables: createVariableSnapshot(context),
@@ -1733,6 +1810,7 @@ async function pushNodeState(
 		nodeState: { nodeId, status },
 		outputLogs: [],
 		sideEffects: [],
+		storedVariables: createStoredVariableSnapshot(context),
 		traces: [],
 		traversedEdgeIds: [],
 		variables: createVariableSnapshot(context),
@@ -1786,11 +1864,11 @@ export function yieldSimulationTask(signal: AbortSignal | undefined) {
 			}
 
 			completed = true;
-			window.clearTimeout(timeoutId);
+			clearTimeout(timeoutId);
 			signal?.removeEventListener("abort", handleAbort);
 			resolve();
 		};
-		const timeoutId = window.setTimeout(finish, 0);
+		const timeoutId = setTimeout(finish, 0);
 		const handleAbort = () => finish();
 		signal?.addEventListener("abort", handleAbort, { once: true });
 	});
@@ -1809,11 +1887,11 @@ function sleepSimulationStep(ms: number, signal: AbortSignal | undefined) {
 			}
 
 			completed = true;
-			window.clearTimeout(timeoutId);
+			clearTimeout(timeoutId);
 			signal?.removeEventListener("abort", handleAbort);
 			resolve();
 		};
-		const timeoutId = window.setTimeout(finish, ms);
+		const timeoutId = setTimeout(finish, ms);
 		const handleAbort = () => finish();
 		signal?.addEventListener("abort", handleAbort, { once: true });
 	});
@@ -1828,9 +1906,17 @@ function createTraceStep(
 	return {
 		outputLogs: [],
 		sideEffects,
+		storedVariables: createStoredVariableSnapshot(context),
 		traces: [trace],
 		traversedEdgeIds,
 		variables: createVariableSnapshot(context),
+	};
+}
+
+function createStoredVariableSnapshot(context: SimulationContext) {
+	return {
+		global: structuredClone(context.globalVariables),
+		persistent: structuredClone(context.persistentVariables),
 	};
 }
 

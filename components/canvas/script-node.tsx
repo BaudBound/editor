@@ -1,7 +1,7 @@
 import { Handle, type Node, type NodeProps, Position } from "@xyflow/react";
 import { createContext, useContext } from "react";
 import { kindAccentClassName } from "@/data/editor/risk";
-import { sanitizeNodeConfig } from "@/data/nodes/registry";
+import { getNodeDefinition, sanitizeNodeConfig } from "@/data/nodes/registry";
 import type { ActionType, JsonValue, ScriptNodeData } from "@/lib/types";
 import { RiskBadge } from "../shell/risk-badge";
 
@@ -29,7 +29,7 @@ export function ScriptNode({ data, id, selected }: NodeProps<ScriptFlowNode>) {
 	const subtitle = customName || id;
 	const configSummary = getConfigSummary(data.actionType, data.config);
 	const headerHeight = namedHeaderHeight;
-	const bodyMinHeight = getBodyMinHeight(data.outputs.length);
+	const bodyMinHeight = getBodyMinHeight(Math.max(data.inputs.length, data.outputs.length));
 
 	return (
 		<div
@@ -66,8 +66,8 @@ export function ScriptNode({ data, id, selected }: NodeProps<ScriptFlowNode>) {
 				{configSummary && <div className="mt-0.5 truncate font-mono text-base text-baud-text">{configSummary}</div>}
 			</div>
 
-			{data.inputs.map((input) => {
-				const top = headerHeight + bodyMinHeight / 2;
+			{data.inputs.map((input, index) => {
+				const top = getPortTop(index, data.inputs.length, bodyMinHeight, headerHeight);
 
 				return (
 					<div key={input.id}>
@@ -75,7 +75,7 @@ export function ScriptNode({ data, id, selected }: NodeProps<ScriptFlowNode>) {
 							className="pointer-events-none absolute left-5 right-28 -translate-y-1/2 truncate font-mono text-base text-baud-muted"
 							style={{ top }}
 						>
-							Input
+							{data.inputs.length > 1 ? input.label : "Input"}
 						</span>
 						<Handle
 							type="target"
@@ -88,7 +88,7 @@ export function ScriptNode({ data, id, selected }: NodeProps<ScriptFlowNode>) {
 				);
 			})}
 			{data.outputs.map((output, index) => {
-				const top = getOutputTop(index, data.outputs.length, bodyMinHeight, headerHeight);
+				const top = getPortTop(index, data.outputs.length, bodyMinHeight, headerHeight);
 
 				return (
 					<div key={output.id}>
@@ -116,7 +116,7 @@ function getBodyMinHeight(totalOutputs: number) {
 	return Math.max(baseBodyHeight, totalOutputs * outputHandleSpacing);
 }
 
-function getOutputTop(index: number, total: number, bodyHeight: number, headerHeight: number) {
+function getPortTop(index: number, total: number, bodyHeight: number, headerHeight: number) {
 	if (total === 1) {
 		return headerHeight + bodyHeight / 2;
 	}
@@ -162,6 +162,11 @@ function getOutputHandleClassName(outputId: string) {
 }
 
 function getConfigSummary(actionType: ActionType, config: Record<string, JsonValue>) {
+	const summarize = getNodeDefinition(actionType)?.summarizeConfig;
+	if (summarize) {
+		return summarize(config);
+	}
+
 	return Object.entries(sanitizeNodeConfig(actionType, config))
 		.filter(([key, value]) => key !== "customName" && !isEmptyConfigValue(value))
 		.slice(0, 3)

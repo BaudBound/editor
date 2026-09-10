@@ -257,6 +257,9 @@ function createConfigSchema(definition) {
 	if (definition.actionType === "runtime.set_variable") {
 		return createVariableOperationConfigSchema(definition);
 	}
+	if (definition.actionType === "control.router") {
+		return createRouterConfigSchema();
+	}
 
 	const fieldsByKey = new Map(definition.configFields.map((field) => [field.key, field]));
 	const keys = new Set(["customName", ...definition.defaultConfigKeys, ...fieldsByKey.keys()]);
@@ -381,6 +384,44 @@ function createVariableOperationConfigSchema(definition) {
 				},
 			},
 		],
+	};
+}
+
+function createRouterConfigSchema() {
+	const port = {
+		type: "object",
+		additionalProperties: false,
+		required: ["id", "label"],
+		properties: {
+			id: { type: "string", minLength: 1 },
+			label: { type: "string", minLength: 1 },
+		},
+	};
+	return {
+		type: "object",
+		additionalProperties: false,
+		required: ["inputs", "outputs", "routes"],
+		properties: {
+			customName: { type: "string" },
+			inputs: { type: "array", minItems: 1, maxItems: 64, items: port },
+			outputs: { type: "array", minItems: 1, maxItems: 64, items: port },
+			routes: {
+				type: "array",
+				minItems: 1,
+				maxItems: 4096,
+				items: {
+					type: "object",
+					additionalProperties: false,
+					required: ["id", "inputId", "outputId", "order"],
+					properties: {
+						id: { type: "string", minLength: 1 },
+						inputId: { type: "string", minLength: 1 },
+						outputId: { type: "string", minLength: 1 },
+						order: { type: "integer", minimum: 0 },
+					},
+				},
+			},
+		},
 	};
 }
 
@@ -689,6 +730,15 @@ function readPortPolicy(initializer, actionType) {
 			config_key: getRequiredStringProperty(initializer, "configKey", actionType),
 			default_output: getRequiredStringProperty(initializer, "defaultOutput", actionType),
 			input: "input",
+			output_prefix: getRequiredStringProperty(initializer, "outputPrefix", actionType),
+		};
+	}
+	if (kind === "router-ports") {
+		return {
+			kind: "router_ports",
+			inputs_key: getRequiredStringProperty(initializer, "inputsKey", actionType),
+			outputs_key: getRequiredStringProperty(initializer, "outputsKey", actionType),
+			input_prefix: getRequiredStringProperty(initializer, "inputPrefix", actionType),
 			output_prefix: getRequiredStringProperty(initializer, "outputPrefix", actionType),
 		};
 	}

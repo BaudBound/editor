@@ -52,6 +52,10 @@ export type SimulationStep = {
 	};
 	outputLogs: LogEntry[];
 	sideEffects: SimulationSideEffect[];
+	storedVariables: {
+		global: Record<string, JsonValue>;
+		persistent: Record<string, JsonValue>;
+	};
 	traces: SimulationTraceEntry[];
 	traversedEdgeIds: string[];
 	variables: SimulationVariableSnapshot[];

@@ -98,7 +98,8 @@ export type NodePorts = {
 
 export type NodePortPolicy =
 	| { inputs: string[]; kind: "fixed"; outputs: string[] }
-	| { configKey: string; defaultOutput: string; kind: "switch-cases"; outputPrefix: string };
+	| { configKey: string; defaultOutput: string; kind: "switch-cases"; outputPrefix: string }
+	| { inputPrefix: string; inputsKey: string; kind: "router-ports"; outputPrefix: string; outputsKey: string };
 
 export type NodePermissionPathRule = {
 	access: "delete" | "read" | "watch" | "write";
@@ -193,6 +194,8 @@ export type NodeDefinition = {
 	runtimeOutputs?: RuntimeDataOutput[];
 	runnerType?: string;
 	sanitizeConfig?: (config: Record<string, JsonValue>) => Record<string, JsonValue>;
+	/** Short canvas summary shown under the action type instead of the generic config value list. */
+	summarizeConfig?: (config: Record<string, JsonValue>) => string;
 	simulation?: NodeSimulationDefinition;
 	supportedTargetRuntimes?: readonly TargetRuntime[];
 	validateConfig?: (config: Record<string, JsonValue>) => string[];

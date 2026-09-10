@@ -2,13 +2,7 @@ import type { Edge, Node } from "@xyflow/react";
 import JSZip from "jszip";
 import { defaultEditorEdgeStyle, type EditorEdgeStyle, isEditorEdgeStyle } from "@/data/editor/flow-canvas";
 import { getNodeDefinition, getNodePorts, getRuntimeDataOutputs } from "@/data/nodes/registry";
-import {
-	getAssetKindForMediaType,
-	toAssetManifestEntry,
-	validateAssetFileContent,
-	validatePackageAssetEntries,
-} from "@/data/project/assets";
-import { packageLimits } from "@/data/project/package-limits";
+import { getAssetKindForMediaType, validateAssetFileContent, validatePackageAssetEntries } from "@/data/project/assets";
 import { targetRuntimes } from "@/data/project/runtimes";
 import { normalizeListItemType, validateTypedValue } from "@/data/project/typed-values";
 import { variableScopes, variableTypes } from "@/data/project/variables";
@@ -28,9 +22,14 @@ import {
 	scriptSettingTypes,
 	type TargetRuntime,
 } from "../lib/types";
-import { DEFAULT_MINIMUM_RUNNER_VERSION, EDITOR_CREATED_WITH } from "../lib/version";
-import { calculateCapabilities, calculatePermissions, calculateRiskLevel, toProgramJson } from "./analysis";
+import { DEFAULT_MINIMUM_RUNNER_VERSION } from "../lib/version";
 import { type PackageArchive, type PackageArchiveEntry, readBbsPackageArchive } from "./bbs-package-archive";
+import {
+	createBbsPackageMetadata,
+	EDITOR_PACKAGE_FILE,
+	getBbsPackageSizeErrors,
+	toPackageJsonFiles,
+} from "./bbs-package-metadata";
 import { isSelfConnection, withEdgeExecutionOrder } from "./editor-graph";
 import { validatePackageJsonContracts } from "./package-contract";
 import { createScriptPackageFilename, downloadBytes } from "./script-repository";
@@ -69,8 +68,6 @@ type PackageAssetRecord = {
 
 type PackageReadOptions = { signal?: AbortSignal };
 
-const EDITOR_PACKAGE_FILE = "editor.json";
-const EDITOR_METADATA_FORMAT_VERSION = 1;
 const DEFAULT_COMMENT_FONT_SIZE = 14;
 const MIN_COMMENT_FONT_SIZE = 12;
 const MAX_COMMENT_FONT_SIZE = 72;
@@ -87,107 +84,27 @@ export async function buildBbsPackage(params: {
 	declaredVariables: DeclaredVariable[];
 	scriptSettings: ScriptSetting[];
 }) {
-	const permissions = calculatePermissions(params.nodes, params.secretDeclarations, params.declaredVariables);
-	const capabilities = calculateCapabilities(params.nodes, params.secretDeclarations, params.declaredVariables);
-	const assetManifest = params.assets.map(toAssetManifestEntry);
-	const now = new Date().toISOString();
 	const zip = new JSZip();
-	const manifestJson = compactObject({
-		format_version: 1,
-		script_language_version: 1,
-		id: params.identity.id,
-		name: params.projectSettings.name,
-		version: params.projectSettings.version,
-		repository_url: params.projectSettings.repositoryUrl,
-		description: params.projectSettings.description,
-		author: params.projectSettings.author,
-		website: params.projectSettings.website,
-		source: params.projectSettings.source,
-		created_with: EDITOR_CREATED_WITH,
-		created_at: params.identity.createdAt,
-		updated_at: now,
-		tags: params.projectSettings.tags,
-		minimum_runner_version: params.projectSettings.minimumRunnerVersion,
-		assets: assetManifest.map((asset) => ({
-			id: asset.id,
-			kind: asset.kind,
-			media_type: asset.mediaType,
-			name: asset.name,
-			path: asset.packagePath,
-			size: asset.size,
-		})),
-		secrets: params.secretDeclarations.map((secret) => ({
-			name: secret.name,
-			type: secret.type,
-			description: secret.description,
-			required: secret.required,
-		})),
-		variables: params.declaredVariables.map((variable) => ({
-			name: variable.name,
-			scope: variable.scope,
-			type: variable.type,
-			...(variable.type === "list" ? { item_type: variable.itemType } : {}),
-			description: variable.description,
-			value: variable.value,
-		})),
-		settings: params.scriptSettings.map((setting) =>
-			compactObject({
-				name: setting.name,
-				type: setting.type,
-				item_type: setting.type === "list" ? setting.itemType : undefined,
-				description: setting.description,
-				required: setting.required,
-				default_value: setting.defaultValue,
-			}),
-		),
-	});
-	const programJson = toProgramJson(params.nodes, params.edges, {
-		identity: params.identity,
-		settings: params.projectSettings,
-	});
-	const editorJson = toEditorJson(params.nodes, params.comments, params.edgeStyle);
-	const permissionsJson = {
-		declared_permissions: permissions.map((permission) => permission.name),
-		risk_level: calculateRiskLevel(permissions),
-	};
-	const capabilitiesJson = {
-		required_capabilities: capabilities.map((capability) => capability.name),
-		target_runtimes: params.projectSettings.targetRuntimes,
-	};
-	const contractErrors = validatePackageJsonContracts({
-		"manifest.json": manifestJson,
-		"program.json": programJson,
-		"editor.json": editorJson,
-		"permissions.json": permissionsJson,
-		"capabilities.json": capabilitiesJson,
-	});
+	const metadata = createBbsPackageMetadata(params);
+	const jsonFiles = toPackageJsonFiles(metadata);
+	const contractErrors = validatePackageJsonContracts(jsonFiles);
 
 	if (contractErrors.length > 0) {
 		throw new Error(`Export package contract failed: ${contractErrors.join(" ")}`);
 	}
-	const metadata = [manifestJson, programJson, editorJson, permissionsJson, capabilitiesJson].map(
-		(value) => new TextEncoder().encode(JSON.stringify(value, null, 2)).byteLength,
-	);
-	if (metadata.some((size) => size > packageLimits.max_metadata_bytes)) {
-		throw new Error(`Export metadata exceeds the maximum of ${packageLimits.max_metadata_bytes} bytes per file.`);
-	}
-	const packageSize =
-		metadata.reduce((total, size) => total + size, 0) + params.assets.reduce((total, asset) => total + asset.size, 0);
-	if (
-		packageSize > packageLimits.max_total_uncompressed_bytes ||
-		params.assets.length + 6 > packageLimits.max_entry_count
-	) {
-		throw new Error("Export package exceeds the package size or entry-count limits.");
+	const packageSizeErrors = getBbsPackageSizeErrors(metadata, params.assets);
+	if (packageSizeErrors.length > 0) {
+		throw new Error(packageSizeErrors.join(" "));
 	}
 
-	zip.file("manifest.json", JSON.stringify(manifestJson, null, 2));
-	zip.file("program.json", JSON.stringify(programJson, null, 2));
-	zip.file(EDITOR_PACKAGE_FILE, JSON.stringify(editorJson, null, 2));
+	zip.file("manifest.json", JSON.stringify(metadata.manifestJson, null, 2));
+	zip.file("program.json", JSON.stringify(metadata.programJson, null, 2));
+	zip.file(EDITOR_PACKAGE_FILE, JSON.stringify(metadata.editorJson, null, 2));
 	for (const asset of params.assets) {
 		zip.file(asset.packagePath, asset.file, { binary: true });
 	}
-	zip.file("permissions.json", JSON.stringify(permissionsJson, null, 2));
-	zip.file("capabilities.json", JSON.stringify(capabilitiesJson, null, 2));
+	zip.file("permissions.json", JSON.stringify(metadata.permissionsJson, null, 2));
+	zip.file("capabilities.json", JSON.stringify(metadata.capabilitiesJson, null, 2));
 	zip.file("README.md", `# ${params.projectSettings.name}\n\nExported from BaudBound Editor.\n`);
 
 	return {
@@ -426,54 +343,6 @@ function toScriptSettings(manifest: Record<string, unknown>): ScriptSetting[] {
 			},
 		];
 	});
-}
-
-function compactObject(value: Record<string, unknown>) {
-	return Object.fromEntries(
-		Object.entries(value).filter(([, entry]) => {
-			if (Array.isArray(entry)) {
-				return entry.length > 0;
-			}
-
-			return entry !== "";
-		}),
-	);
-}
-
-function toEditorJson(nodes: Node<ScriptNodeData>[], comments: EditorComment[], edgeStyle: EditorEdgeStyle) {
-	return {
-		format_version: EDITOR_METADATA_FORMAT_VERSION,
-		created_with: EDITOR_CREATED_WITH,
-		canvas: {
-			edge_style: edgeStyle,
-		},
-		nodes: nodes.map((node) => ({
-			id: node.id,
-			position: {
-				x: finiteNumberOrZero(node.position.x),
-				y: finiteNumberOrZero(node.position.y),
-			},
-		})),
-		comments: comments.map((comment) => ({
-			id: comment.id,
-			text: comment.text,
-			color: comment.color,
-			font_size: finiteNumberInRangeOrDefault(
-				comment.fontSize,
-				DEFAULT_COMMENT_FONT_SIZE,
-				MIN_COMMENT_FONT_SIZE,
-				MAX_COMMENT_FONT_SIZE,
-			),
-			position: {
-				x: finiteNumberOrZero(comment.position.x),
-				y: finiteNumberOrZero(comment.position.y),
-			},
-			size: {
-				width: finitePositiveNumberOrDefault(comment.size.width, 320),
-				height: finitePositiveNumberOrDefault(comment.size.height, 196),
-			},
-		})),
-	};
 }
 
 function readPackageJsonFiles(archive: PackageArchive) {
@@ -971,14 +840,6 @@ function getExtension(fileName: string) {
 
 function getPackageJsonFiles(fileNames: string[]) {
 	return [...getRequiredPackageFiles(), ...(fileNames.includes(EDITOR_PACKAGE_FILE) ? [EDITOR_PACKAGE_FILE] : [])];
-}
-
-function finiteNumberOrZero(value: number) {
-	return Number.isFinite(value) ? value : 0;
-}
-
-function finitePositiveNumberOrDefault(value: number, fallback: number) {
-	return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 function finiteNumberInRangeOrDefault(value: number | undefined, fallback: number, min: number, max: number) {

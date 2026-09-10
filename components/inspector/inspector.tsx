@@ -104,6 +104,7 @@ import { DatetimeTokenPanel } from "./datetime-token-panel";
 import { DurationTokenPanel } from "./duration-token-panel";
 import { EdgeOrderPanel } from "./edge-order-panel";
 import { KeyCaptureInput } from "./key-capture-input";
+import { RouterConfigPanel } from "./router-config-panel";
 import { RuntimeDataPanel } from "./runtime-data-panel";
 
 type InspectorProps = {
@@ -134,6 +135,7 @@ type InspectorProps = {
 	onTriggerSimulation: (triggerNodeId: string, payload: SimulationTriggerPayload) => void;
 	onTriggerSimulationInputChange: (triggerNodeId: string, draft: SimulationTriggerInputDraft) => void;
 	onUpdateNodeConfig: (nodeId: string, key: string, value: JsonValue) => void;
+	onUpdateNodeConfigValues: (nodeId: string, values: Record<string, JsonValue>) => void;
 	onUpdateSimulationOverride: (nodeId: string, outcome: SimulationOverrideOutcome) => void;
 	onDeleteNode: (nodeId: string) => void;
 	onDeleteEdge: (edgeId: string) => void;
@@ -169,6 +171,7 @@ export function Inspector({
 	onTriggerSimulation,
 	onTriggerSimulationInputChange,
 	onUpdateNodeConfig,
+	onUpdateNodeConfigValues,
 	onUpdateSimulationOverride,
 	onDeleteEdge,
 	onDeleteNode,
@@ -235,6 +238,7 @@ export function Inspector({
 							selectedNode={selectedNode}
 							variables={variables}
 							onUpdateNodeConfig={onUpdateNodeConfig}
+							onUpdateNodeConfigValues={onUpdateNodeConfigValues}
 							onDeleteNode={onDeleteNode}
 						/>
 					))}
@@ -271,6 +275,7 @@ function PropertiesPanel({
 	variables,
 	onDeclareVariable,
 	onUpdateNodeConfig,
+	onUpdateNodeConfigValues,
 	onDeleteNode,
 }: {
 	assets: EditorAsset[];
@@ -280,6 +285,7 @@ function PropertiesPanel({
 	variables: EditorVariable[];
 	onDeclareVariable: () => void;
 	onUpdateNodeConfig: (nodeId: string, key: string, value: JsonValue) => void;
+	onUpdateNodeConfigValues: (nodeId: string, values: Record<string, JsonValue>) => void;
 	onDeleteNode: (nodeId: string) => void;
 }) {
 	if (!selectedNode) {
@@ -396,6 +402,13 @@ function PropertiesPanel({
 								config={selectedNode.data.config}
 								variableCompletions={variableCompletions}
 								onChange={(key, value) => onUpdateNodeConfig(selectedNode.id, key, value)}
+							/>
+						)}
+						{selectedNode.data.actionType === "control.router" && (
+							<RouterConfigPanel
+								key={selectedNode.id}
+								config={selectedNode.data.config}
+								onChange={(values) => onUpdateNodeConfigValues(selectedNode.id, values)}
 							/>
 						)}
 						{(selectedNode.data.actionType === "action.http" ||
@@ -2316,6 +2329,7 @@ function hasCustomConfigPanel(actionType: ActionType) {
 		usesKeyReference(actionType) ||
 		usesConditionRows(actionType) ||
 		actionType === "control.switch" ||
+		actionType === "control.router" ||
 		actionType === "action.http" ||
 		actionType === "action.webhook_response" ||
 		actionType === "action.sound.play" ||

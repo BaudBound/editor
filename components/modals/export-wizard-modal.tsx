@@ -1,7 +1,8 @@
 "use client";
 
-import { CheckCircle2, Download, FileJson, FileText, FolderClosed, ShieldAlert, X } from "lucide-react";
+import { CheckCircle2, Download, FileJson, FileText, FolderClosed, ShieldAlert, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { VerificationResultBlock } from "@/components/modals/verification-result-block";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -49,6 +50,7 @@ export function ExportWizardModal({
 }: ExportWizardModalProps) {
 	const [stepIndex, setStepIndex] = useState(0);
 	const [verificationSummary, setVerificationSummary] = useState<VerificationSummary | null>(null);
+	const [verificationChecks, setVerificationChecks] = useState<VerificationCheck[]>(checks);
 	const [exporting, setExporting] = useState(false);
 	const [generatedPackage, setGeneratedPackage] = useState<GeneratedBbsPackage | null>(null);
 	const [repositoryDialogOpen, setRepositoryDialogOpen] = useState(false);
@@ -63,6 +65,7 @@ export function ExportWizardModal({
 
 		setStepIndex(0);
 		setVerificationSummary(null);
+		setVerificationChecks(checks);
 		setExporting(false);
 		setGeneratedPackage(null);
 		setRepositoryDialogOpen(false);
@@ -107,6 +110,8 @@ export function ExportWizardModal({
 		const nextIndex = Math.min(exportSteps.length - 1, stepIndex + 1);
 		if (exportSteps[nextIndex]?.id === "verification") {
 			setVerificationSummary(null);
+			setVerificationChecks(checks);
+			setGeneratedPackage(null);
 			setExportError("");
 		}
 
@@ -120,6 +125,7 @@ export function ExportWizardModal({
 
 		if (exportSteps[index]?.id === "verification") {
 			setVerificationSummary(null);
+			setVerificationChecks(checks);
 			setGeneratedPackage(null);
 			setExportError("");
 		}
@@ -158,7 +164,7 @@ export function ExportWizardModal({
 						)}
 						{currentStep.id === "verification" && (
 							<VerificationStep
-								checks={checks}
+								checks={verificationChecks}
 								active={open && currentStep.id === "verification"}
 								summary={verificationSummary}
 								onComplete={handleVerificationComplete}
@@ -527,14 +533,33 @@ function VerificationStep({
 					Resolve failed checks before continuing to download.
 				</div>
 			)}
-			{isPassingVerification(summary) && (
+			{isPassingVerification(summary) && !exportError && (
 				<div className="rounded border border-baud-green/35 bg-baud-green/10 px-4 py-3 text-sm text-baud-green">
 					Verification passed. The package is being prepared.
 				</div>
 			)}
 			{exportError && (
-				<div className="rounded border border-baud-danger/35 bg-baud-danger/10 px-4 py-3 text-sm text-baud-danger">
-					{exportError}
+				<div className="flex gap-3 rounded border border-baud-border bg-baud-soft/60 p-3">
+					<div className="mt-0.5">
+						<XCircle size={16} className="text-baud-danger" />
+					</div>
+					<div className="min-w-0 flex-1">
+						<div className="flex items-center justify-between gap-3">
+							<h3 className="text-sm font-bold text-baud-text">Package generation</h3>
+							<span className="font-mono text-xs text-baud-danger uppercase">Failed</span>
+						</div>
+						<p className="mt-1 text-sm leading-5 text-baud-muted">Preparing the verified package archive.</p>
+						<VerificationResultBlock
+							check={{
+								id: "package-generation",
+								title: "Package generation",
+								description: "Preparing the verified package archive.",
+								outcome: "failed",
+								message: exportError,
+							}}
+							className="text-baud-danger"
+						/>
+					</div>
 				</div>
 			)}
 		</div>
