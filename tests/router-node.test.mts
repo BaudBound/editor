@@ -11,7 +11,7 @@ import {
 	hasDynamicPorts,
 	validateNodeConfig,
 } from "../data/nodes/registry.ts";
-import { validateRouterConfig } from "../data/nodes/router.ts";
+import { getRouterConfigFromValue, isRouterPortColor, validateRouterConfig } from "../data/nodes/router.ts";
 import { canonicalCapabilities } from "../utils/package-contract.ts";
 
 const appRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -62,6 +62,36 @@ test("router ports derive from config and are marked dynamic", () => {
 	assert.equal(ports.inputs[0].label, "Alpha");
 });
 
+test("router port colors are optional #RRGGBB values that reach the node ports", () => {
+	assert.equal(isRouterPortColor("#E62D3E"), true);
+	assert.equal(isRouterPortColor("#e62d3e"), true);
+	assert.equal(isRouterPortColor("#FFF"), false);
+	assert.equal(isRouterPortColor("red"), false);
+	assert.equal(isRouterPortColor(""), false);
+
+	const config = {
+		inputs: [
+			{ id: "a", label: "A", color: "#e62d3e" },
+			{ id: "b", label: "B", color: "nope" },
+		],
+		outputs: [{ id: "x", label: "X" }],
+		routes: [
+			{ id: "r1", inputId: "a", outputId: "x", order: 0 },
+			{ id: "r2", inputId: "b", outputId: "x", order: 0 },
+		],
+	};
+	const parsed = getRouterConfigFromValue(config);
+	assert.equal(parsed.inputs[0].color, "#E62D3E", "colors are normalised to upper case on read");
+	assert.equal(parsed.inputs[1].color, undefined, "an invalid color is dropped by the lenient read");
+	assert.equal(parsed.outputs[0].color, undefined);
+	assert.deepEqual(validateRouterConfig(config), ['input 2: color must be a hex color like "#RRGGBB".']);
+
+	const ports = getNodePorts("control.router", config);
+	assert.equal(ports.inputs[0].color, "#E62D3E");
+	assert.equal(ports.inputs[1].color, undefined);
+	assert.equal(ports.outputs[0].color, undefined);
+});
+
 test("router validation errors flow through validateNodeConfig", () => {
 	const errors = validateNodeConfig("control.router", {
 		inputs: [{ id: "a", label: "A" }],
@@ -84,6 +114,12 @@ test("generated router contracts are present and strict", () => {
 	assert.deepEqual(schema.$defs.config.required, ["inputs", "outputs", "routes"]);
 	assert.equal(schema.$defs.config.additionalProperties, false);
 	assert.equal(schema.$defs.config.properties.routes.items.properties.order.type, "integer");
+	for (const side of ["inputs", "outputs"]) {
+		const port = schema.$defs.config.properties[side].items;
+		assert.deepEqual(port.required, ["id", "label"], "color stays optional");
+		assert.equal(port.properties.color.type, "string");
+		assert.equal(port.properties.color.pattern, "^#[0-9A-Fa-f]{6}$");
+	}
 
 	const ports = JSON.parse(readFileSync(join(appRoot, "contracts", "runner", "node-ports.json"), "utf8"));
 	assert.deepEqual(ports.nodes["control.router"], {

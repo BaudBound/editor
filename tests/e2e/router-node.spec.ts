@@ -72,6 +72,18 @@ test("Router routes are edited in the dialog and previewed in the inspector", as
 	await expect(route("Input 1", "Alerts", 1)).toBeAttached();
 	await expect(routerNode).toContainText("1 in - 2 out - 2 routes");
 
+	// Choosing a color for the selected port shows on its pill and on the node's handle for that port.
+	await dialog.getByRole("button", { name: "Output 2 color" }).click();
+	await page.getByRole("button", { name: "Use Cyan" }).click();
+	await expect(dialog.getByRole("list", { name: "Router outputs" }).locator('[data-port-color="#22D3EE"]')).toHaveCount(
+		1,
+	);
+	await expect(routerNode.locator('[data-handleid^="out-"]').nth(1)).toHaveCSS("border-color", "rgb(34, 211, 238)");
+	await expect(routerNode.locator('[data-handleid^="out-"]').nth(0)).not.toHaveCSS("border-color", "rgb(34, 211, 238)");
+	await page.keyboard.press("Escape");
+	await expect(page.getByRole("button", { name: "Use Cyan" })).toHaveCount(0);
+	await expect(dialog).toBeVisible();
+
 	// Selecting a line by clicking it and removing it renumbers the rest of the row.
 	await route("Input 1", "Alerts", 1).dispatchEvent("click");
 	await dialog.getByRole("button", { name: "Remove route Input 1 to Alerts" }).click();

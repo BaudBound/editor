@@ -85,6 +85,8 @@ export type ProjectSettings = {
 export type NodePort = {
 	id: string;
 	label: string;
+	/** Optional #RRGGBB for the handle; only router ports set it. */
+	color?: string;
 };
 
 export type RuntimeDataType =

@@ -3,7 +3,9 @@ import {
 	createRouterPortRow,
 	createRouterRouteRow,
 	getRouterRoutesForInput,
+	normalizeRouterPortColor,
 	type RouterConfig,
+	type RouterPortRow,
 	type RouterRouteRow,
 } from "./router";
 
@@ -24,6 +26,23 @@ export function renameRouterPort(
 	return {
 		...cloneConfig(config),
 		[side]: config[side].map((port) => (port.id === portId ? { ...port, label } : port)),
+	};
+}
+
+/** Sets a port's #RRGGBB color, or clears it back to the default styling with null. */
+export function setRouterPortColor(
+	config: RouterConfig,
+	side: RouterPortSide,
+	portId: string,
+	color: string | null,
+): RouterConfig {
+	return {
+		...cloneConfig(config),
+		[side]: config[side].map((port) => {
+			if (port.id !== portId) return port;
+			const { color: _previous, ...rest } = port;
+			return color ? { ...rest, color: normalizeRouterPortColor(color) } : rest;
+		}),
 	};
 }
 
@@ -112,8 +131,8 @@ export function normalizeRouterRouteOrders(config: RouterConfig): RouterConfig {
 
 export function routerConfigToJson(config: RouterConfig): { inputs: JsonValue; outputs: JsonValue; routes: JsonValue } {
 	return {
-		inputs: config.inputs.map((port) => ({ id: port.id, label: port.label })),
-		outputs: config.outputs.map((port) => ({ id: port.id, label: port.label })),
+		inputs: config.inputs.map(portToJson),
+		outputs: config.outputs.map(portToJson),
 		routes: config.routes.map(
 			(route): Record<string, JsonValue> => ({
 				id: route.id,
@@ -123,6 +142,10 @@ export function routerConfigToJson(config: RouterConfig): { inputs: JsonValue; o
 			}),
 		),
 	};
+}
+
+function portToJson(port: RouterPortRow): Record<string, JsonValue> {
+	return port.color ? { id: port.id, label: port.label, color: port.color } : { id: port.id, label: port.label };
 }
 
 function cloneConfig(config: RouterConfig): RouterConfig {

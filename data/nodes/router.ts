@@ -3,6 +3,8 @@ import type { JsonValue, NodePort } from "@/lib/types";
 export type RouterPortRow = {
 	id: string;
 	label: string;
+	/** Optional #RRGGBB shown on the node handle and the router editor lines. */
+	color?: string;
 };
 
 export type RouterRouteRow = {
@@ -21,6 +23,17 @@ export type RouterConfig = {
 export const ROUTER_INPUT_HANDLE_PREFIX = "in-";
 export const ROUTER_OUTPUT_HANDLE_PREFIX = "out-";
 export const MAX_ROUTER_PORTS = 64;
+/** Shared with the generated contract; the runner validates exports against the same pattern. */
+export const ROUTER_PORT_COLOR_PATTERN = "^#[0-9A-Fa-f]{6}$";
+const routerPortColorPattern = new RegExp(ROUTER_PORT_COLOR_PATTERN);
+
+export function isRouterPortColor(value: unknown): value is string {
+	return typeof value === "string" && routerPortColorPattern.test(value);
+}
+
+export function normalizeRouterPortColor(value: string) {
+	return value.toUpperCase();
+}
 
 export function createRouterPortRow(label: string, id: string = crypto.randomUUID()): RouterPortRow {
 	return { id, label };
@@ -38,6 +51,9 @@ export function createRouterRouteRow(
 export function isRouterPortRow(value: JsonValue): value is RouterPortRow {
 	return isRecord(value) && typeof value.id === "string" && typeof value.label === "string";
 }
+
+/** Raw rows keep whatever `color` they carry so validation can report a bad one; reads drop it. */
+type RawRouterPortRow = RouterPortRow & { color?: JsonValue };
 
 export function isRouterRouteRow(value: JsonValue): value is RouterRouteRow {
 	return (
@@ -78,15 +94,22 @@ export function routerPortLabel(port: RouterPortRow, index: number, side: "input
 	return port.label.trim() || `${side} ${index + 1}`;
 }
 
+/** The color a port renders with, or null for the default handle and line styling. */
+export function routerPortColor(port: RouterPortRow | undefined) {
+	return port && isRouterPortColor(port.color) ? port.color : null;
+}
+
 export function createRouterPorts(config: RouterConfig): { inputs: NodePort[]; outputs: NodePort[] } {
 	return {
 		inputs: config.inputs.map((port, index) => ({
 			id: routerInputHandle(port.id),
 			label: routerPortLabel(port, index, "input"),
+			...(port.color ? { color: port.color } : {}),
 		})),
 		outputs: config.outputs.map((port, index) => ({
 			id: routerOutputHandle(port.id),
 			label: routerPortLabel(port, index, "output"),
+			...(port.color ? { color: port.color } : {}),
 		})),
 	};
 }
@@ -162,12 +185,15 @@ export function summarizeRouterConfig(config: Record<string, JsonValue>) {
 }
 
 function validatePorts(rawPorts: JsonValue[], side: "input" | "output", errors: string[]) {
-	const ports = rawPorts.filter(isRouterPortRow);
+	const ports: RawRouterPortRow[] = rawPorts.filter(isRouterPortRow);
 	if (ports.length !== rawPorts.length) errors.push(`contains an invalid ${side} row.`);
 	const invalidIds = ports.some((port) => !port.id.trim());
 	if (invalidIds) errors.push(`contains an invalid ${side} row.`);
 	for (const [index, port] of ports.entries()) {
 		if (!port.label.trim()) errors.push(`${side} ${index + 1}: label is required.`);
+		if (port.color !== undefined && !isRouterPortColor(port.color)) {
+			errors.push(`${side} ${index + 1}: color must be a hex color like "#RRGGBB".`);
+		}
 	}
 	if (duplicateValues(ports.map((port) => port.id)).size > 0) {
 		errors.push(`contains duplicate ${side} identifiers.`);
@@ -176,7 +202,8 @@ function validatePorts(rawPorts: JsonValue[], side: "input" | "output", errors: 
 }
 
 function clonePort(port: RouterPortRow): RouterPortRow {
-	return { id: port.id, label: port.label };
+	const color = isRouterPortColor(port.color) ? normalizeRouterPortColor(port.color) : undefined;
+	return color ? { id: port.id, label: port.label, color } : { id: port.id, label: port.label };
 }
 
 function cloneRoute(route: RouterRouteRow): RouterRouteRow {
