@@ -64,6 +64,9 @@ test("Router routes are edited in the dialog and previewed in the inspector", as
 
 	// Selecting a pill opens its toolbar; renaming updates the canvas handle label and the line names.
 	await outputPill("Output 2").click();
+	// The inspector preview never mirrors the dialog selection.
+	await expect(dialog.getByRole("list", { name: "Router outputs" }).locator(".border-baud-red")).toHaveCount(1);
+	await expect(preview.locator(".border-baud-red")).toHaveCount(0);
 	await dialog.getByRole("textbox", { name: "Output 2 label" }).fill("Alerts");
 	await expect(routerNode.getByText("Alerts", { exact: true })).toBeVisible();
 	await expect(route("Input 1", "Alerts", 1)).toBeAttached();
