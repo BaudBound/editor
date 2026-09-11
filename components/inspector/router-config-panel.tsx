@@ -83,6 +83,10 @@ export function RouterConfigPanel({ config, onChange }: RouterConfigPanelProps) 
 	const errorId = useId();
 	const [selection, setSelection] = useState<Selection>(null);
 	const [expanded, setExpanded] = useState(false);
+	const closeDialog = () => {
+		setExpanded(false);
+		setSelection(null);
+	};
 	const commit = (next: RouterConfig) => onChange(routerConfigToJson(next));
 	const addInput = () => {
 		const next = addRouterPort(router, "inputs");
@@ -105,13 +109,8 @@ export function RouterConfigPanel({ config, onChange }: RouterConfigPanelProps) 
 
 	return (
 		<div className="space-y-3">
-			<RouterCanvas
-				router={router}
-				commit={commit}
-				selection={liveSelection}
-				onSelect={setSelection}
-				metrics={COMPACT_METRICS}
-			/>
+			{/* The preview never reflects the dialog's selection; it only mirrors the routing itself. */}
+			<RouterCanvas router={router} commit={commit} selection={null} onSelect={() => {}} metrics={COMPACT_METRICS} />
 
 			<Button
 				type="button"
@@ -125,7 +124,7 @@ export function RouterConfigPanel({ config, onChange }: RouterConfigPanelProps) 
 				Edit routes
 			</Button>
 
-			<Dialog open={expanded} onOpenChange={setExpanded}>
+			<Dialog open={expanded} onOpenChange={(open) => (open ? setExpanded(true) : closeDialog())}>
 				<DialogContent
 					className="grid max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-5xl"
 					showCloseButton={false}
@@ -137,13 +136,7 @@ export function RouterConfigPanel({ config, onChange }: RouterConfigPanelProps) 
 								Drag from an input's handle to an output to connect them. Click a pill or a line to edit it.
 							</DialogDescription>
 						</div>
-						<Button
-							type="button"
-							onClick={() => setExpanded(false)}
-							aria-label="Close router routes"
-							size="icon"
-							variant="icon"
-						>
+						<Button type="button" onClick={closeDialog} aria-label="Close router routes" size="icon" variant="icon">
 							<X size={15} />
 						</Button>
 					</DialogHeader>
