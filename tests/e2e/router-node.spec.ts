@@ -26,8 +26,20 @@ test("Router properties panel connects inputs to outputs by dragging", async ({ 
 	await expect(page.getByLabel("Output 2 is not reached")).toBeVisible();
 	await expect(page.getByRole("toolbar", { name: "Output 2" })).toBeVisible();
 
-	// Drag from Input 1's handle onto Output 2 to connect them; the new line is selected.
-	await dragToConnect(page, page.getByRole("button", { name: "Drag from Input 1 to connect" }), outputPill("Output 2"));
+	// Expand into the dialog and connect there: the dialog shows the same routes
+	// and the same toolbar, and the connection is visible in the inspector afterwards.
+	await page.getByRole("button", { name: "Expand router routes" }).click();
+	const dialog = page.getByRole("dialog", { name: "Router routes" });
+	await expect(dialog).toBeVisible();
+	await expect(dialog.getByRole("button", { name: "Route Input 1 to Output 1, order 1", exact: true })).toBeAttached();
+	await dragToConnect(
+		page,
+		dialog.getByRole("button", { name: "Drag from Input 1 to connect" }),
+		dialog.getByRole("list", { name: "Router outputs" }).getByRole("button", { name: "Output 2", exact: true }),
+	);
+	await expect(dialog.getByRole("toolbar", { name: "Route Input 1 to Output 2" })).toContainText("Order 2 of 2");
+	await page.getByRole("button", { name: "Close router routes" }).click();
+	await expect(dialog).toHaveCount(0);
 	await expect(route("Input 1", "Output 2", 2)).toBeAttached();
 	await expect(routerNode).toContainText("1 in - 2 out - 2 routes");
 	await expect(page.getByLabel("Output 2 is not reached")).toHaveCount(0);

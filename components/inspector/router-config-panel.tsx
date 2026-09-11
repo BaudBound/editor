@@ -1,7 +1,8 @@
-import { AlertTriangle, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Plus, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Maximize2, Plus, X } from "lucide-react";
 import { type PointerEvent as ReactPointerEvent, useEffect, useId, useRef, useState } from "react";
 import { FieldError } from "@/components/common/field-error";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
 	getRouterConfigFromValue,
@@ -29,11 +30,33 @@ type RouterConfigPanelProps = {
 	onChange: (values: Record<string, JsonValue>) => void;
 };
 
-const PILL_HEIGHT = 32;
-const ROW_STRIDE = 44;
-const CANVAS_PADDING = 12;
-const PILL_WIDTH_RATIO = 0.4;
-const MIN_PILL_WIDTH = 108;
+/** Geometry of one canvas rendering; the inspector and the expanded dialog use different presets. */
+type CanvasMetrics = {
+	pillHeight: number;
+	rowStride: number;
+	padding: number;
+	pillWidthRatio: number;
+	minPillWidth: number;
+	/** Order badges need room between the columns; the compact inspector view leaves order to the toolbar. */
+	showOrderBadges: boolean;
+};
+
+const COMPACT_METRICS: CanvasMetrics = {
+	pillHeight: 32,
+	rowStride: 56,
+	padding: 12,
+	pillWidthRatio: 0.36,
+	minPillWidth: 100,
+	showOrderBadges: false,
+};
+const EXPANDED_METRICS: CanvasMetrics = {
+	pillHeight: 40,
+	rowStride: 72,
+	padding: 20,
+	pillWidthRatio: 0.3,
+	minPillWidth: 200,
+	showOrderBadges: true,
+};
 
 type PortSide = "inputs" | "outputs";
 
@@ -51,7 +74,18 @@ export function RouterConfigPanel({ config, onChange }: RouterConfigPanelProps) 
 	const errors = [...new Set(validateRouterConfig(config))];
 	const errorId = useId();
 	const [selection, setSelection] = useState<Selection>(null);
+	const [expanded, setExpanded] = useState(false);
 	const commit = (next: RouterConfig) => onChange(routerConfigToJson(next));
+	const addInput = () => {
+		const next = addRouterPort(router, "inputs");
+		commit(next);
+		setSelection({ kind: "port", side: "inputs", id: next.inputs[next.inputs.length - 1].id });
+	};
+	const addOutput = () => {
+		const next = addRouterPort(router, "outputs");
+		commit(next);
+		setSelection({ kind: "port", side: "outputs", id: next.outputs[next.outputs.length - 1].id });
+	};
 
 	const selectionIsLive =
 		selection?.kind === "port"
@@ -64,35 +98,86 @@ export function RouterConfigPanel({ config, onChange }: RouterConfigPanelProps) 
 	return (
 		<div className="space-y-3">
 			<div className="flex flex-wrap gap-2">
-				<Button
-					type="button"
-					size="sm"
-					onClick={() => {
-						const next = addRouterPort(router, "inputs");
-						commit(next);
-						setSelection({ kind: "port", side: "inputs", id: next.inputs[next.inputs.length - 1].id });
-					}}
-				>
+				<Button type="button" size="sm" onClick={addInput}>
 					<Plus size={13} />
 					Add input
 				</Button>
-				<Button
-					type="button"
-					size="sm"
-					onClick={() => {
-						const next = addRouterPort(router, "outputs");
-						commit(next);
-						setSelection({ kind: "port", side: "outputs", id: next.outputs[next.outputs.length - 1].id });
-					}}
-				>
+				<Button type="button" size="sm" onClick={addOutput}>
 					<Plus size={13} />
 					Add output
 				</Button>
+				<Button
+					type="button"
+					size="sm"
+					variant="subtle"
+					className="ml-auto"
+					aria-label="Expand router routes"
+					title="Open the routes in a larger editor"
+					onClick={() => setExpanded(true)}
+				>
+					<Maximize2 size={13} />
+					Expand
+				</Button>
 			</div>
 
-			<RouterCanvas router={router} commit={commit} selection={liveSelection} onSelect={setSelection} />
+			<RouterCanvas
+				router={router}
+				commit={commit}
+				selection={liveSelection}
+				onSelect={setSelection}
+				metrics={COMPACT_METRICS}
+			/>
 
 			<SelectionToolbar router={router} selection={liveSelection} commit={commit} onSelect={setSelection} />
+
+			<Dialog open={expanded} onOpenChange={setExpanded}>
+				<DialogContent
+					className="grid max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-5xl"
+					showCloseButton={false}
+				>
+					<DialogHeader className="flex flex-row items-start justify-between gap-4 border-b border-baud-border p-4">
+						<div>
+							<DialogTitle>Router routes</DialogTitle>
+							<DialogDescription>
+								Drag from an input's handle to an output to connect them. Click a pill or a line to edit it.
+							</DialogDescription>
+						</div>
+						<Button
+							type="button"
+							onClick={() => setExpanded(false)}
+							aria-label="Close router routes"
+							size="icon"
+							variant="icon"
+						>
+							<X size={15} />
+						</Button>
+					</DialogHeader>
+					<div className="min-h-0 overflow-y-auto p-4">
+						{expanded && (
+							<RouterCanvas
+								router={router}
+								commit={commit}
+								selection={liveSelection}
+								onSelect={setSelection}
+								metrics={EXPANDED_METRICS}
+							/>
+						)}
+					</div>
+					<div className="flex flex-wrap items-center gap-2 border-t border-baud-border p-4">
+						<Button type="button" size="sm" onClick={addInput}>
+							<Plus size={13} />
+							Add input
+						</Button>
+						<Button type="button" size="sm" onClick={addOutput}>
+							<Plus size={13} />
+							Add output
+						</Button>
+						<div className="min-w-0 flex-1">
+							<SelectionToolbar router={router} selection={liveSelection} commit={commit} onSelect={setSelection} />
+						</div>
+					</div>
+				</DialogContent>
+			</Dialog>
 
 			{errors.length > 0 && (
 				<ul className="space-y-1" aria-label="Router validation errors">
@@ -112,12 +197,15 @@ function RouterCanvas({
 	commit,
 	selection,
 	onSelect,
+	metrics,
 }: {
 	router: RouterConfig;
 	commit: (next: RouterConfig) => void;
 	selection: Selection;
 	onSelect: (selection: Selection) => void;
+	metrics: CanvasMetrics;
 }) {
+	const { pillHeight, rowStride, padding, pillWidthRatio, minPillWidth, showOrderBadges } = metrics;
 	const containerRef = useRef<HTMLElement>(null);
 	const [width, setWidth] = useState(0);
 	const [drag, setDrag] = useState<DragState | null>(null);
@@ -135,11 +223,11 @@ function RouterCanvas({
 		return () => observer.disconnect();
 	}, []);
 
-	const pillWidth = Math.max(MIN_PILL_WIDTH, Math.round(width * PILL_WIDTH_RATIO));
+	const pillWidth = Math.max(minPillWidth, Math.round(width * pillWidthRatio));
 	const outputX = Math.max(pillWidth, width - pillWidth);
 	const rows = Math.max(router.inputs.length, router.outputs.length, 1);
-	const height = CANVAS_PADDING * 2 + (rows - 1) * ROW_STRIDE + PILL_HEIGHT;
-	const centerY = (index: number) => CANVAS_PADDING + index * ROW_STRIDE + PILL_HEIGHT / 2;
+	const height = padding * 2 + (rows - 1) * rowStride + pillHeight;
+	const centerY = (index: number) => padding + index * rowStride + pillHeight / 2;
 
 	const inputIndex = new Map(router.inputs.map((input, index) => [input.id, index]));
 	const outputIndex = new Map(router.outputs.map((output, index) => [output.id, index]));
@@ -246,7 +334,14 @@ function RouterCanvas({
 					if (from === undefined || to === undefined) return null;
 					const name = routeName(route);
 					const order = route.order + 1;
-					const badge = pointOnLine(pillWidth, centerY(from), outputX, centerY(to), 0.55);
+					const siblings = getRouterRoutesForInput(router, route.inputId).length;
+					const badge = pointOnLine(
+						pillWidth,
+						centerY(from),
+						outputX,
+						centerY(to),
+						Math.min(0.8, 0.35 + route.order * 0.15),
+					);
 					const selected = selectedRoute?.id === route.id;
 					return (
 						<g key={route.id}>
@@ -271,23 +366,25 @@ function RouterCanvas({
 								onMouseEnter={() => setHoveredRouteId(route.id)}
 								onMouseLeave={() => setHoveredRouteId(null)}
 							/>
-							<g transform={`translate(${badge.x}, ${badge.y})`} pointerEvents="none">
-								<circle
-									r={8}
-									fill="var(--color-baud-panel)"
-									stroke="var(--color-baud-amber)"
-									strokeWidth={selected ? 2 : 1.5}
-								/>
-								<text
-									textAnchor="middle"
-									dominantBaseline="central"
-									fontSize={10}
-									fontFamily="ui-monospace, monospace"
-									fill="var(--color-baud-text)"
-								>
-									{order}
-								</text>
-							</g>
+							{showOrderBadges && siblings > 1 && (
+								<g transform={`translate(${badge.x}, ${badge.y})`} pointerEvents="none">
+									<circle
+										r={8}
+										fill="var(--color-baud-panel)"
+										stroke="var(--color-baud-amber)"
+										strokeWidth={selected ? 2 : 1.5}
+									/>
+									<text
+										textAnchor="middle"
+										dominantBaseline="central"
+										fontSize={10}
+										fontFamily="ui-monospace, monospace"
+										fill="var(--color-baud-text)"
+									>
+										{order}
+									</text>
+								</g>
+							)}
 						</g>
 					);
 				})}
@@ -298,7 +395,8 @@ function RouterCanvas({
 					<PortPill
 						key={input.id}
 						label={inputLabels[index]}
-						top={CANVAS_PADDING + index * ROW_STRIDE}
+						top={padding + index * rowStride}
+						height={pillHeight}
 						warning={!routedInputs.has(input.id) ? `${inputLabels[index]} has no routes` : null}
 						selected={selection?.kind === "port" && selection.side === "inputs" && selection.id === input.id}
 						highlighted={drag?.inputId === input.id || emphasizedRoute?.inputId === input.id}
@@ -332,7 +430,8 @@ function RouterCanvas({
 					<PortPill
 						key={output.id}
 						label={outputLabels[index]}
-						top={CANVAS_PADDING + index * ROW_STRIDE}
+						top={padding + index * rowStride}
+						height={pillHeight}
 						warning={(incoming.get(output.id) ?? 0) === 0 ? `${outputLabels[index]} is not reached` : null}
 						description={`${incoming.get(output.id) ?? 0} incoming route${(incoming.get(output.id) ?? 0) === 1 ? "" : "s"}`}
 						dataOutputId={output.id}
@@ -355,6 +454,7 @@ function RouterCanvas({
 function PortPill({
 	label,
 	top,
+	height,
 	warning,
 	description,
 	dataOutputId,
@@ -365,6 +465,7 @@ function PortPill({
 }: {
 	label: string;
 	top: number;
+	height: number;
 	warning: string | null;
 	description?: string;
 	dataOutputId?: string;
@@ -374,7 +475,7 @@ function PortPill({
 	handle?: React.ReactNode;
 }) {
 	return (
-		<li className="absolute left-0 w-full" style={{ top, height: PILL_HEIGHT }} data-output-id={dataOutputId}>
+		<li className="absolute left-0 w-full" style={{ top, height }} data-output-id={dataOutputId}>
 			<div
 				className={`relative flex h-full items-center rounded border bg-baud-panel transition-[border-color,box-shadow] ${
 					selected
