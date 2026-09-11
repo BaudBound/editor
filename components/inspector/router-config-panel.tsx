@@ -37,25 +37,33 @@ type CanvasMetrics = {
 	padding: number;
 	pillWidthRatio: number;
 	minPillWidth: number;
+	/** Horizontal space between the frame and the pills. */
+	inset: number;
 	/** Order badges need room between the columns; the compact inspector view leaves order to the toolbar. */
 	showOrderBadges: boolean;
+	/** The inspector shows a read-only preview; editing happens in the expanded dialog. */
+	interactive: boolean;
 };
 
 const COMPACT_METRICS: CanvasMetrics = {
 	pillHeight: 32,
 	rowStride: 56,
 	padding: 12,
-	pillWidthRatio: 0.36,
-	minPillWidth: 100,
+	pillWidthRatio: 0.32,
+	minPillWidth: 88,
+	inset: 12,
 	showOrderBadges: false,
+	interactive: false,
 };
 const EXPANDED_METRICS: CanvasMetrics = {
 	pillHeight: 40,
 	rowStride: 72,
 	padding: 20,
-	pillWidthRatio: 0.3,
-	minPillWidth: 200,
+	pillWidthRatio: 0.24,
+	minPillWidth: 160,
+	inset: 24,
 	showOrderBadges: true,
+	interactive: true,
 };
 
 type PortSide = "inputs" | "outputs";
@@ -97,29 +105,6 @@ export function RouterConfigPanel({ config, onChange }: RouterConfigPanelProps) 
 
 	return (
 		<div className="space-y-3">
-			<div className="flex flex-wrap gap-2">
-				<Button type="button" size="sm" onClick={addInput}>
-					<Plus size={13} />
-					Add input
-				</Button>
-				<Button type="button" size="sm" onClick={addOutput}>
-					<Plus size={13} />
-					Add output
-				</Button>
-				<Button
-					type="button"
-					size="sm"
-					variant="subtle"
-					className="ml-auto"
-					aria-label="Expand router routes"
-					title="Open the routes in a larger editor"
-					onClick={() => setExpanded(true)}
-				>
-					<Maximize2 size={13} />
-					Expand
-				</Button>
-			</div>
-
 			<RouterCanvas
 				router={router}
 				commit={commit}
@@ -128,7 +113,17 @@ export function RouterConfigPanel({ config, onChange }: RouterConfigPanelProps) 
 				metrics={COMPACT_METRICS}
 			/>
 
-			<SelectionToolbar router={router} selection={liveSelection} commit={commit} onSelect={setSelection} />
+			<Button
+				type="button"
+				variant="primary"
+				className="w-full"
+				aria-label="Edit router routes"
+				title="Open the routes editor"
+				onClick={() => setExpanded(true)}
+			>
+				<Maximize2 size={14} />
+				Edit routes
+			</Button>
 
 			<Dialog open={expanded} onOpenChange={setExpanded}>
 				<DialogContent
@@ -175,6 +170,15 @@ export function RouterConfigPanel({ config, onChange }: RouterConfigPanelProps) 
 						<div className="min-w-0 flex-1">
 							<SelectionToolbar router={router} selection={liveSelection} commit={commit} onSelect={setSelection} />
 						</div>
+						{errors.length > 0 && (
+							<ul className="w-full space-y-1" aria-label="Router validation errors">
+								{errors.map((error, index) => (
+									<li key={error}>
+										<FieldError id={`${errorId}-dialog-${index}`} message={`Router ${error}`} />
+									</li>
+								))}
+							</ul>
+						)}
 					</div>
 				</DialogContent>
 			</Dialog>
@@ -205,7 +209,7 @@ function RouterCanvas({
 	onSelect: (selection: Selection) => void;
 	metrics: CanvasMetrics;
 }) {
-	const { pillHeight, rowStride, padding, pillWidthRatio, minPillWidth, showOrderBadges } = metrics;
+	const { pillHeight, rowStride, padding, pillWidthRatio, minPillWidth, inset, showOrderBadges, interactive } = metrics;
 	const containerRef = useRef<HTMLElement>(null);
 	const [width, setWidth] = useState(0);
 	const [drag, setDrag] = useState<DragState | null>(null);
@@ -224,7 +228,8 @@ function RouterCanvas({
 	}, []);
 
 	const pillWidth = Math.max(minPillWidth, Math.round(width * pillWidthRatio));
-	const outputX = Math.max(pillWidth, width - pillWidth);
+	const inputRight = inset + pillWidth;
+	const outputX = Math.max(inputRight + 32, width - inset - pillWidth);
 	const rows = Math.max(router.inputs.length, router.outputs.length, 1);
 	const height = padding * 2 + (rows - 1) * rowStride + pillHeight;
 	const centerY = (index: number) => padding + index * rowStride + pillHeight / 2;
@@ -294,7 +299,7 @@ function RouterCanvas({
 			ref={containerRef}
 			className="relative select-none rounded border border-baud-border bg-baud-soft/40"
 			style={{ height }}
-			aria-label="Router routes"
+			aria-label={interactive ? "Router routes" : "Router routes preview"}
 		>
 			<svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
 				{router.routes.map((route) => {
@@ -305,7 +310,7 @@ function RouterCanvas({
 					return (
 						<path
 							key={route.id}
-							d={linePath(pillWidth, centerY(from), outputX, centerY(to))}
+							d={linePath(inputRight, centerY(from), outputX, centerY(to))}
 							fill="none"
 							stroke={
 								active ? "var(--color-baud-amber)" : "color-mix(in oklch, var(--color-baud-amber) 70%, transparent)"
@@ -316,7 +321,7 @@ function RouterCanvas({
 				})}
 				{drag && inputIndex.has(drag.inputId) && (
 					<path
-						d={linePath(pillWidth, centerY(inputIndex.get(drag.inputId) ?? 0), drag.pointerX, drag.pointerY)}
+						d={linePath(inputRight, centerY(inputIndex.get(drag.inputId) ?? 0), drag.pointerX, drag.pointerY)}
 						fill="none"
 						stroke={drag.targetOutputId ? "var(--color-baud-green)" : "var(--color-baud-muted)"}
 						strokeDasharray="6 4"
@@ -326,71 +331,76 @@ function RouterCanvas({
 			</svg>
 
 			{/* Clickable line targets and order badges sit above the drawn lines. */}
-			<svg className="absolute inset-0 h-full w-full" aria-label="Routes">
-				<title>Routes</title>
-				{router.routes.map((route) => {
-					const from = inputIndex.get(route.inputId);
-					const to = outputIndex.get(route.outputId);
-					if (from === undefined || to === undefined) return null;
-					const name = routeName(route);
-					const order = route.order + 1;
-					const siblings = getRouterRoutesForInput(router, route.inputId).length;
-					const badge = pointOnLine(
-						pillWidth,
-						centerY(from),
-						outputX,
-						centerY(to),
-						Math.min(0.8, 0.35 + route.order * 0.15),
-					);
-					const selected = selectedRoute?.id === route.id;
-					return (
-						<g key={route.id}>
-							{/* biome-ignore lint/a11y/useSemanticElements: the hit target must follow the drawn curve, which only an SVG path can do; it carries a name, focus, and keyboard activation itself. */}
-							<path
-								d={linePath(pillWidth, centerY(from), outputX, centerY(to))}
-								fill="none"
-								stroke="transparent"
-								strokeWidth={14}
-								className="cursor-pointer"
-								role="button"
-								tabIndex={0}
-								aria-label={`Route ${name}, order ${order}`}
-								aria-pressed={selected}
-								onClick={() => onSelect(selected ? null : { kind: "route", id: route.id })}
-								onKeyDown={(event) => {
-									if (event.key === "Enter" || event.key === " ") {
-										event.preventDefault();
-										onSelect(selected ? null : { kind: "route", id: route.id });
-									}
-								}}
-								onMouseEnter={() => setHoveredRouteId(route.id)}
-								onMouseLeave={() => setHoveredRouteId(null)}
-							/>
-							{showOrderBadges && siblings > 1 && (
-								<g transform={`translate(${badge.x}, ${badge.y})`} pointerEvents="none">
-									<circle
-										r={8}
-										fill="var(--color-baud-panel)"
-										stroke="var(--color-baud-amber)"
-										strokeWidth={selected ? 2 : 1.5}
-									/>
-									<text
-										textAnchor="middle"
-										dominantBaseline="central"
-										fontSize={10}
-										fontFamily="ui-monospace, monospace"
-										fill="var(--color-baud-text)"
-									>
-										{order}
-									</text>
-								</g>
-							)}
-						</g>
-					);
-				})}
-			</svg>
+			{interactive && (
+				<svg className="absolute inset-0 h-full w-full" aria-label="Routes">
+					<title>Routes</title>
+					{router.routes.map((route) => {
+						const from = inputIndex.get(route.inputId);
+						const to = outputIndex.get(route.outputId);
+						if (from === undefined || to === undefined) return null;
+						const name = routeName(route);
+						const order = route.order + 1;
+						const siblings = getRouterRoutesForInput(router, route.inputId).length;
+						const badge = pointOnLine(
+							inputRight,
+							centerY(from),
+							outputX,
+							centerY(to),
+							Math.min(0.8, 0.35 + route.order * 0.15),
+						);
+						const selected = selectedRoute?.id === route.id;
+						return (
+							<g key={route.id}>
+								{/* biome-ignore lint/a11y/useSemanticElements: the hit target must follow the drawn curve, which only an SVG path can do; it carries a name, focus, and keyboard activation itself. */}
+								<path
+									d={linePath(inputRight, centerY(from), outputX, centerY(to))}
+									fill="none"
+									stroke="transparent"
+									strokeWidth={14}
+									className="cursor-pointer"
+									style={{ outline: "none" }}
+									role="button"
+									tabIndex={0}
+									aria-label={`Route ${name}, order ${order}`}
+									aria-pressed={selected}
+									onClick={() => onSelect(selected ? null : { kind: "route", id: route.id })}
+									onKeyDown={(event) => {
+										if (event.key === "Enter" || event.key === " ") {
+											event.preventDefault();
+											onSelect(selected ? null : { kind: "route", id: route.id });
+										}
+									}}
+									onMouseEnter={() => setHoveredRouteId(route.id)}
+									onMouseLeave={() => setHoveredRouteId(null)}
+									onFocus={() => setHoveredRouteId(route.id)}
+									onBlur={() => setHoveredRouteId(null)}
+								/>
+								{showOrderBadges && siblings > 1 && (
+									<g transform={`translate(${badge.x}, ${badge.y})`} pointerEvents="none">
+										<circle
+											r={8}
+											fill="var(--color-baud-panel)"
+											stroke="var(--color-baud-amber)"
+											strokeWidth={selected ? 2 : 1.5}
+										/>
+										<text
+											textAnchor="middle"
+											dominantBaseline="central"
+											fontSize={10}
+											fontFamily="ui-monospace, monospace"
+											fill="var(--color-baud-text)"
+										>
+											{order}
+										</text>
+									</g>
+								)}
+							</g>
+						);
+					})}
+				</svg>
+			)}
 
-			<ul className="absolute top-0 left-0" style={{ width: pillWidth }} aria-label="Router inputs">
+			<ul className="absolute top-0" style={{ left: inset, width: pillWidth }} aria-label="Router inputs">
 				{router.inputs.map((input, index) => (
 					<PortPill
 						key={input.id}
@@ -398,6 +408,7 @@ function RouterCanvas({
 						top={padding + index * rowStride}
 						height={pillHeight}
 						warning={!routedInputs.has(input.id) ? `${inputLabels[index]} has no routes` : null}
+						interactive={interactive}
 						selected={selection?.kind === "port" && selection.side === "inputs" && selection.id === input.id}
 						highlighted={drag?.inputId === input.id || emphasizedRoute?.inputId === input.id}
 						onSelect={() =>
@@ -408,18 +419,20 @@ function RouterCanvas({
 							)
 						}
 						handle={
-							<button
-								type="button"
-								className={`absolute top-1/2 -right-1.5 size-3 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-baud-amber bg-baud-panel transition-transform hover:scale-125 ${
-									drag?.inputId === input.id ? "scale-125 bg-baud-amber" : ""
-								}`}
-								aria-label={`Drag from ${inputLabels[index]} to connect`}
-								title={`Drag to an output to connect ${inputLabels[index]}`}
-								onPointerDown={(event) => startDrag(input.id, event)}
-								onPointerMove={moveDrag}
-								onPointerUp={endDrag}
-								onPointerCancel={() => setDrag(null)}
-							/>
+							interactive && (
+								<button
+									type="button"
+									className={`absolute top-1/2 -right-1.5 size-3 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-baud-amber bg-baud-panel transition-transform hover:scale-125 ${
+										drag?.inputId === input.id ? "scale-125 bg-baud-amber" : ""
+									}`}
+									aria-label={`Drag from ${inputLabels[index]} to connect`}
+									title={`Drag to an output to connect ${inputLabels[index]}`}
+									onPointerDown={(event) => startDrag(input.id, event)}
+									onPointerMove={moveDrag}
+									onPointerUp={endDrag}
+									onPointerCancel={() => setDrag(null)}
+								/>
+							)
 						}
 					/>
 				))}
@@ -435,6 +448,7 @@ function RouterCanvas({
 						warning={(incoming.get(output.id) ?? 0) === 0 ? `${outputLabels[index]} is not reached` : null}
 						description={`${incoming.get(output.id) ?? 0} incoming route${(incoming.get(output.id) ?? 0) === 1 ? "" : "s"}`}
 						dataOutputId={output.id}
+						interactive={interactive}
 						selected={selection?.kind === "port" && selection.side === "outputs" && selection.id === output.id}
 						highlighted={drag?.targetOutputId === output.id || emphasizedRoute?.outputId === output.id}
 						onSelect={() =>
@@ -458,6 +472,7 @@ function PortPill({
 	warning,
 	description,
 	dataOutputId,
+	interactive,
 	selected,
 	highlighted,
 	onSelect,
@@ -469,6 +484,7 @@ function PortPill({
 	warning: string | null;
 	description?: string;
 	dataOutputId?: string;
+	interactive: boolean;
 	selected: boolean;
 	highlighted: boolean;
 	onSelect: () => void;
@@ -487,17 +503,27 @@ function PortPill({
 								: "border-baud-border"
 				}`}
 			>
-				<button
-					type="button"
-					className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left font-mono text-sm text-baud-text"
-					aria-pressed={selected}
-					aria-label={label}
-					title={warning ?? (description ? `${label}: ${description}` : label)}
-					onClick={onSelect}
-				>
-					<span className="min-w-0 flex-1 truncate">{label}</span>
-					{warning && <AlertTriangle size={12} className="shrink-0 text-baud-danger" aria-label={warning} />}
-				</button>
+				{interactive ? (
+					<button
+						type="button"
+						className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left font-mono text-sm text-baud-text"
+						aria-pressed={selected}
+						aria-label={label}
+						title={warning ?? (description ? `${label}: ${description}` : label)}
+						onClick={onSelect}
+					>
+						<span className="min-w-0 flex-1 truncate">{label}</span>
+						{warning && <AlertTriangle size={12} className="shrink-0 text-baud-danger" aria-label={warning} />}
+					</button>
+				) : (
+					<div
+						className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left font-mono text-sm text-baud-text"
+						title={warning ?? (description ? `${label}: ${description}` : label)}
+					>
+						<span className="min-w-0 flex-1 truncate">{label}</span>
+						{warning && <AlertTriangle size={12} className="shrink-0 text-baud-danger" aria-label={warning} />}
+					</div>
+				)}
 				{handle}
 			</div>
 		</li>
