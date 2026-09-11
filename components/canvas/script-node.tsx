@@ -81,8 +81,8 @@ export function ScriptNode({ data, id, selected }: NodeProps<ScriptFlowNode>) {
 							type="target"
 							id={input.id}
 							position={Position.Left}
-							style={{ top }}
-							className="size-3! border-baud-blue! bg-baud-panel!"
+							style={input.color ? { top, borderColor: input.color } : { top }}
+							className={input.color ? "size-3! bg-baud-panel!" : "size-3! border-baud-blue! bg-baud-panel!"}
 						/>
 					</div>
 				);
@@ -102,8 +102,8 @@ export function ScriptNode({ data, id, selected }: NodeProps<ScriptFlowNode>) {
 							type="source"
 							id={output.id}
 							position={Position.Right}
-							style={{ top }}
-							className={getOutputHandleClassName(output.id)}
+							style={output.color ? { top, borderColor: output.color } : { top }}
+							className={output.color ? "!size-3 !bg-baud-panel" : getOutputHandleClassName(output.id)}
 						/>
 					</div>
 				);

@@ -15,7 +15,8 @@ import {
 import { colorValueToHex } from "@/data/nodes/color-match";
 
 const FALLBACK_COLOR = "#000000";
-const dynamicColorBackground =
+/** Checkerboard shown on a swatch that has no fixed color yet. */
+export const dynamicColorBackground =
 	"repeating-conic-gradient(rgb(114 125 149 / 45%) 0 25%, rgb(23 27 39) 0 50%) 50% / 8px 8px";
 
 export function ColorConfigInput({
@@ -119,7 +120,7 @@ export function ColorConfigInput({
 	);
 }
 
-function rgbArrayToHex(rgba: [number, number, number, number]) {
+export function rgbArrayToHex(rgba: [number, number, number, number]) {
 	return `#${rgba
 		.slice(0, 3)
 		.map((channel) => Math.round(channel).toString(16).padStart(2, "0"))

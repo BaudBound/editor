@@ -2129,7 +2129,10 @@ function isScriptFlowNode(node: EditorFlowNode): node is ScriptFlowNode {
 function samePortIds(left: NodePort[], right: NodePort[]) {
 	return (
 		left.length === right.length &&
-		left.every((port, index) => port.id === right[index].id && port.label === right[index].label)
+		left.every(
+			(port, index) =>
+				port.id === right[index].id && port.label === right[index].label && port.color === right[index].color,
+		)
 	);
 }
 

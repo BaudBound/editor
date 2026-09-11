@@ -24,6 +24,8 @@ const checkMode = process.argv.includes("--check");
 // stale during the type rework and made the generated node schema reject every
 // value type the editor could actually produce.
 const userValueTypes = readVariableTypes();
+// Read from the editor's own constant so the contract and the panel validate the same shape.
+const routerPortColorPattern = readRouterPortColorPattern();
 const listItemTypes = userValueTypes.filter((type) => type !== "list");
 
 function readVariableTypes() {
@@ -387,6 +389,13 @@ function createVariableOperationConfigSchema(definition) {
 	};
 }
 
+function readRouterPortColorPattern() {
+	const source = readFileSync(join(appRoot, "data", "nodes", "router.ts"), "utf8");
+	const match = source.match(/export const ROUTER_PORT_COLOR_PATTERN = "([^"]+)";/);
+	assert.ok(match, "ROUTER_PORT_COLOR_PATTERN must be exported as a string literal");
+	return match[1];
+}
+
 function createRouterConfigSchema() {
 	const port = {
 		type: "object",
@@ -395,6 +404,8 @@ function createRouterConfigSchema() {
 		properties: {
 			id: { type: "string", minLength: 1 },
 			label: { type: "string", minLength: 1 },
+			// Editor-only: colors the node handle and the router editor lines. The runner ignores it.
+			color: { type: "string", pattern: routerPortColorPattern },
 		},
 	};
 	return {

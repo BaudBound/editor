@@ -23,6 +23,7 @@ import type {
 	EditorAsset,
 	ExecutableActionType,
 	JsonValue,
+	NodePort,
 	PaletteGroup,
 	PaletteItem,
 	ScriptNodeData,
@@ -506,14 +507,14 @@ export function hasDynamicPorts(actionType: ActionType) {
 	return definition.portPolicy?.kind === "switch-cases" || definition.portPolicy?.kind === "router-ports";
 }
 
-function formatNodePorts(ports: { inputs: { id: string; label: string }[]; outputs: { id: string; label: string }[] }) {
+function formatNodePorts(ports: { inputs: NodePort[]; outputs: NodePort[] }) {
 	return {
 		inputs: ports.inputs.map(formatNodePort),
 		outputs: ports.outputs.map(formatNodePort),
 	};
 }
 
-function formatNodePort(port: { id: string; label: string }) {
+function formatNodePort(port: NodePort): NodePort {
 	return { ...port, label: formatPortLabel(port.label || port.id) };
 }
 

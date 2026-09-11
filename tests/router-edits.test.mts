@@ -11,6 +11,7 @@ import {
 	removeRouterRoute,
 	renameRouterPort,
 	routerConfigToJson,
+	setRouterPortColor,
 	toggleRouterRoute,
 } from "../data/nodes/router-edits.ts";
 
@@ -163,8 +164,31 @@ test("normalizeRouterRouteOrders makes orders consecutive per input while keepin
 	assert.equal(after.routes.find((route) => route.id === "r3")?.order, 0);
 });
 
-test("routerConfigToJson exposes the three config keys", () => {
+test("routerConfigToJson exposes the three config keys and only writes colors that are set", () => {
 	const json = routerConfigToJson(config());
 	assert.deepEqual(Object.keys(json).sort(), ["inputs", "outputs", "routes"]);
 	assert.deepEqual(json.routes, config().routes);
+	assert.deepEqual(json.inputs, [
+		{ id: "a", label: "Alpha" },
+		{ id: "b", label: "Beta" },
+	]);
+	const colored = routerConfigToJson(setRouterPortColor(config(), "outputs", "y", "#22D3EE"));
+	assert.deepEqual(colored.outputs, [
+		{ id: "x", label: "X" },
+		{ id: "y", label: "Y", color: "#22D3EE" },
+	]);
+});
+
+test("setRouterPortColor sets, replaces, and clears a port color without touching anything else", () => {
+	const set = setRouterPortColor(config(), "inputs", "a", "#e62d3e");
+	assert.deepEqual(set.inputs, [
+		{ id: "a", label: "Alpha", color: "#E62D3E" },
+		{ id: "b", label: "Beta" },
+	]);
+	assert.deepEqual(set.routes, config().routes);
+	const replaced = setRouterPortColor(set, "inputs", "a", "#2ED98F");
+	assert.equal(replaced.inputs[0].color, "#2ED98F");
+	const cleared = setRouterPortColor(replaced, "inputs", "a", null);
+	assert.deepEqual(cleared.inputs[0], { id: "a", label: "Alpha" });
+	assert.deepEqual(setRouterPortColor(config(), "inputs", "missing", "#E62D3E"), config());
 });
